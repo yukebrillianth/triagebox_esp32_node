@@ -1,0 +1,7 @@
+sim/build/
+build/
+.sisyphus/
+managed_components/
+dependencies.lock
+*.o
+*.a
