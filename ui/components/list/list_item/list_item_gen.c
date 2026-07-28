@@ -8,7 +8,7 @@
  *********************/
 
 #include "list_item_gen.h"
-#include "../../../lvgl_open_template.h"
+#include "../../../ui.h"
 
 /*********************
  *      DEFINES
@@ -67,8 +67,8 @@ lv_obj_t * list_item_create(lv_obj_t * parent, const char * title, const char * 
 
     lv_obj_t * the_root = NULL;
 
-    #if LVGL_OPEN_TEMPLATE_CHECK_COMPILE_TARGET(LVGL_OPEN_TEMPLATE_TARGET_ALL)
-    if (lvgl_open_template_check_target(LVGL_OPEN_TEMPLATE_TARGET_ALL)) {
+    #if UI_CHECK_COMPILE_TARGET(UI_TARGET_ALL)
+    if (ui_check_target(UI_TARGET_ALL)) {
         lv_obj_t * container_0 = container_create(parent, SPACE_MD, SPACE_MD, LV_FLEX_FLOW_ROW, 0);
         lv_obj_set_name_static(container_0, "list_item_#");
         lv_obj_set_flag(container_0, LV_OBJ_FLAG_CLICKABLE, true);

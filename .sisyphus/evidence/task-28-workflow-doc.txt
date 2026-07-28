@@ -1,0 +1,38 @@
+docs/ui-workflow.md keywords:
+5:## License and tools
+8:- The **Pro CLI is Professional-only and not licensed here.** Never wire `lved-cli` into scripts or CMake. Export is always the Editor GUI button.
+22:4. Validate layout in the Editor live preview (human). Copy is Bahasa Indonesia, match Figma exactly.
+24:## Compile and export code (full project)
+26:1. In the Editor: **Ctrl+B**, the hammer icon, or **Compile & export code**.
+28:3. Commit the generated C after a clean export so sim/ESP builds work without the Editor installed.
+36:| `ui/ui.h` | Sim gates `HAS_UI` / `lib-ui` on this **and** `ui/CMakeLists.txt` |
+38:| `ui/ui_gen.h`, `ui/ui_gen.c` | Generated project API |
+47:- `CMakeLists.txt` alone is not a complete export. Without `ui/ui.h` the sim builds a welcome label instead of the real UI (`HAS_UI` stays off).
+49:## Run the SDL simulator
+56:./sim/build/bin/lvgl_simulator
+60:- With a complete export, `HAS_UI=1` and `lib-ui` link in. Without `ui/ui.h`, you only get the welcome fallback.
+69:idf.py set-target esp32s3
+70:idf.py build
+73:Verified with **ESP-IDF v6.0.2**. Pin LVGL to v9 in `main/idf_component.yml` (see `AGENTS.md`). Board bring-up (CH32, GT911, PSRAM fb) is out of scope for the screen plan; green `idf.py build` is the bar.
+75:## Logic host selftests
+77:Hand-written logic under `ui/logic/` is platform-neutral and has assert-based selftests (no test framework). From the **repo root**:
+79:### `ui_nav_selftest` (nav + action tables)
+83:  -o /tmp/ui_nav_selftest \
+84:  ui/logic/ui_nav_selftest.c \
+86:/tmp/ui_nav_selftest
+89:### `ui_mock_selftest` (RFID / measure / priority / buttons)
+93:  -o /tmp/ui_mock_selftest \
+94:  ui/logic/ui_mock_selftest.c ui/logic/ui_mock.c
+95:/tmp/ui_mock_selftest
+98:### `ui_runtime_selftest` (full mock→session→nav tick glue)
+102:  -o /tmp/ui_runtime_selftest \
+103:  ui/logic/ui_runtime_selftest.c \
+106:/tmp/ui_runtime_selftest
+114:2. Full-project **Compile & export code**; confirm new `*_gen.*` appear and `file_list_gen.cmake` lists them.
+115:3. Commit generated C.
+117:5. Extend a host selftest and/or walk the sim with keys.
+118:6. Rebuild sim + `idf.py build`.
+120:## Known blockers (honest status)
+122:| Blocker | Detail |
+124:| Incomplete / partial Pro export | Template demo export may exist (`ui.h`/`ui.c`/component gens) while triage screens and a full `globals_gen` set are still missing. Sim falls back without a complete pair of `CMakeLists.txt` + `ui.h`. |
+130:Logic layer (`ui_types`, `ui_session`, `ui_mock`, `ui_input`, `ui_nav`, `ui_action`, `ui_runtime`) **is** done and host-selftestable. Screens, tokens, icons, and a complete export are the remaining human path.

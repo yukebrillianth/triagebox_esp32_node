@@ -58,3 +58,10 @@
 - `ui_runtime_debug_cycle_priority()` cycles mock AND rewrites session when priority already set (QA Result variants without re-measure).
 - Selftest: `ui/logic/ui_runtime_selftest.c` — host `cc -Iui/logic` links runtime+mock+nav+session+action. UI_MEASURE_MS=2000; tick at 0/500/1000/2000/2500.
 - Full plan Task 25 (LVGL setters / screenshots) deferred until Pro-generated screens exist.
+
+## Task 28 — docs match current reality
+- AGENTS.md Code conventions rewritten: layout ui/ + ui/logic/ + sim/ + main/; no main/ui/screens hand modules; *_gen no-edit; HAS_UI needs ui/ui.h; button map + ui_action; logic done / screens human.
+- Build section: source ~/.espressif/v6.0.2/esp-idf/export.sh (verified v6.0.2).
+- docs/ui-workflow.md created: open ui/, edit/export full project, artifact checklist, sim cmake path to bin/lvgl_simulator, idf export+build, three host selftest cc lines, known blockers (partial export, tokens, icons, no CLI).
+- Hardware traps + MQTT contract sections left intact.
+- Evidence: .sisyphus/evidence/task-28-agents.txt, task-28-workflow-doc.txt

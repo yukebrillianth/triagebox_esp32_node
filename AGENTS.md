@@ -25,6 +25,12 @@ Reserved ESP32 GPIOs (do not reassign): `1,2,3,4,5,7,8,9,10,11,12,13,14,15,17,18
 
 ## Build
 
+ESP-IDF is not on `PATH` by default. Source the export script in **every shell** before any `idf.py` call (verified working with **v6.0.2**):
+
+```bash
+source ~/.espressif/v6.0.2/esp-idf/export.sh
+```
+
 ```bash
 idf.py set-target esp32s3
 idf.py build
@@ -61,7 +67,7 @@ Reject any snippet using `lv_indev_drv_t`, `lv_disp_drv_t`, or `lv_disp_draw_buf
 - Canvas: **480×480**. Status bar 480×48 top. ButtonBar 480×71 bottom, 4 cells 120×71.
 - Themes: dark (`node-id=53-1781`) and light (`node-id=208-5`) of file `etAAzsnQu0RlnxnPYNBEJz`. Both must work at runtime.
 - Per-screen node IDs (dark / light): Home `16:98`/`208:6`, Scanning `16:302`/`208:78`, Berhasil `16:433`/`208:138`, Age `56:1789`/`208:200`, Gender `60:290`/`208:257`, Mengukur `36:1446`/`208:511`, Result `16:1008`/`208:318`, Monitor `63:378`/`208:402`.
-- Tokens (put in `main/ui/theme/`, no raw hex in screens):
+- Tokens (author in LVGL Pro `ui/globals.xml`, no raw hex in hand-written logic):
 
   | Token | Dark | Light |
   | --- | --- | --- |
@@ -163,12 +169,62 @@ This firmware talks to the STM32 over UART with an internal framing of your choo
 
 ## Code conventions
 
-- C (ESP-IDF style). One screen = one module under `main/ui/screens/`.
-- Shared widgets (status bar, button bar, vital cards) live under `main/ui/widgets/`.
-- Theme tokens (colors, fonts) under `main/ui/theme/` — no raw hex scattered in screens.
+### Layout (current)
+
+| Path | Role |
+| --- | --- |
+| `ui/` | LVGL Pro Editor project: XML (`globals.xml`, `screens/*.xml`, `components/`) + exported C |
+| `ui/logic/` | Hand-written C only: types, session, mock, input, nav, action, runtime (+ host selftests) |
+| `sim/` | SDL2 desktop simulator (LVGL v9.5, 480×480) |
+| `main/` | ESP-IDF app (build/link target; board bring-up is separate) |
+
+Shared `ui/` and `ui/logic/` must stay platform-neutral (no `ESP_PLATFORM` / SDL ifdefs there). Platform glue lives in `sim/` and `main/` only.
+
+### Screens: Pro XML, not hand modules
+
+- Screens and shared widgets are authored as **LVGL Pro XML** under `ui/screens/` and `ui/components/`, then exported to C.
+- There is **no** `main/ui/screens/` hand-written screen module tree. Do not invent one.
+- Theme tokens live in `ui/globals.xml` (Editor). Hand-written logic never hardcodes style hex.
+
+### Generated C rules
+
+- Never hand-edit `*_gen.c` / `*_gen.h` (or other Pro-generated sources). Fix the XML, re-export.
+- Commit generated C after a successful full export so sim/ESP builds work without the Editor.
+- A **full** project export must produce at least: `ui/ui.h`, `ui/ui.c`, `ui/ui_gen.*`, `globals_gen.*` (when the Editor emits them), `file_list_gen.cmake`, and the per-screen/component `*_gen.*` listed there.
+- Partial export is a known failure mode: `CMakeLists.txt` alone is not enough. The sim gates `HAS_UI` / `lib-ui` on **both** `ui/CMakeLists.txt` **and** `ui/ui.h`. Without `ui.h` the sim falls back to a welcome label.
+
+### Logic layer (`ui/logic/`)
+
+| Module | Job |
+| --- | --- |
+| `ui_types.h` | `vitals_t`, `btn_event_t`, `rfid_t`, priority/age/gender enums (serial-stable shapes) |
+| `ui_session` | One triage session (RFID, age, gender, vitals, priority) |
+| `ui_mock` | Non-blocking mock RFID/vitals/buttons + accelerated measure (`UI_MEASURE_MS`) |
+| `ui_input` | LVGL keypad indev; reads `ui_mock_pop_button()` only (never GPIO for the 4 keys) |
+| `ui_nav` | Screen id + go/show registry + RFID/measure transition hooks |
+| `ui_action` | **Single** dispatcher: touch ButtonBar cell and keypad both call `ui_action(screen, btn_id)` |
+| `ui_runtime` | Tick glue: mock → session fill → nav transitions (no LVGL, no sleep) |
+
+Button/key mapping (left→right cells 0..3):
+
+| Physical / mock btn | LV_KEY | Typical bar role |
+| --- | --- | --- |
+| 0 | `PREV` | Up / first action |
+| 1 | `NEXT` | Down / second action |
+| 2 | `ENTER` | Back / confirm-ish (per screen table) |
+| 3 | `ESC` | Select / fourth action |
+
+`ui_action_on_key()` reverses that map so Age/Gender keep Up/Down/Back/Select on buttons 0/1/2/3. Empty bar cells are no-ops. Power/Menu are no-op + log in v1 (no Menu screen).
+
+Status today: **logic layer is done and selftestable on host**. The 8 triage screens, Figma tokens in `globals.xml`, and a complete Pro export are still **human/Editor work**. Do not claim screens are complete.
+
+### General
+
+- C (ESP-IDF style) for hand-written code.
 - No `as any`-equivalent hacks: no silenced compiler warnings for type punning on packed LoRa/UART structs without a comment naming the wire layout.
 - Do not add new dependencies when LVGL + ESP-IDF + the Waveshare BSP already cover the need.
 - Keep diffs small. Greenfield is not a license to scaffold "for later".
+- Workflow detail: `docs/ui-workflow.md`.
 
 ## Skills
 

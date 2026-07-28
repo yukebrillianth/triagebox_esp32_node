@@ -8,7 +8,7 @@
  *********************/
 
 #include "panel_gen.h"
-#include "../../../lvgl_open_template.h"
+#include "../../../ui.h"
 
 /*********************
  *      DEFINES
@@ -37,8 +37,8 @@ lv_obj_t * panel_create(lv_obj_t * parent, int32_t pad, int32_t gap, lv_flex_flo
 
     lv_obj_t * the_root = NULL;
 
-    #if LVGL_OPEN_TEMPLATE_CHECK_COMPILE_TARGET(LVGL_OPEN_TEMPLATE_TARGET_ALL)
-    if (lvgl_open_template_check_target(LVGL_OPEN_TEMPLATE_TARGET_ALL)) {
+    #if UI_CHECK_COMPILE_TARGET(UI_TARGET_ALL)
+    if (ui_check_target(UI_TARGET_ALL)) {
         lv_obj_t * container_0 = container_create(parent, pad, gap, flow, grow);
         lv_obj_set_name_static(container_0, "panel_#");
 

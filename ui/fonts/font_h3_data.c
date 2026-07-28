@@ -2204,6 +2204,10 @@ lv_font_t font_h3_data = {
     .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,    /*Function pointer to get glyph's bitmap*/
     .line_height = 28,          /*The maximum line height required by the font*/
     .base_line = 5,             /*Baseline measured from the bottom of the line*/
+#if LV_VERSION_CHECK(9, 6, 0) || LVGL_VERSION_MAJOR >= 10
+    .cap_height = 20,           /*Cap height of the font*/
+    .x_height = 15,               /*x-height of the font*/
+#endif
 #if !(LVGL_VERSION_MAJOR == 6 && LVGL_VERSION_MINOR == 0)
     .subpx = LV_FONT_SUBPX_NONE,
 #endif

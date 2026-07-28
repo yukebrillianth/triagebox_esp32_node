@@ -8,7 +8,7 @@
  *********************/
 
 #include "container_gen.h"
-#include "../../../lvgl_open_template.h"
+#include "../../../ui.h"
 
 /*********************
  *      DEFINES
@@ -37,8 +37,8 @@ lv_obj_t * container_create(lv_obj_t * parent, int32_t pad, int32_t gap, lv_flex
 
     lv_obj_t * the_root = NULL;
 
-    #if LVGL_OPEN_TEMPLATE_CHECK_COMPILE_TARGET(LVGL_OPEN_TEMPLATE_TARGET_ALL)
-    if (lvgl_open_template_check_target(LVGL_OPEN_TEMPLATE_TARGET_ALL)) {
+    #if UI_CHECK_COMPILE_TARGET(UI_TARGET_ALL)
+    if (ui_check_target(UI_TARGET_ALL)) {
         lv_obj_t * base_box_0 = base_box_create(parent);
         lv_obj_set_name_static(base_box_0, "container_#");
         lv_obj_set_flex_grow(base_box_0, grow);

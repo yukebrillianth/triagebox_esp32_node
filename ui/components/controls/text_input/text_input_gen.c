@@ -8,7 +8,7 @@
  *********************/
 
 #include "text_input_gen.h"
-#include "../../../lvgl_open_template.h"
+#include "../../../ui.h"
 
 /*********************
  *      DEFINES
@@ -50,8 +50,8 @@ lv_obj_t * text_input_create(lv_obj_t * parent, const char * text, const char * 
 
     lv_obj_t * the_root = NULL;
 
-    #if LVGL_OPEN_TEMPLATE_CHECK_COMPILE_TARGET(LVGL_OPEN_TEMPLATE_TARGET_ALL)
-    if (lvgl_open_template_check_target(LVGL_OPEN_TEMPLATE_TARGET_ALL)) {
+    #if UI_CHECK_COMPILE_TARGET(UI_TARGET_ALL)
+    if (ui_check_target(UI_TARGET_ALL)) {
         lv_obj_t * text_box_0 = text_box_create(parent, text, "Write here...");
         lv_obj_set_name_static(text_box_0, "text_input_#");
         lv_textarea_set_one_line(text_box_0, true);

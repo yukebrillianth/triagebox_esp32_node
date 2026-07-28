@@ -8,7 +8,7 @@
  *********************/
 
 #include "text_box_gen.h"
-#include "../../../lvgl_open_template.h"
+#include "../../../ui.h"
 
 /*********************
  *      DEFINES
@@ -37,8 +37,8 @@ lv_obj_t * text_box_create(lv_obj_t * parent, const char * text, const char * pl
 
     lv_obj_t * the_root = NULL;
 
-    #if LVGL_OPEN_TEMPLATE_CHECK_COMPILE_TARGET(LVGL_OPEN_TEMPLATE_TARGET_ALL)
-    if (lvgl_open_template_check_target(LVGL_OPEN_TEMPLATE_TARGET_ALL)) {
+    #if UI_CHECK_COMPILE_TARGET(UI_TARGET_ALL)
+    if (ui_check_target(UI_TARGET_ALL)) {
         lv_obj_t * lv_textarea_0 = lv_textarea_create(parent);
         lv_obj_set_name_static(lv_textarea_0, "text_box_#");
         lv_obj_set_width(lv_textarea_0, 260);

@@ -802,7 +802,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `CMakeLists.txt`, `main/*`, `sdkconfig.defaults`
   - Pre-commit: `idf.py build` exits 0
 
-- [ ] 8. Export pipeline proof — one screen, both targets (HUMAN + AGENT)
+- [x] 8. Export pipeline proof — one screen, both targets (HUMAN + AGENT)
 
   **Execution note**: This is the highest-risk unknown in the plan. Export is GUI-only (no CLI license) — the human does the export click, the agent proves the result compiles on both targets. Coordinate as a handoff: agent prepares the request, user performs the Editor step, agent verifies.
 
@@ -1821,7 +1821,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `main/app_main.c`, `main/CMakeLists.txt`
   - Pre-commit: `idf.py build` exits 0
 
-- [ ] 28. Update AGENTS.md + `docs/ui-workflow.md`
+- [x] 28. Update AGENTS.md + `docs/ui-workflow.md`
 
   **What to do**:
   - Update `AGENTS.md` to reflect the actual workflow now in place:
