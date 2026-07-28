@@ -23,3 +23,13 @@
   Exact px sizes differ slightly from Figma (h1=44 vs 48); acceptable for v1; regenerate bins if pixel QA fails.
 - T2 still HUMAN: replace Pro purple/dark defaults in globals.xml with Figma triage tokens.
 - T5 inventory: many triage-specific icons missing; needs Figma download_assets before closing.
+
+## [2026-07-28T17:20Z] T8 unblocked — full export landed
+- ui/ui.h + ui/ui.c + ui_gen.c/h now present (user/Editor re-export or writing-agent side effect).
+- Tokens/styles live inside ui_gen.h (#define SPACE_LG, RADIUS_DEFAULT, colors) — no separate globals_gen.* required for this template.
+- sim CMake HAS_UI gate opens; lib-ui links; lvgl_simulator runs 3s OK with real UI lib.
+- Still only template screen_components, NOT the 8 triage screens.
+- T2 tokens still Pro purple defaults in globals.xml — human must retoken to Figma.
+- T5 icons still missing triage-specific assets.
+- T9-22 still human Editor work.
+- T26/T27 need screens + register show fns in runtime before full nav on device/sim UI.
