@@ -18,7 +18,7 @@
 		<int name="space_xl" value="32" help="Extra-large spacing/padding unit" />
 
 		<!-- Shape -->
-		<int name="radius_default" value="12" help="Default corner radius" />
+		<int name="radius_default" value="10" help="Default corner radius (Figma card radius)" />
 		<int name="border_width" value="1" help="Default border width" />
 
 		<int name="icon_size" value="16" help="Default icon size" />
@@ -30,14 +30,17 @@
 		<color name="color_light_text" value="0x1B1F27" help="Light theme primary text" />
 
 		<!-- Dark palette -->
-		<color name="color_dark_bg" value="0x12151C" help="Dark theme screen background" />
-		<color name="color_dark_panel" value="0x1E232E" help="Dark theme panel/card background" />
-		<color name="color_dark_text" value="0xE6E9F0" help="Dark theme primary text" />
+		<color name="color_dark_bg" value="0x0d1329" help="Dark theme screen background (Figma screen_bg)" />
+		<color name="color_dark_panel" value="0x1a2651" help="Dark theme panel/card background (Figma card_bg / border)" />
+		<color name="color_dark_text" value="0xFFFFFF" help="Dark theme primary text (Figma text_primary)" />
+		<color name="color_text_secondary" value="0x99a1af" help="Secondary / muted text (both themes)" />
+		<color name="color_text_on_card" value="0xd1d5dc" help="Text on dark card surfaces" />
 
 		<!-- Accent + semantic colors (same in both themes) -->
-		<color name="color_accent" value="0x9429FF" help="Accent / active control color" />
+		<color name="color_accent" value="0x00d460" help="Accent / active control color (Figma accent)" />
 		<color name="color_accent_text" value="0xFFFFFF" help="Text/icon drawn on top of the accent color" />
-		<color name="color_danger" value="0xE5484D" help="Destructive / warning color" />
+		<color name="color_danger" value="0xfb2c36" help="Destructive / Power / RED (Figma danger)" />
+		<color name="color_status_ok" value="0x00c950" help="Status OK indicator (Figma status_ok)" />
 		<color name="color_track" value="0x9AA3B2" help="Neutral track behind sliders/arcs/bars" />
 	</consts>
 
@@ -153,7 +156,7 @@
 			name="style_panel_dark"
 			bg_color="#color_dark_panel"
 			bg_opa="100%"
-			border_color="#color_dark_text"
+			border_color="#color_dark_panel"
 			border_opa="20%"
 			border_width="#border_width"
 			text_color="#color_dark_text"
@@ -165,7 +168,7 @@
 		<style name="style_text_accent" text_color="#color_accent" />
 
 		<!-- Muted secondary text (captions, subtitles, section headers) -->
-		<style name="style_text_muted" text_opa="60%" />
+		<style name="style_text_muted" text_color="#color_text_secondary" />
 
 		<!-- Thin scrollbar shared by scrollable screens -->
 		<style

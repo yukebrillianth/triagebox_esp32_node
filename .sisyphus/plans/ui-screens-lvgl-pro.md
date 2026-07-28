@@ -341,7 +341,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui_pro/project.xml`, `.gitignore`
   - Pre-commit: agent confirms project.xml is correct
 
-- [ ] 2. Dark design tokens as XML styles
+- [x] 2. Dark design tokens as XML styles
 
   **What to do**:
   - Create `ui_pro/globals.xml` (or the Pro-idiomatic tokens file) defining the dark palette as named constants/styles:

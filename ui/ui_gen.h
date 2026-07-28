@@ -73,9 +73,9 @@ bool ui_check_target(uint32_t target);
  */
 #define SPACE_XL 32
 /**
- * Default corner radius
+ * Default corner radius (Figma card radius)
  */
-#define RADIUS_DEFAULT 12
+#define RADIUS_DEFAULT 10
 /**
  * Default border width
  */
@@ -101,29 +101,41 @@ bool ui_check_target(uint32_t target);
  */
 #define COLOR_LIGHT_TEXT lv_color_hex(0x1B1F27)
 /**
- * Dark theme screen background
+ * Dark theme screen background (Figma screen_bg)
  */
-#define COLOR_DARK_BG lv_color_hex(0x12151C)
+#define COLOR_DARK_BG lv_color_hex(0x0d1329)
 /**
- * Dark theme panel/card background
+ * Dark theme panel/card background (Figma card_bg / border)
  */
-#define COLOR_DARK_PANEL lv_color_hex(0x1E232E)
+#define COLOR_DARK_PANEL lv_color_hex(0x1a2651)
 /**
- * Dark theme primary text
+ * Dark theme primary text (Figma text_primary)
  */
-#define COLOR_DARK_TEXT lv_color_hex(0xE6E9F0)
+#define COLOR_DARK_TEXT lv_color_hex(0xFFFFFF)
 /**
- * Accent / active control color
+ * Secondary / muted text (both themes)
  */
-#define COLOR_ACCENT lv_color_hex(0x9429FF)
+#define COLOR_TEXT_SECONDARY lv_color_hex(0x99a1af)
+/**
+ * Text on dark card surfaces
+ */
+#define COLOR_TEXT_ON_CARD lv_color_hex(0xd1d5dc)
+/**
+ * Accent / active control color (Figma accent)
+ */
+#define COLOR_ACCENT lv_color_hex(0x00d460)
 /**
  * Text/icon drawn on top of the accent color
  */
 #define COLOR_ACCENT_TEXT lv_color_hex(0xFFFFFF)
 /**
- * Destructive / warning color
+ * Destructive / Power / RED (Figma danger)
  */
-#define COLOR_DANGER lv_color_hex(0xE5484D)
+#define COLOR_DANGER lv_color_hex(0xfb2c36)
+/**
+ * Status OK indicator (Figma status_ok)
+ */
+#define COLOR_STATUS_OK lv_color_hex(0x00c950)
 /**
  * Neutral track behind sliders/arcs/bars
  */

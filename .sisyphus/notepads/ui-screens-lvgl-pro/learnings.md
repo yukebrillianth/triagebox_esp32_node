@@ -65,3 +65,11 @@
 - docs/ui-workflow.md created: open ui/, edit/export full project, artifact checklist, sim cmake path to bin/lvgl_simulator, idf export+build, three host selftest cc lines, known blockers (partial export, tokens, icons, no CLI).
 - Hardware traps + MQTT contract sections left intact.
 - Evidence: .sisyphus/evidence/task-28-agents.txt, task-28-workflow-doc.txt
+
+## Task 2 — Figma dark tokens (2026-07-29)
+- Updated ui/globals.xml dark palette to Figma: screen_bg 0x0d1329, card_bg 0x1a2651, text_primary 0xFFFFFF, accent 0x00d460, danger 0xfb2c36; added color_text_secondary 0x99a1af, color_text_on_card 0xd1d5dc, color_status_ok 0x00c950; radius_default 10.
+- style_panel_dark border now #color_dark_panel; style_text_muted uses #color_text_secondary (not text_opa 60%).
+- Also patched matching COLOR_*/RADIUS_DEFAULT macros in ui/ui_gen.h so current sim/build picks Figma colors without Editor re-export.
+- ui_gen.c style init body still needs full Pro re-export for border/muted lines and any new const usage; do not hand-edit *_gen.c.
+- Purple 0x9429FF is gone from ui/ (evidence task-2-no-purple.txt count 0).
+- Light palette left as Pro defaults (dark-first T2).

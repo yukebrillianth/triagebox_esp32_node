@@ -497,14 +497,14 @@ void ui_init_gen(const char * asset_path)
         lv_style_set_radius(&style_panel_light, RADIUS_DEFAULT);
         lv_style_set_bg_color(&style_panel_dark, COLOR_DARK_PANEL);
         lv_style_set_bg_opa(&style_panel_dark, (255 * 100 / 100));
-        lv_style_set_border_color(&style_panel_dark, COLOR_DARK_TEXT);
+        lv_style_set_border_color(&style_panel_dark, COLOR_DARK_PANEL);
         lv_style_set_border_opa(&style_panel_dark, (255 * 20 / 100));
         lv_style_set_border_width(&style_panel_dark, BORDER_WIDTH);
         lv_style_set_text_color(&style_panel_dark, COLOR_DARK_TEXT);
         lv_style_set_pad_all(&style_panel_dark, SPACE_MD);
         lv_style_set_radius(&style_panel_dark, RADIUS_DEFAULT);
         lv_style_set_text_color(&style_text_accent, COLOR_ACCENT);
-        lv_style_set_text_opa(&style_text_muted, (255 * 60 / 100));
+        lv_style_set_text_color(&style_text_muted, COLOR_TEXT_SECONDARY);
         lv_style_set_width(&style_scrollbar, SPACE_SM);
         lv_style_set_radius(&style_scrollbar, SPACE_SM);
         lv_style_set_bg_color(&style_scrollbar, COLOR_TRACK);
