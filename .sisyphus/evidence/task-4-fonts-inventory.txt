@@ -1,0 +1,67 @@
+=== Pro-bundled fonts (Montserrat substitute for Inter) ===
+48294 ui/fonts/font_body__data.c
+48302 ui/fonts/font_body_data.c
+33513 ui/fonts/font_body_small_data.c
+9519 ui/fonts/font_body_symbols__data.c
+9448 ui/fonts/font_body_symbols_data.c
+240251 ui/fonts/font_h1__data.c
+240244 ui/fonts/font_h1_data.c
+152798 ui/fonts/font_h2__data.c
+152791 ui/fonts/font_h2_data.c
+103315 ui/fonts/font_h3__data.c
+103308 ui/fonts/font_h3_data.c
+74713 ui/fonts/font_h4__data.c
+74706 ui/fonts/font_h4_data.c
+56200 ui/fonts/font_h5__data.c
+56193 ui/fonts/font_h5_data.c
+353228 ui/fonts/FontAwesome5.ttf
+454864 ui/fonts/Montserrat-Bold.ttf
+447320 ui/fonts/Montserrat-Medium.ttf
+445928 ui/fonts/Montserrat-Regular.ttf
+454716 ui/fonts/Montserrat-SemiBold.ttf
+
+=== lv_font_t symbols ===
+const lv_font_t font_body__data = {
+const lv_font_t font_body_data = {
+const lv_font_t font_body_small_data = {
+const lv_font_t font_body_symbols__data = {
+const lv_font_t font_body_symbols_data = {
+const lv_font_t font_h1__data = {
+const lv_font_t font_h1_data = {
+const lv_font_t font_h2__data = {
+const lv_font_t font_h2_data = {
+const lv_font_t font_h3__data = {
+const lv_font_t font_h3_data = {
+const lv_font_t font_h4__data = {
+const lv_font_t font_h4_data = {
+const lv_font_t font_h5__data = {
+const lv_font_t font_h5_data = {
+
+=== size mapping from globals.xml bins ===
+			name="font_body_symbols"
+			size="16"
+			src_path="fonts/FontAwesome5.ttf"
+--
+			name="font_body"
+			size="16"
+			src_path="fonts/Montserrat-Regular.ttf"
+--
+			name="font_h5"
+			size="18"
+			src_path="fonts/Montserrat-Medium.ttf"
+--
+			name="font_h4"
+			size="22"
+			src_path="fonts/Montserrat-SemiBold.ttf"
+--
+			name="font_h3"
+			size="28"
+			src_path="fonts/Montserrat-SemiBold.ttf"
+--
+			name="font_h2"
+			size="34"
+			src_path="fonts/Montserrat-Bold.ttf"
+--
+			name="font_h1"
+			size="44"
+			src_path="fonts/Montserrat-Bold.ttf"

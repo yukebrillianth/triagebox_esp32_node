@@ -1,0 +1,87 @@
+=== available icons ===
+arrow_down.png
+arrow_left.png
+arrow_right.png
+arrow_up.png
+battery_full.png
+battery.png
+bell.png
+bluetooth.png
+calendar.png
+camera.png
+check.png
+chevron_down.png
+chevron_left.png
+chevron_right.png
+chevron_up.png
+clock.png
+close.png
+download.png
+edit.png
+heart.png
+home.png
+info.png
+lock.png
+mail.png
+menu.png
+minus.png
+moon.png
+pause.png
+play.png
+plus.png
+power.png
+refresh.png
+search.png
+settings.png
+signal.png
+star.png
+sun.png
+trash.png
+unlock.png
+upload.png
+user.png
+volume.png
+wifi_high.png
+wifi_low.png
+wifi_zero.png
+wifi.png
+
+=== gap analysis for triage ButtonBar / vitals ===
+MISSING: scan
+MISSING: start
+MISSING: restart
+MISSING: abort
+MISSING: select
+MISSING: monitor
+MISSING: reset
+MISSING: stop
+MISSING: spo2
+MISSING: hr
+HAVE: rr -> arrow_down.png
+arrow_left.png
+arrow_right.png
+arrow_up.png
+MISSING: bp
+MISSING: logo
+MISSING: rfid
+MISSING: warning
+MISSING: link
+HAVE: battery -> battery_full.png
+battery.png
+HAVE: power -> power.png
+HAVE: menu -> menu.png
+HAVE: up -> arrow_up.png
+chevron_up.png
+upload.png
+HAVE: down -> arrow_down.png
+chevron_down.png
+download.png
+MISSING: back
+HAVE: heart -> heart.png
+HAVE: wifi -> wifi_high.png
+wifi_low.png
+wifi_zero.png
+wifi.png
+HAVE: signal -> signal.png
+HAVE: clock -> clock.png
+HAVE: check -> check.png

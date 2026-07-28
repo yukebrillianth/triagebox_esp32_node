@@ -264,7 +264,7 @@ Max Concurrent: 8 (Wave 3)
 
 ## TODOs
 
-- [ ] 1. LVGL Pro project skeleton (HUMAN-OWNED — desktop Editor)
+- [x] 1. LVGL Pro project skeleton (HUMAN-OWNED — desktop Editor)
 
   **Execution note**: User already has LVGL Pro Community installed. This task is done by the **user in the desktop Editor GUI**, not by the agent. The agent's role is to hand over this exact spec and, once the user confirms it's done, verify the resulting files on disk.
 
@@ -503,7 +503,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui/logic/ui_types.h`
   - Pre-commit: `cc -fsyntax-only` exits 0
 
-- [ ] 4. Font subsetting — Inter sizes to LVGL C arrays
+- [x] 4. Font subsetting — Inter sizes to LVGL C arrays
 
   **What to do**:
   - Determine the glyph set actually needed: ASCII letters/digits, Indonesian punctuation, `%`, `/`, `-`, `>`, `…`, and the degree-free unit strings used ("bpm", "mmHg", "/min").
@@ -657,7 +657,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui/assets/icons/*`
   - Pre-commit: per-file `cc -fsyntax-only` exits 0
 
-- [ ] 6. SDL2 simulator skeleton (blank 480×480)
+- [x] 6. SDL2 simulator skeleton (blank 480×480)
 
   **What to do**:
   - Install prerequisites on macOS: `brew install sdl2 cmake`.
@@ -1536,7 +1536,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui/generated/*`
   - Pre-commit: both targets build
 
-- [ ] 24. `ui_nav.c` + `ui_action.c` — flow graph and per-screen action tables
+- [x] 24. `ui_nav.c` + `ui_action.c` — flow graph and per-screen action tables
 
   **What to do**:
   - Create `ui/logic/ui_nav.h/.c`: a screen enum + `ui_nav_go(screen)` using `lv_screen_load()` on the permanent screens created by `triagebox_ui_init()`. Encode the flow graph and the Key Decision transitions exactly:

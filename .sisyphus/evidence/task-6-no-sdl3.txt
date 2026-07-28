@@ -1,0 +1,2 @@
+command: grep -rniE 'SDL3|lv_drivers' sim --include='*.c' --include='*.h' --include='CMakeLists.txt' --include='*.defaults' | grep -v '/build/'
+ZERO_MATCHES (LVGL internal src/drivers/lv_drivers.h in _deps is not the external package)

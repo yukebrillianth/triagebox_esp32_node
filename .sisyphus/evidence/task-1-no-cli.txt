@@ -1,0 +1,2 @@
+command: grep -rn lved-cli . --include='*.sh' --include='*.yml' --include='CMakeLists.txt' --include='*.c' --include='*.h' | grep -v '^\./.sisyphus/'
+ZERO_MATCHES

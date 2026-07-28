@@ -112,10 +112,12 @@ endif()
 #  that builds a `lib-ui` target. We pick it up automatically.
 # ---------------------------------------------------------------------------
 set(UI_LIB "")
-if(EXISTS "${UI_DIR}/CMakeLists.txt")
+if(EXISTS "${UI_DIR}/CMakeLists.txt" AND EXISTS "${UI_DIR}/ui.h")
   message(STATUS "Found exported UI project in: ${UI_DIR}")
   add_subdirectory(${UI_DIR} ${CMAKE_BINARY_DIR}/ui)
   set(UI_LIB lib-ui)
+else()
+  message(STATUS "Complete exported UI not found; building the welcome screen")
 endif()
 
 # ---------------------------------------------------------------------------

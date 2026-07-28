@@ -1,0 +1,14 @@
+command: cat ui/project.xml
+<project lvgl_version="9.5.0" theme="simple">
+	<targets>
+		<target name="target1">
+			<display width="480" height="480" />
+		</target>
+	</targets>
+</project>
+
+grep 480:
+4:			<display width="480" height="480" />
+grep lvgl_version:
+1:<project lvgl_version="9.5.0" theme="simple">
+EXIT=0 project skeleton present at ui/ with 480x480 target

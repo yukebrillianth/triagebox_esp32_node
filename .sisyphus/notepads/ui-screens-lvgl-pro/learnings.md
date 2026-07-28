@@ -22,3 +22,30 @@
 - LVGL v9 keypad `read_cb` consumes only `ui_mock_pop_button()`: buttons 0/1/2/3 map to PREV/NEXT/ENTER/ESC, and release/no-event reports preserve the last key.
 - `ui_input_create_group()` deliberately only creates a group; screen object membership and `lv_indev_set_group()` remain Task 24 concerns.
 - Planned simulator producer remains Task 26: SDL keys 1/2/3/4 push mock buttons 0/1/2/3.
+
+## [2026-07-28T16:45Z] Fonts + icons from Pro template (T4/T5 inventory)
+- Pro ships Montserrat (Regular/Medium/SemiBold/Bold) + FontAwesome5, NOT Inter.
+  Acceptable metric substitute per plan Key Decision "Inter or metric substitute".
+- Compiled font C already present under ui/fonts/ as font_body/h1-h5 *_data.c with Latin 0x20-0x7F.
+  Figma sizes 48/24/18/16/14/13/10/9: Pro has h1..h5 + body + body_small — map approximately; exact 48/9 may need extra bins later.
+- Icons: generic set (power, menu, battery, wifi/signal, heart, chevrons, check, refresh, play/pause).
+  MISSING dedicated: scan, rfid, spo2, rr, bp, logo, start, restart, abort, select, monitor, reset, stop, link.
+  T5 cannot be fully closed without Figma download_assets for those glyphs — reuse nearest generic icons as temporary stand-ins only if screens must ship; prefer real Figma assets.
+- globals.xml still has Pro default purple accent (0x9429FF) and dark_bg 0x12151C — NOT Figma triage tokens (#0d1329, #00d460).
+  T2 (dark tokens) remains HUMAN: edit globals.xml in Editor to Figma tokens, then re-export.
+
+## Task 6 — bare sim without complete Pro export (2026-07-28)
+
+- Gate `HAS_UI` / `lib-ui` on **both** `ui/CMakeLists.txt` **and** `ui/ui.h`. Partial Pro export has CMakeLists but missing `ui.h`/`ui.c`/`globals_gen.*`; linking still fails.
+- `sim/src/main.c` already has `#else` welcome label path when `HAS_UI` is unset — no main.c change needed.
+- Window stays 480×480 via existing `hal_init(480, 480)`.
+- macOS has no GNU `timeout`; use `./bin & sleep 5; kill $pid` and treat kill-after-5s as exit 124 for acceptance.
+- `grep SDL3|lv_drivers sim/` must exclude `sim/build` / `_deps`: LVGL v9's own `src/drivers/lv_drivers.h` is not the external `lv_drivers` package. Project sources use SDL2 only.
+
+## Task 24 — ui_nav + ui_action
+- LVGL v9.5 key codes (from lv_group.h): PREV=11, NEXT=9, ENTER=10, ESC=27. PREV is NOT 8 (that is BACKSPACE).
+- ui_action_on_key mirrors those codes so nav/action stays LVGL-free for host `cc -c` selftests.
+- Physical ButtonBar indices 0..3 map via ui_input to PREV/NEXT/ENTER/ESC; on_key reverses that mapping, so Age/Gender Up/Down/Back/Select stay btn 0/1/2/3.
+- Screen show is a function-pointer registry (`ui_nav_register`) — stubs until Pro export fills create/load.
+- Non-button transitions: `ui_nav_on_rfid_ready` (Scanning→Berhasil) and `ui_nav_on_measure_done` (Mengukur→Result).
+- `ui_nav_go(HOME|SCANNING)` resets session; RESULT/BERHASIL/etc. do not.
