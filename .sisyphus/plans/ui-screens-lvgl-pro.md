@@ -1613,7 +1613,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui/logic/ui_nav.{h,c}`, `ui/logic/ui_action.{h,c}`
   - Pre-commit: sim builds
 
-- [ ] 25. Wire mock vitals into Mengukur / Result / Monitor
+- [x] 25. Wire mock vitals into Mengukur / Result / Monitor
 
   **What to do**:
   - Add an LVGL timer (created after `triagebox_ui_init`) that calls `ui_mock_tick()` and pushes values into the visible screen via the generated screens' setter functions / the components' property setters — using **plain C setters**, under `lvgl_port_lock` on device (in sim, from the single LVGL loop, no lock needed).

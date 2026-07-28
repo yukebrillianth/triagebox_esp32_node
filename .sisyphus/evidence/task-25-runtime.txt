@@ -1,0 +1,26 @@
+=== cc -c -Wall -Wextra -Iui/logic ui/logic/ui_runtime.c ===
+COMPILE_OK
+
+=== grep blocking calls in ui_runtime.[ch] ===
+ZERO_MATCHES
+
+=== selftest ===
+HOME
+SCANNING
+SCANNING
+BERHASIL
+rfid=3021
+AGE
+GENDER
+MENGUKUR
+progress_1000=25
+MENGUKUR
+MENGUKUR
+RESULT
+priority=2 conf=0.90 reasons=""
+cycle=1
+MONITOR
+monitor hr=91 spo2=99
+RESULT
+HOME
+ALL_PASS measure_ms=2000

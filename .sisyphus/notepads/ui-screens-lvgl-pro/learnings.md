@@ -49,3 +49,12 @@
 - Screen show is a function-pointer registry (`ui_nav_register`) — stubs until Pro export fills create/load.
 - Non-button transitions: `ui_nav_on_rfid_ready` (Scanning→Berhasil) and `ui_nav_on_measure_done` (Mengukur→Result).
 - `ui_nav_go(HOME|SCANNING)` resets session; RESULT/BERHASIL/etc. do not.
+
+## Task 25 (partial) — ui_runtime (no Pro screens)
+- `ui_runtime_tick(now_ms)` is pure glue: mock_tick → screen-aware session fill → nav transitions. No LVGL, no sleep.
+- Screen enter detection: `s_prev_screen` vs `ui_nav_current()`. SCANNING auto-starts mock scan; MENGUKUR auto-starts measure once (`s_measure_started` reset on leave).
+- Measure done path: set mock priority into session first, then `ui_nav_on_measure_done()` so RESULT has priority ready.
+- RESULT only fills priority if `!ui_session_has_priority()` (one-shot); MONITOR only refreshes vitals jitter.
+- `ui_runtime_debug_cycle_priority()` cycles mock AND rewrites session when priority already set (QA Result variants without re-measure).
+- Selftest: `ui/logic/ui_runtime_selftest.c` — host `cc -Iui/logic` links runtime+mock+nav+session+action. UI_MEASURE_MS=2000; tick at 0/500/1000/2000/2500.
+- Full plan Task 25 (LVGL setters / screenshots) deferred until Pro-generated screens exist.
