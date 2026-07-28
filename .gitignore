@@ -1,13 +1,24 @@
-sim/build/
+# Build / IDE
 build/
-.sisyphus/
-managed_components/
-dependencies.lock
+sim/build/
+.cache/
+.vscode/
+.idea/
 *.o
 *.a
+*.d
+compile_commands.json
 
+# ESP-IDF
 sdkconfig
 sdkconfig.old
-build/
+sdkconfig.ci
 managed_components/
 dependencies.lock
+
+# LVGL Pro Editor local
+ui/sim/
+*.tmp
+
+# OS
+.DS_Store
