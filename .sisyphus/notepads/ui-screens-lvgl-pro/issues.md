@@ -26,3 +26,33 @@ authoring) can proceed in the Editor but won't be build-verifiable until re-expo
 
 Temp stub files to DELETE once real export lands: ui/lvgl_open_template.h, ui/file_list_gen.cmake,
 ui/component_lib_list_gen.cmake.
+## Task 5 — deferred Figma assets (2026-07-29)
+- Full Figma `download_assets` is still needed for the final logo, RFID, SpO2, RR, BP, and warning assets. The generic aliases in `ui/logic/ui_icons.h` are temporary; no binary PNG assets were invented. This download is optional later when Figma MCP asset access is available.
+
+## Task 15-22 screens (2026-07-29)
+- Dedicated Figma logo / RFID / SpO2 / RR / BP icons still mapped to generic Lucide stand-ins (icon_heart, icon_search, icon_signal). Visual fidelity gap until Figma assets land.
+- Monitor Figma uses tinted gradient vital cards; XML uses plain vital_card + size styles (dark-first simplification).
+- Full Pro export still required for runtime proof (Task 23).
+
+## globals Figma Flow clash (2026-07-29)
+- Parallel Figma Flow dumps (default.xml, scanning_rfid.xml, …) + Flow globals overwrite conflict with agent Pro token system. Keep agent tokens outside fences. Full Editor re-export may still need reconciliation of typography component fonts (font_h1 etc).
+
+## Task 15 remaining export gaps (2026-07-29)
+- Full LVGL Pro Editor export is still required before Home/StatusBar/ButtonBar can be rendered in sim or linked as generated C.
+- Current Lucide nav source PNGs are generally 16×16; they are correctly centered in 24×24 boxes, but pixel-identical Figma glyphs require exporting the true 24×24 Figma assets later.
+- Runtime status application remains Task 26: bare image-name strings are not valid `lv_image_set_src` descriptors in exported C, so wire generated battery descriptors and named object handles only after the full export exists.
+
+## [2026-07-29] Scrollbar false positive as white border
+- User saw white lines on ButtonBar; root cause was scrollbar not theme border.
+- Re-export in Editor needed for generated base_box_gen.c to pick up scrollable=false (XML source fixed; gen may lag until Compile & export).
+
+## [2026-07-29] T23 BLOCKED — human Editor export
+- file_list_gen.cmake has no home/scanning/...*_gen; only template + screen_components.
+- User must Ctrl+B full project export in LVGL Pro Editor, then agent can verify builds + wire sim.
+
+## 2026-07-29 vital icon colors
+- Resolved: all vital icons green via forced #color_accent recolor.
+
+## T26 gotchas
+- Missing trailing slash on asset path silently breaks all tiny_ttf loads.
+- Undefined LV_USE_XML skips permanent screen creation (Editor export assumes the macro exists as 0 or 1).

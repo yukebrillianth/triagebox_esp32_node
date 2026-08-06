@@ -1,0 +1,139 @@
+<screen permanent="true">
+	<styles>
+		<style
+			name="style_measure_root"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			text_color="#color_dark_text"
+			pad_all="0"
+			pad_gap="0"
+		/>
+		<style name="style_measure_content" pad_hor="32" pad_ver="0" />
+		<style
+			name="style_measure_title"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_20"
+			text_align="center"
+		/>
+		<style
+			name="style_measure_sub"
+			text_color="#color_text_secondary"
+			text_font="font_inter_regular_12"
+			text_align="center"
+		/>
+		<style
+			name="style_progress_track"
+			width="400"
+			height="8"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="100"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+		/>
+		<style name="style_progress_indicator" bg_color="#color_accent" bg_opa="100%" radius="100" />
+		<style
+			name="style_progress_pct"
+			text_color="#color_accent_text"
+			text_font="font_inter_regular_14"
+			text_align="center"
+		/>
+		<style name="style_measure_vital" width="200" height="88" />
+	</styles>
+
+	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
+		<style name="style_measure_root" />
+
+		<status_bar width="480" height="48" />
+
+		<column name="content" width="100%" grow="1" gap="8" pad="0" horizontal_align="center" vertical_align="center">
+			<style name="style_measure_content" />
+
+			<column width="100%" gap="4" pad="0" horizontal_align="center">
+				<lv_label text="Mengukur..." width="100%">
+					<style name="style_measure_title" />
+				</lv_label>
+				<lv_label text="Mohon tunggu, jangan gerakkan sensor" width="100%">
+					<style name="style_measure_sub" />
+				</lv_label>
+			</column>
+
+			<column width="100%" gap="12" pad="0" horizontal_align="center">
+				<lv_bar name="measure_progress" value="0" min_value="0" max_value="100" width="400" height="8">
+					<style name="style_progress_track" />
+					<style name="style_progress_indicator" selector="indicator" />
+				</lv_bar>
+				<lv_label name="measure_pct" text="0%" width="100%">
+					<style name="style_progress_pct" />
+				</lv_label>
+			</column>
+
+			<row width="100%" gap="12" pad="0" style_margin_bottom="4" style_margin_top="12" horizontal_align="center">
+				<vital_card
+					name="vc_spo2"
+					icon="icon_oxygen"
+					icon_color="#color_vital_spo2"
+					label="SpO2"
+					value="--"
+					unit="%"
+					width="200"
+					height="88"
+				>
+					<style name="style_measure_vital" />
+				</vital_card>
+				<vital_card
+					name="vc_rr"
+					icon="icon_respiratory"
+					icon_color="#color_vital_rr"
+					label="Laju Pernapasan"
+					value="--"
+					unit="/min"
+					width="200"
+					height="88"
+				>
+					<style name="style_measure_vital" />
+				</vital_card>
+			</row>
+			<row width="100%" gap="12" pad="0" horizontal_align="center">
+				<vital_card
+					name="vc_hr"
+					icon="icon_heart_pulse"
+					icon_color="#color_vital_hr"
+					label="Detak Jantung"
+					value="--"
+					unit="bpm"
+					width="200"
+					height="88"
+				>
+					<style name="style_measure_vital" />
+				</vital_card>
+				<vital_card
+					name="vc_bp"
+					icon="icon_blood_pressure"
+					icon_color="#color_vital_bp"
+					label="Tekanan Darah"
+					value="--/--"
+					unit="mmHg"
+					width="200"
+					height="88"
+				>
+					<style name="style_measure_vital" />
+				</vital_card>
+			</row>
+		</column>
+
+		<button_bar
+			width="480"
+			height="71"
+			label0="Abort"
+			icon0="icon_close"
+			color0="#color_danger"
+			label2="Power"
+			icon2="icon_power"
+			color2="#color_danger"
+			label3="Menu"
+			icon3="icon_menu"
+		/>
+	</view>
+</screen>

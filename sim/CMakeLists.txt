@@ -129,6 +129,35 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE lvgl ${UI_LIB} ${BACKEND_LIB
 
 if(UI_LIB)
   target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HAS_UI=1)
+  # Editor export only auto-creates permanent screens when LV_USE_XML==0 is defined.
+  # Without it (feature off / unset), ui_init leaves home/scanning/... NULL.
+  target_compile_definitions(lib-ui PUBLIC LV_USE_XML=0)
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE LV_USE_XML=0)
+endif()
+
+# Hand-written logic (platform-neutral). Selftests are host-only — not linked.
+set(UI_LOGIC_DIR "${UI_DIR}/logic")
+set(UI_LOGIC_SOURCES
+  ${UI_LOGIC_DIR}/ui_types.c
+  ${UI_LOGIC_DIR}/ui_session.c
+  ${UI_LOGIC_DIR}/ui_mock.c
+  ${UI_LOGIC_DIR}/ui_nav.c
+  ${UI_LOGIC_DIR}/ui_action.c
+  ${UI_LOGIC_DIR}/ui_runtime.c
+  ${UI_LOGIC_DIR}/ui_status.c
+  ${UI_LOGIC_DIR}/ui_input.c
+)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${UI_LOGIC_SOURCES})
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${UI_LOGIC_DIR})
+# Accelerated measure window for desktop QA (hardware stays 60s via override).
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE UI_MEASURE_MS=2000)
+
+# Real triage screen gens (home_gen.c etc.) — only after human Pro full export.
+if(EXISTS "${UI_DIR}/screens/home_gen.c")
+  message(STATUS "Triage screen gens found — enabling HAS_TRIAGE_SCREENS")
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HAS_TRIAGE_SCREENS=1)
+else()
+  message(STATUS "Triage screen gens missing — sim stays on welcome/template")
 endif()
 
 if(NOT WIN32)

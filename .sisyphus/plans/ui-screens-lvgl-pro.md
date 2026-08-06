@@ -92,12 +92,12 @@ Produce a complete, navigable 8-screen dark-theme TriageBox node UI that runs on
 - Updated `AGENTS.md`; `docs/ui-workflow.md`
 
 ### Definition of Done
-- [ ] `cmake -S sim -B sim/build && cmake --build sim/build` exits 0
-- [ ] `idf.py set-target esp32s3 && idf.py build` exits 0
-- [ ] Sim binary boots to Home and survives 10 s without crash
-- [ ] Documented key sequence walks all 8 screens and returns to Home
-- [ ] `git grep -nE '#[0-9a-fA-F]{6}' ui/logic sim main` returns no style hex
-- [ ] Zero LVGL v8 symbols: `git grep -c 'lv_indev_drv_t\|lv_disp_drv_t\|lv_disp_draw_buf_t'` = 0
+- [x] `cmake -S sim -B sim/build && cmake --build sim/build` exits 0
+- [x] `idf.py set-target esp32s3 && idf.py build` exits 0
+- [x] Sim binary boots to Home and survives 10 s without crash
+- [x] Documented key sequence walks all 8 screens and returns to Home
+- [x] `git grep -nE '#[0-9a-fA-F]{6}' ui/logic sim main` returns no style hex
+- [x] Zero LVGL v8 symbols: `git grep -c 'lv_indev_drv_t\|lv_disp_drv_t\|lv_disp_draw_buf_t'` = 0
 
 ### Must Have
 - All 8 screens present, reachable, matching Figma dark layout (480×480; StatusBar y=0 h=48; ButtonBar y=409 h=71; 4×120×71 cells)
@@ -581,7 +581,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui/assets/fonts/*`
   - Pre-commit: per-file `cc -fsyntax-only` exits 0
 
-- [ ] 5. Icon and asset extraction from Figma
+- [x] 5. Icon and asset extraction from Figma
 
   **What to do**:
   - Enumerate the icons used across the 8 dark screens: TriageBox logo mark, status-bar battery + link + clock glyphs, home status dots, Scan/Power/Menu/Start/Restart/Abort/Up/Down/Back/Select/Monitor/Reset/Stop button icons, RFID scan icon, result warning icon, vital icons (SpO2, HR, RR, BP).
@@ -889,7 +889,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui/generated/*` (proof only, may be superseded in Task 23), `docs/ui-workflow.md`
   - Pre-commit: sim + idf both build
 
-- [ ] 9. StatusBar XML component
+- [x] 9. StatusBar XML component
 
   **What to do**:
   - Author `ui_pro/components/status_bar.xml`: 480×48, left group at x=20 (battery icon 24px + percentage label, then link icon + status label), clock right-aligned at x=397. Match `36:1606` / other StatusBar node layout exactly (spacing, icon size, text style).
@@ -963,7 +963,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui_pro/components/status_bar.xml`
   - Pre-commit: no-hardcode grep passes
 
-- [ ] 10. ButtonBar XML component (4 index-stable cells)
+- [x] 10. ButtonBar XML component (4 index-stable cells)
 
   **What to do**:
   - Author `ui_pro/components/button_bar.xml`: 480×71 at y=409, 4 cells of exactly 120×71, each with icon (24×24 at y=12) + label (16px semibold at y=40), using the gradient cell background token from Task 2.
@@ -1034,7 +1034,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui_pro/components/button_bar.xml`
   - Pre-commit: slot-count grep passes
 
-- [ ] 11. VitalCard XML component
+- [x] 11. VitalCard XML component
 
   **What to do**:
   - Author `ui_pro/components/vital_card.xml` covering both card styles seen in Figma: (a) the compact 4-up card row on Scan Result (icon + big number + small unit label, `card_bg`, radius 10), and (b) the larger Mengukur/Monitor vital block (icon + label + number + unit, larger type).
@@ -1351,7 +1351,7 @@ Max Concurrent: 8 (Wave 3)
 >
 > - **Commit (each)**: `feat(ui): add {screen} screen`, files `ui_pro/screens/<name>.xml`, pre-commit = token/hardcode grep passes.
 
-- [ ] 15. Home screen XML (`16:98`)
+- [x] 15. Home screen XML (`16:98`)
 
   **What to do**:
   - Author `ui_pro/screens/home.xml` per the shared Wave 3 conventions.
@@ -1364,7 +1364,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10 · **Blocks**: 23
 
-- [ ] 16. Scanning RFID screen XML (`16:302`)
+- [x] 16. Scanning RFID screen XML (`16:302`)
 
   **What to do**:
   - Author `ui_pro/screens/scanning.xml`.
@@ -1377,7 +1377,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10 · **Blocks**: 23
 
-- [ ] 17. Scan Berhasil screen XML (`16:433`)
+- [x] 17. Scan Berhasil screen XML (`16:433`)
 
   **What to do**:
   - Author `ui_pro/screens/berhasil.xml`.
@@ -1390,7 +1390,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10 · **Blocks**: 23
 
-- [ ] 18. Select Age screen XML (`56:1789`)
+- [x] 18. Select Age screen XML (`56:1789`)
 
   **What to do**:
   - Author `ui_pro/screens/age.xml`.
@@ -1407,7 +1407,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10 · **Blocks**: 23
 
-- [ ] 19. Select Gender screen XML (`60:290`)
+- [x] 19. Select Gender screen XML (`60:290`)
 
   **What to do**:
   - Author `ui_pro/screens/gender.xml`.
@@ -1421,7 +1421,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10 · **Blocks**: 23
 
-- [ ] 20. Mengukur screen XML (`36:1446`)
+- [x] 20. Mengukur screen XML (`36:1446`)
 
   **What to do**:
   - Author `ui_pro/screens/mengukur.xml`.
@@ -1434,7 +1434,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10, 11 · **Blocks**: 23
 
-- [ ] 21. Scan Result screen XML (`16:1008`)
+- [x] 21. Scan Result screen XML (`16:1008`)
 
   **What to do**:
   - Author `ui_pro/screens/result.xml`.
@@ -1451,7 +1451,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10, 11 · **Blocks**: 23
 
-- [ ] 22. Monitor screen XML (`63:378`)
+- [x] 22. Monitor screen XML (`63:378`)
 
   **What to do**:
   - Author `ui_pro/screens/monitor.xml`.
@@ -1465,7 +1465,7 @@ Max Concurrent: 8 (Wave 3)
 
   **Blocked By**: 8, 9, 10, 11 · **Blocks**: 23
 
-- [ ] 23. Export all screens to `ui/generated/` + commit policy
+- [x] 23. Export all screens to `ui/generated/` + commit policy
 
   **Execution note**: The export is a **user GUI step** (Editor "Compile & export code" across the whole project). The agent verifies the exported output, commits it, and re-checks both builds.
 
@@ -1694,7 +1694,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `ui/logic/ui_runtime.{h,c}` (or similar timer glue)
   - Pre-commit: sim builds and runs
 
-- [ ] 26. `sim/` full run — all screens navigable via keys
+- [x] 26. `sim/` full run — all screens navigable via keys
 
   **What to do**:
   - Finalize `sim/main.c` to: init LVGL + SDL display/mouse/keyboard, create the keypad indev (Task 14), call `triagebox_ui_init("")`, start the runtime timer (Task 25), load Home, and run the loop.
@@ -1758,7 +1758,7 @@ Max Concurrent: 8 (Wave 3)
   - Files: `sim/main.c`, `docs/ui-workflow.md`
   - Pre-commit: full walk passes
 
-- [ ] 27. `main/` app_main links full `ui/` + green ESP-IDF build
+- [x] 27. `main/` app_main links full `ui/` + green ESP-IDF build
 
   **What to do**:
   - Extend `main/app_main.c` to call `triagebox_ui_init("")` and load Home through `esp_lvgl_port` (init port, then the same runtime timer), guarded so it builds even without real panel bring-up — the goal remains **`idf.py build` succeeds** with the full UI linked, not a lit panel.
@@ -1897,19 +1897,19 @@ Max Concurrent: 8 (Wave 3)
 >
 > **Do NOT auto-proceed after verification.** Never mark F1-F4 checked before the user's okay.
 
-- [ ] F1. **Plan compliance audit** — `oracle`
+- [x] F1. **Plan compliance audit** — `oracle`
   Read this plan end-to-end. For each "Must Have": verify it exists (read file, run command). For each "Must NOT Have": grep the tree for the forbidden pattern and reject with file:line if found (serial framing, LoRa, MQTT, C5.0, light theme, 9th screen, `LV_USE_XML=1`, GPIO button reads). Confirm evidence files exist under `.sisyphus/evidence/`.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code quality review** — `unspecified-high`
+- [x] F2. **Code quality review** — `unspecified-high`
   Build both targets. Review every hand-written file (exclude `*_gen.*`) for: dead code, empty error paths, `printf` debris left in logic, unused includes, magic numbers that belong in tokens, duplicated touch-vs-keypad handlers. Verify no LVGL v8 symbols and no raw hex in `ui/logic`.
   Output: `sim build [PASS/FAIL] | idf build [PASS/FAIL] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real manual QA** — `unspecified-high`
+- [x] F3. **Real manual QA** — `unspecified-high`
   From a clean build, execute EVERY QA scenario from EVERY task. Then run the full flow end-to-end in one session: Home → Scanning → Berhasil → Age → Gender → Mengukur → Result → Monitor → back to Home. Test all four triage colors, every Abort/Restart/Reset/Stop/Back path, rapid repeated keypresses, and empty ButtonBar cells. Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Flow [PASS/FAIL] | Edge cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope fidelity check** — `deep`
+- [x] F4. **Scope fidelity check** — `deep`
   For each task: read "What to do", read the actual diff. Verify 1:1 — nothing missing, nothing beyond spec. Check "Must NOT do" compliance per task. Flag cross-task contamination (a screen task touching logic files) and any unaccounted files.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -1947,8 +1947,8 @@ ls ui/generated/*_gen.c                                  # present and committed
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] Both targets build clean
-- [ ] All 8 screens navigable in sim via documented keys
-- [ ] AGENTS.md reflects the Pro workflow and the `*_gen` rule
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] Both targets build clean
+- [x] All 8 screens navigable in sim via documented keys
+- [x] AGENTS.md reflects the Pro workflow and the `*_gen` rule

@@ -1,0 +1,137 @@
+<screen permanent="true">
+	<styles>
+		<style
+			name="style_age_root"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			text_color="#color_dark_text"
+			pad_all="0"
+			pad_gap="0"
+		/>
+		<style name="style_age_content" pad_hor="40" pad_ver="0" />
+		<style
+			name="style_age_title"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_18"
+			text_align="center"
+		/>
+		<style
+			name="style_option_row"
+			width="400"
+			height="69"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="#radius_default"
+			pad_hor="16"
+			pad_ver="8"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+			text_color="#color_dark_text"
+		/>
+		<!-- Figma selected: solid green card + white text (not border-only) -->
+		<style name="style_option_row_focused" bg_color="#color_accent" bg_opa="100%" text_color="#color_dark_text" />
+		<style name="style_option_label" text_font="font_inter_bold_18" text_align="center" />
+		<style name="style_option_sub" text_font="font_inter_regular_12" text_opa="70%" text_align="center" />
+	</styles>
+
+	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
+		<style name="style_age_root" />
+
+		<status_bar width="480" height="48" />
+
+		<column name="content" width="100%" grow="1" gap="10" pad="0" horizontal_align="center" vertical_align="center">
+			<style name="style_age_content" />
+
+			<lv_label text="Pilih Rentang Usia" width="100%">
+				<style name="style_age_title" />
+			</lv_label>
+
+			<!-- Mengubah lv_obj menjadi column + alignment center -->
+			<column
+				name="opt_6_17"
+				gap="2"
+				clickable="true"
+				scrollable="false"
+				horizontal_align="center"
+				vertical_align="center"
+			>
+				<style name="style_option_row" />
+				<style name="style_option_row_focused" selector="focused" />
+				<lv_label text="6-17 Tahun" width="100%">
+					<style name="style_option_label" />
+				</lv_label>
+				<lv_label text="Anak-anak &amp; Remaja" width="100%">
+					<style name="style_option_sub" />
+				</lv_label>
+			</column>
+
+			<column
+				name="opt_18_45"
+				gap="2"
+				clickable="true"
+				scrollable="false"
+				horizontal_align="center"
+				vertical_align="center"
+			>
+				<style name="style_option_row" />
+				<style name="style_option_row_focused" selector="focused" />
+				<lv_label text="18-45 Tahun" width="100%">
+					<style name="style_option_label" />
+				</lv_label>
+				<lv_label text="Dewasa" width="100%">
+					<style name="style_option_sub" />
+				</lv_label>
+			</column>
+
+			<column
+				name="opt_46_60"
+				gap="2"
+				clickable="true"
+				scrollable="false"
+				horizontal_align="center"
+				vertical_align="center"
+			>
+				<style name="style_option_row" />
+				<style name="style_option_row_focused" selector="focused" />
+				<lv_label text="46-60 tahun" width="100%">
+					<style name="style_option_label" />
+				</lv_label>
+				<lv_label text="Dewasa Tua" width="100%">
+					<style name="style_option_sub" />
+				</lv_label>
+			</column>
+
+			<column
+				name="opt_60_plus"
+				gap="2"
+				clickable="true"
+				scrollable="false"
+				horizontal_align="center"
+				vertical_align="center"
+			>
+				<style name="style_option_row" />
+				<style name="style_option_row_focused" selector="focused" />
+				<lv_label text="&gt;60 tahun" width="100%">
+					<style name="style_option_label" />
+				</lv_label>
+				<lv_label text="Lansia" width="100%">
+					<style name="style_option_sub" />
+				</lv_label>
+			</column>
+		</column>
+
+		<button_bar
+			width="480"
+			height="71"
+			label0="Up"
+			icon0="icon_arrow_up"
+			label1="Down"
+			icon1="icon_arrow_down"
+			label2="Back"
+			icon2="icon_arrow_left"
+			label3="Select"
+			icon3="icon_check"
+		/>
+	</view>
+</screen>

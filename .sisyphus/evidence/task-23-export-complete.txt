@@ -1,0 +1,8 @@
+T23 complete 2026-07-29 (user Editor full export)
+- 8 screen gens: home/scanning/berhasil/age/gender/mengukur/result/monitor *_gen.c/h
+- 3 triage gens: status_bar/button_bar/vital_card *_gen.c/h
+- file_list_gen.cmake lists 8 screens + 3 components
+- create APIs: home_create … monitor_create
+- cmake: HAS_TRIAGE_SCREENS=1
+- sim build exit 0 with triage screens
+- screen_components removed from export (product screens only)

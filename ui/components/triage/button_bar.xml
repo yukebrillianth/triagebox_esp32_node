@@ -1,0 +1,105 @@
+<component>
+	<previews>
+		<preview name="dark" width="480" height="71" style_bg_color="#color_dark_bg">
+			<set_subject name="subject_theme_dark" value="1" />
+		</preview>
+	</previews>
+
+	<api>
+		<prop name="label0" type="string" default="" help="Cell 0 label; empty = hide label" />
+		<prop name="label1" type="string" default="" help="Cell 1 label; empty = hide label" />
+		<prop name="label2" type="string" default="" help="Cell 2 label; empty = hide label" />
+		<prop name="label3" type="string" default="" help="Cell 3 label; empty = hide label" />
+		<prop name="icon0" type="image" default="" help="Cell 0 icon (optional)" />
+		<prop name="icon1" type="image" default="" help="Cell 1 icon (optional)" />
+		<prop name="icon2" type="image" default="" help="Cell 2 icon (optional)" />
+		<prop name="icon3" type="image" default="" help="Cell 3 icon (optional)" />
+		<prop name="color0" type="color" default="#color_dark_text" help="Cell 0 label/icon color" />
+		<prop name="color1" type="color" default="#color_dark_text" help="Cell 1 label/icon color" />
+		<prop name="color2" type="color" default="#color_dark_text" help="Cell 2 label/icon color (use #color_danger for Power)" />
+		<prop name="color3" type="color" default="#color_dark_text" help="Cell 3 label/icon color" />
+	</api>
+
+	<styles>
+		<style
+			name="style_button_bar"
+			width="480"
+			height="71"
+			bg_opa="0%"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+			pad_all="0"
+			pad_gap="0"
+			flex_cross_place="center"
+		/>
+		<style
+			name="style_bar_cell"
+			width="120"
+			height="71"
+			radius="0"
+			border_width="1"
+			border_color="#color_dark_panel"
+			border_opa="100%"
+			border_side="full"
+			outline_width="0"
+			outline_opa="0%"
+			shadow_width="0"
+			pad_top="12"
+			pad_bottom="12"
+			pad_hor="0"
+			pad_gap="4"
+			flex_flow="column"
+			flex_cross_place="center"
+			flex_main_place="start"
+			text_font="font_inter_semi_bold_16"
+		/>
+		<style name="style_bar_cell_pressed" bg_color="#color_track" bg_opa="40%" />
+		<style name="style_cell_icon" image_recolor_opa="100%" />
+		<style name="style_cell_label" width="120" height="19" text_align="center" />
+	</styles>
+
+	<view extends="lv_obj" flex_flow="row" scrollable="false">
+		<style name="style_button_bar" />
+
+		<lv_obj name="cell0" flex_flow="column" style_text_color="$color0" clickable="true" scrollable="false">
+			<style name="style_bar_cell" />
+			<style name="style_buttonbar_cell_grad" />
+			<style name="style_bar_cell_pressed" selector="pressed" />
+			<lv_image src="$icon0" width="24" height="24" hidden="{!icon0}" style_image_recolor="$color0" inner_align="center">
+				<style name="style_cell_icon" />
+			</lv_image>
+			<lv_label text="$label0" hidden="{!label0}"><style name="style_cell_label" /></lv_label>
+		</lv_obj>
+
+		<lv_obj name="cell1" flex_flow="column" style_text_color="$color1" clickable="true" scrollable="false">
+			<style name="style_bar_cell" />
+			<style name="style_buttonbar_cell_grad" />
+			<style name="style_bar_cell_pressed" selector="pressed" />
+			<lv_image src="$icon1" width="24" height="24" hidden="{!icon1}" style_image_recolor="$color1" inner_align="center">
+				<style name="style_cell_icon" />
+			</lv_image>
+			<lv_label text="$label1" hidden="{!label1}"><style name="style_cell_label" /></lv_label>
+		</lv_obj>
+
+		<lv_obj name="cell2" flex_flow="column" style_text_color="$color2" clickable="true" scrollable="false">
+			<style name="style_bar_cell" />
+			<style name="style_buttonbar_cell_grad" />
+			<style name="style_bar_cell_pressed" selector="pressed" />
+			<lv_image src="$icon2" width="24" height="24" hidden="{!icon2}" style_image_recolor="$color2" inner_align="center">
+				<style name="style_cell_icon" />
+			</lv_image>
+			<lv_label text="$label2" hidden="{!label2}"><style name="style_cell_label" /></lv_label>
+		</lv_obj>
+
+		<lv_obj name="cell3" flex_flow="column" style_text_color="$color3" clickable="true" scrollable="false">
+			<style name="style_bar_cell" />
+			<style name="style_buttonbar_cell_grad" />
+			<style name="style_bar_cell_pressed" selector="pressed" />
+			<lv_image src="$icon3" width="24" height="24" hidden="{!icon3}" style_image_recolor="$color3" inner_align="center">
+				<style name="style_cell_icon" />
+			</lv_image>
+			<lv_label text="$label3" hidden="{!label3}"><style name="style_cell_label" /></lv_label>
+		</lv_obj>
+	</view>
+</component>

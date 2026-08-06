@@ -1,0 +1,149 @@
+<screen permanent="true">
+	<styles>
+		<style
+			name="style_ok_root"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			text_color="#color_dark_text"
+			pad_all="0"
+			pad_gap="0"
+		/>
+		<style name="style_ok_content" pad_hor="40" pad_ver="0" />
+		<style
+			name="style_ok_circle"
+			bg_color="#color_accent"
+			bg_opa="100%"
+			radius="100%"
+			width="100"
+			height="100"
+			flex_main_place="center"
+			flex_cross_place="center"
+			pad_all="0"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+		/>
+		<style
+			name="style_ok_icon"
+			image_recolor="#color_accent_text"
+			image_recolor_opa="100%"
+			width="48"
+			height="48"
+		/>
+		<style
+			name="style_ok_title"
+			text_color="#color_accent"
+			text_font="font_inter_semi_bold_24"
+			text_align="center"
+		/>
+		<style
+			name="style_ok_id_card"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="#radius_default"
+			pad_all="16"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+			width="380"
+		/>
+		<style
+			name="style_ok_id_label"
+			text_color="#color_text_secondary"
+			text_font="font_inter_regular_12"
+			text_align="center"
+		/>
+		<style
+			name="style_ok_id_value"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_20"
+			text_align="center"
+		/>
+		<style
+			name="style_ok_hint"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="#radius_default"
+			pad_all="12"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+			width="380"
+		/>
+		<style
+			name="style_ok_hint_text"
+			text_color="#color_text_on_card"
+			text_font="font_inter_regular_13"
+			text_align="center"
+		/>
+		<style name="style_ok_hint_accent" text_color="#color_accent" text_font="font_inter_semi_bold_13" />
+	</styles>
+
+	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
+		<style name="style_ok_root" />
+
+		<status_bar width="480" height="48" />
+
+		<column
+			name="content"
+			width="100%"
+			grow="1"
+			gap="16"
+			pad="0"
+			horizontal_align="center"
+			vertical_align="center"
+		>
+			<style name="style_ok_content" />
+
+			<lv_obj flex_flow="column" width="100" height="100">
+				<style name="style_ok_circle" />
+				<lv_image src="icon_check" width="48" height="48" inner_align="center">
+					<style name="style_ok_icon" />
+				</lv_image>
+			</lv_obj>
+
+			<lv_label text="Scan Berhasil!" width="100%">
+				<style name="style_ok_title" />
+			</lv_label>
+
+			<lv_obj flex_flow="column" style_flex_main_place="center" style_flex_cross_place="center" width="380">
+				<style name="style_ok_id_card" />
+				<lv_label text="ID Pasien:" width="100%">
+					<style name="style_ok_id_label" />
+				</lv_label>
+				<lv_label name="patient_id" text="-" width="100%">
+					<style name="style_ok_id_value" />
+				</lv_label>
+			</lv_obj>
+
+			<lv_obj
+				flex_flow="row"
+				style_flex_main_place="center"
+				style_flex_cross_place="center"
+				width="380"
+				height="content"
+			>
+				<style name="style_ok_hint" />
+				<lv_spangroup width="100%" style_text_align="center">
+					<lv_spangroup-span text="Tekan " style="style_ok_hint_text" />
+					<lv_spangroup-span text="START" style="style_ok_hint_accent" />
+					<lv_spangroup-span text=" untuk mulai pengukuran" style="style_ok_hint_text" />
+				</lv_spangroup>
+			</lv_obj>
+		</column>
+
+		<button_bar
+			width="480"
+			height="71"
+			label0="Start"
+			icon0="icon_play"
+			label1="Restart"
+			icon1="icon_refresh"
+			label2="Power"
+			icon2="icon_power"
+			color2="#color_danger"
+			label3="Menu"
+			icon3="icon_menu"
+		/>
+	</view>
+</screen>

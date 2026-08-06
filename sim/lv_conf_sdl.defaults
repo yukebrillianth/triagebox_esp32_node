@@ -24,7 +24,7 @@ LV_USE_STDLIB_SPRINTF   LV_STDLIB_CLIB
 
 # Log warnings and errors to the terminal.
 LV_USE_LOG              1
-LV_LOG_LEVEL            LV_LOG_LEVEL_WARN
+LV_LOG_LEVEL            LV_LOG_LEVEL_USER
 LV_LOG_PRINTF           1
 
 # File system: lets the UI load file-based assets (images, fonts) exported by
@@ -51,3 +51,8 @@ LV_USE_OBJ_NAME         1
 # To support translations
 LV_USE_TRANSLATION 1
 
+
+
+# Abort on assert so sim does not spin forever (desktop QA)
+LV_ASSERT_HANDLER abort();
+LV_ASSERT_HANDLER_INCLUDE <stdlib.h>

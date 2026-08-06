@@ -1,0 +1,3 @@
+command: source ~/.espressif/v6.0.2/esp-idf/export.sh > /dev/null 2>&1 && idf.py set-target esp32s3 && idf.py build
+result: PASS
+resolved_lvgl_version: 9.5.0

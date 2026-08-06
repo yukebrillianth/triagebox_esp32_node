@@ -1,0 +1,206 @@
+/**
+ * @file result_gen.c
+ * @brief Template source file for LVGL objects
+ */
+
+/*********************
+ *      INCLUDES
+ *********************/
+
+#include "result_gen.h"
+#include "../ui.h"
+
+/*********************
+ *      DEFINES
+ *********************/
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/***********************
+ *  STATIC VARIABLES
+ **********************/
+
+/***********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+lv_obj_t * result_create(void)
+{
+    LV_TRACE_OBJ_CREATE("begin");
+
+    static lv_style_t style_result_root;
+    static lv_style_t style_result_content;
+    static lv_style_t style_result_banner;
+    static lv_style_t style_warn_circle;
+    static lv_style_t style_warn_icon;
+    static lv_style_t style_result_label;
+    static lv_style_t style_id_pill;
+    static lv_style_t style_result_vital;
+
+    static bool style_inited = false;
+
+    if (!style_inited) {
+        /*Init all styles*/
+        lv_style_init(&style_result_root);
+        lv_style_init(&style_result_content);
+        lv_style_init(&style_result_banner);
+        lv_style_init(&style_warn_circle);
+        lv_style_init(&style_warn_icon);
+        lv_style_init(&style_result_label);
+        lv_style_init(&style_id_pill);
+        lv_style_init(&style_result_vital);
+
+        lv_style_set_bg_color(&style_result_root, COLOR_DARK_BG);
+        lv_style_set_bg_opa(&style_result_root, (255 * 100 / 100));
+        lv_style_set_text_color(&style_result_root, COLOR_DARK_TEXT);
+        lv_style_set_pad_all(&style_result_root, 0);
+        lv_style_set_pad_gap(&style_result_root, 0);
+        lv_style_set_pad_hor(&style_result_content, 20);
+        lv_style_set_pad_ver(&style_result_content, 0);
+        lv_style_set_width(&style_result_banner, 440);
+        lv_style_set_height(&style_result_banner, 200);
+        lv_style_set_bg_color(&style_result_banner, COLOR_DANGER);
+        lv_style_set_bg_opa(&style_result_banner, (255 * 100 / 100));
+        lv_style_set_radius(&style_result_banner, RADIUS_DEFAULT);
+        lv_style_set_pad_all(&style_result_banner, 16);
+        lv_style_set_pad_gap(&style_result_banner, 12);
+        lv_style_set_flex_main_place(&style_result_banner, LV_FLEX_ALIGN_CENTER);
+        lv_style_set_flex_cross_place(&style_result_banner, LV_FLEX_ALIGN_CENTER);
+        lv_style_set_border_width(&style_result_banner, 0);
+        lv_style_set_outline_width(&style_result_banner, 0);
+        lv_style_set_shadow_width(&style_result_banner, 0);
+        lv_style_set_text_color(&style_result_banner, COLOR_DARK_TEXT);
+        lv_style_set_bg_color(&style_warn_circle, COLOR_DARK_TEXT);
+        lv_style_set_bg_opa(&style_warn_circle, (255 * 100 / 100));
+        lv_style_set_radius(&style_warn_circle, lv_pct(100));
+        lv_style_set_width(&style_warn_circle, 56);
+        lv_style_set_height(&style_warn_circle, 56);
+        lv_style_set_flex_main_place(&style_warn_circle, LV_FLEX_ALIGN_CENTER);
+        lv_style_set_flex_cross_place(&style_warn_circle, LV_FLEX_ALIGN_CENTER);
+        lv_style_set_pad_all(&style_warn_circle, 0);
+        lv_style_set_border_width(&style_warn_circle, 0);
+        lv_style_set_outline_width(&style_warn_circle, 0);
+        lv_style_set_shadow_width(&style_warn_circle, 0);
+        lv_style_set_image_recolor(&style_warn_icon, COLOR_DANGER);
+        lv_style_set_image_recolor_opa(&style_warn_icon, (255 * 100 / 100));
+        lv_style_set_width(&style_warn_icon, 28);
+        lv_style_set_height(&style_warn_icon, 28);
+        lv_style_set_text_font(&style_result_label, font_inter_bold_24);
+        lv_style_set_text_color(&style_result_label, COLOR_DARK_TEXT);
+        lv_style_set_text_align(&style_result_label, LV_TEXT_ALIGN_CENTER);
+        lv_style_set_bg_opa(&style_id_pill, (255 * 30 / 100));
+        lv_style_set_bg_color(&style_id_pill, COLOR_DARK_BG);
+        lv_style_set_radius(&style_id_pill, 100);
+        lv_style_set_pad_hor(&style_id_pill, 16);
+        lv_style_set_pad_ver(&style_id_pill, 8);
+        lv_style_set_text_color(&style_id_pill, COLOR_DARK_TEXT);
+        lv_style_set_text_font(&style_id_pill, font_inter_semi_bold_14);
+        lv_style_set_border_width(&style_id_pill, 0);
+        lv_style_set_outline_width(&style_id_pill, 0);
+        lv_style_set_shadow_width(&style_id_pill, 0);
+        lv_style_set_width(&style_result_vital, 100);
+        lv_style_set_height(&style_result_vital, 72);
+
+        style_inited = true;
+    }
+
+
+    lv_obj_t * the_root = NULL;
+
+    #if UI_CHECK_COMPILE_TARGET(UI_TARGET_ALL)
+    if (ui_check_target(UI_TARGET_ALL)) {
+        if (result == NULL) result = lv_obj_create(NULL);
+        lv_obj_t * lv_obj_0 = result;
+        lv_obj_set_name_static(lv_obj_0, "result_#");
+        lv_obj_set_width(lv_obj_0, 480);
+        lv_obj_set_height(lv_obj_0, 480);
+        lv_obj_set_flex_flow(lv_obj_0, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flag(lv_obj_0, LV_OBJ_FLAG_SCROLLABLE, false);
+
+        lv_obj_add_style(lv_obj_0, &style_result_root, 0);
+        lv_obj_t * status_bar_0 = status_bar_create(lv_obj_0, battery_full, "80%", "Connected", "--:--");
+        lv_obj_set_width(status_bar_0, 480);
+        lv_obj_set_height(status_bar_0, 48);
+
+        lv_obj_t * content = column_create(lv_obj_0, 0, 12, 1, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+        lv_obj_set_name(content, "content");
+        lv_obj_set_width(content, lv_pct(100));
+        lv_obj_add_style(content, &style_result_content, 0);
+        lv_obj_t * result_banner = lv_obj_create(content);
+        lv_obj_set_name(result_banner, "result_banner");
+        lv_obj_set_flex_flow(result_banner, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_width(result_banner, 440);
+        lv_obj_set_height(result_banner, 200);
+        lv_obj_add_style(result_banner, &style_result_banner, 0);
+        lv_obj_t * lv_obj_1 = lv_obj_create(result_banner);
+        lv_obj_set_flex_flow(lv_obj_1, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_width(lv_obj_1, 56);
+        lv_obj_set_height(lv_obj_1, 56);
+        lv_obj_add_style(lv_obj_1, &style_warn_circle, 0);
+        lv_obj_t * lv_image_0 = lv_image_create(lv_obj_1);
+        lv_image_set_src(lv_image_0, icon_info);
+        lv_obj_set_width(lv_image_0, 28);
+        lv_obj_set_height(lv_image_0, 28);
+        lv_image_set_inner_align(lv_image_0, LV_IMAGE_ALIGN_CENTER);
+        lv_obj_add_style(lv_image_0, &style_warn_icon, 0);
+
+        lv_obj_t * priority_label = lv_label_create(result_banner);
+        lv_obj_set_name(priority_label, "priority_label");
+        lv_label_set_text(priority_label, "MERAH - IMMEDIATE");
+        lv_obj_set_width(priority_label, lv_pct(100));
+        lv_obj_add_style(priority_label, &style_result_label, 0);
+
+        lv_obj_t * lv_obj_2 = lv_obj_create(result_banner);
+        lv_obj_set_flex_flow(lv_obj_2, LV_FLEX_FLOW_ROW);
+        lv_obj_set_style_flex_main_place(lv_obj_2, LV_FLEX_ALIGN_CENTER, 0);
+        lv_obj_set_style_flex_cross_place(lv_obj_2, LV_FLEX_ALIGN_CENTER, 0);
+        lv_obj_add_style(lv_obj_2, &style_id_pill, 0);
+        lv_obj_t * patient_id = lv_label_create(lv_obj_2);
+        lv_obj_set_name(patient_id, "patient_id");
+        lv_label_set_text(patient_id, "ID Pasien: -");
+
+        lv_obj_t * row_0 = row_create(content, 0, 8, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_set_width(row_0, lv_pct(100));
+        lv_obj_t * vc_spo2 = vital_card_create(row_0, icon_oxygen, COLOR_VITAL_SPO2, "--", "", "SpO2 %");
+        lv_obj_set_name(vc_spo2, "vc_spo2");
+        lv_obj_set_width(vc_spo2, 100);
+        lv_obj_add_style(vc_spo2, &style_result_vital, 0);
+
+        lv_obj_t * vc_hr = vital_card_create(row_0, icon_heart_pulse, COLOR_VITAL_HR, "--", "", "HR bpm");
+        lv_obj_set_name(vc_hr, "vc_hr");
+        lv_obj_set_width(vc_hr, 100);
+        lv_obj_add_style(vc_hr, &style_result_vital, 0);
+
+        lv_obj_t * vc_rr = vital_card_create(row_0, icon_respiratory, COLOR_VITAL_RR, "--", "", "RR /min");
+        lv_obj_set_name(vc_rr, "vc_rr");
+        lv_obj_set_width(vc_rr, 100);
+        lv_obj_add_style(vc_rr, &style_result_vital, 0);
+
+        lv_obj_t * vc_bp = vital_card_create(row_0, icon_blood_pressure, COLOR_VITAL_BP, "--/--", "", "BP mmHg");
+        lv_obj_set_name(vc_bp, "vc_bp");
+        lv_obj_set_width(vc_bp, 100);
+        lv_obj_add_style(vc_bp, &style_result_vital, 0);
+
+        lv_obj_t * button_bar_0 = button_bar_create(lv_obj_0, "Monitor", "Reset", "Power", "Menu", icon_signal, icon_refresh, icon_power, icon_menu, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DANGER, COLOR_DARK_TEXT);
+        lv_obj_set_width(button_bar_0, 480);
+        lv_obj_set_height(button_bar_0, 71);
+
+        the_root = lv_obj_0;
+    }
+    #endif
+
+    LV_TRACE_OBJ_CREATE("finished");
+
+    return the_root;
+}
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/
+

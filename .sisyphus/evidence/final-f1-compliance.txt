@@ -1,0 +1,47 @@
+F1 Plan Compliance Audit — Final Verification Wave
+plan: ui-screens-lvgl-pro
+date: 2026-07-29
+auditor: orchestrator re-verify (session ses_054b95005ffeQlKqPxRDWQCdLG + fresh greps)
+
+================================================================================
+MUST HAVE
+================================================================================
+1. 8 screens XML+gen (home,scanning,berhasil,age,gender,mengukur,result,monitor): PASS
+2. Layout contract 480x480 / StatusBar 48 / ButtonBar 71 / 4 cells: PASS (XML + skill)
+3. Bahasa Indonesia Figma copy present: PASS (Memindai RFID, MERAH - IMMEDIATE, age/gender)
+4. Single ui_action() dispatch: PASS (ui/logic/ui_action.c; sim keys call same path)
+5. Button indices 0-3 LTR stable: PASS
+6. Mock contracts vitals_t/btn_event_t/rfid_t: PASS (ui_types.h)
+7. Dark tokens centralized; no raw hex in ui/logic: PASS (grep empty)
+
+Must Have [7/7]
+
+================================================================================
+MUST NOT HAVE (product code greps)
+================================================================================
+- Light theme switcher as product: absent (dark-first only)
+- STM32 serial/RS485 framing, LoRa TX, MQTT publish in firmware: absent
+- C5.0 / ML in UI path: absent (mock priority only)
+- gpio_get_level for 4 keys: absent (ui_mock_pop_button only)
+- CH32/GT911/RGB bring-up gate: absent (app_main link-only)
+- 9th Menu/Settings screen: absent (8 XML only)
+- LV_USE_XML=1: absent (sim forces LV_USE_XML=0)
+- Hand-edit policy gens: Editor export present; no agent corruption flagged
+- Extra deps beyond LVGL/SDL2/IDF: none added for product
+
+Must NOT Have [9/9 clean]
+
+================================================================================
+TASKS 1-28
+================================================================================
+All top-level plan checkboxes T1-T28 are [x].
+Evidence spot-check: task-26-full-run, task-23-export-complete, task-27-*, task-28-*, final-qa/
+
+Path note (not a fail): plan says ui_pro/ + ui/generated/; actual is ui/ + gens beside XML.
+
+Tasks [28/28]
+
+================================================================================
+VERDICT LINE
+================================================================================
+Must Have [7/7] | Must NOT Have [9/9] | Tasks [28/28] | VERDICT: APPROVE

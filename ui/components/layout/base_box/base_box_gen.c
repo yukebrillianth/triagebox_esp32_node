@@ -35,17 +35,23 @@ lv_obj_t * base_box_create(lv_obj_t * parent)
     LV_TRACE_OBJ_CREATE("begin");
 
     static lv_style_t style_base_box;
+    static lv_style_t style_base_box_scrollbar;
 
     static bool style_inited = false;
 
     if (!style_inited) {
         /*Init all styles*/
         lv_style_init(&style_base_box);
+        lv_style_init(&style_base_box_scrollbar);
 
         lv_style_set_width(&style_base_box, LV_SIZE_CONTENT);
         lv_style_set_height(&style_base_box, LV_SIZE_CONTENT);
         lv_style_set_layout(&style_base_box, LV_LAYOUT_FLEX);
         lv_style_set_flex_flow(&style_base_box, LV_FLEX_FLOW_COLUMN);
+        lv_style_set_width(&style_base_box_scrollbar, 0);
+        lv_style_set_bg_opa(&style_base_box_scrollbar, (255 * 0 / 100));
+        lv_style_set_border_width(&style_base_box_scrollbar, 0);
+        lv_style_set_pad_all(&style_base_box_scrollbar, 0);
 
         style_inited = true;
     }
@@ -57,10 +63,11 @@ lv_obj_t * base_box_create(lv_obj_t * parent)
     if (ui_check_target(UI_TARGET_ALL)) {
         lv_obj_t * lv_obj_0 = lv_obj_create(parent);
         lv_obj_set_name_static(lv_obj_0, "base_box_#");
+        lv_obj_set_flag(lv_obj_0, LV_OBJ_FLAG_SCROLLABLE, false);
 
         lv_obj_remove_style_all(lv_obj_0);
         lv_obj_add_style(lv_obj_0, &style_base_box, 0);
-        lv_obj_add_style(lv_obj_0, &style_scrollbar, LV_PART_SCROLLBAR);
+        lv_obj_add_style(lv_obj_0, &style_base_box_scrollbar, LV_PART_SCROLLBAR);
 
         the_root = lv_obj_0;
     }

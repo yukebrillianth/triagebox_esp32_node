@@ -1,0 +1,97 @@
+# T23 — Export gate PENDING (BLOCKED on human Editor)
+
+Date: 2026-07-29
+Agent: docs/checklist only. No fake *_gen written.
+
+## Status
+
+BLOCKED on user LVGL Pro Editor full-project export (Ctrl+B) of folder ui/.
+Pro CLI unavailable. Path is ui/*_gen next to XML (not ui/generated/).
+
+XML ready (T15–22):
+  ui/screens/{home,scanning,berhasil,age,gender,mengukur,result,monitor}.xml
+  ui/components/triage/{status_bar,button_bar,vital_card}.xml
+  base_box: scrollable=false (ui/components/layout/base_box/base_box.xml)
+  battery assets present under ui/images/ (battery.png, battery-full, battery-medium + data.c)
+
+## Missing gen list (current tree)
+
+Screens (0/8):
+  - home_gen.c / home_gen.h
+  - scanning_gen.c / scanning_gen.h
+  - berhasil_gen.c / berhasil_gen.h
+  - age_gen.c / age_gen.h
+  - gender_gen.c / gender_gen.h
+  - mengukur_gen.c / mengukur_gen.h
+  - result_gen.c / result_gen.h
+  - monitor_gen.c / monitor_gen.h
+
+Triage components (0/3):
+  - status_bar_gen.c / status_bar_gen.h
+  - button_bar_gen.c / button_bar_gen.h
+  - vital_card_gen.c / vital_card_gen.h
+
+file_list_gen.cmake: lists template components + screens/screen_components_gen.c + ui_gen.c + ui.c only.
+  NO home/scanning/…/monitor_gen paths.
+  NO status_bar/button_bar/vital_card_gen paths.
+
+Also absent: ui/globals_gen.* (optional if Editor emits).
+Present but insufficient: ui/ui.h, ui/ui.c, ui/ui_gen.*, template *_gen under components/, screen_components_gen only.
+
+sim/src/main.c: lv_screen_load still commented template stub (home_create not available until export).
+
+## Docs prepared this task
+
+  - docs/ui-workflow.md  (8-screen state + post-export checklist)
+  - ui/EXPORT.md         (required artifacts + never-hand-edit policy)
+
+## User steps
+
+1. Open ui/ in LVGL Pro Editor (Community).
+2. Full project Compile & export code (Ctrl+B / hammer). Not single-screen.
+3. Confirm new *_gen files and updated file_list_gen.cmake.
+4. Commit generated C.
+
+## Post-export verification (agent or human)
+
+```bash
+# from repo root
+test -f ui/ui.h
+
+echo "=== file_list triage screens (need 8) ==="
+grep -E 'home_gen|scanning_gen|berhasil_gen|/age_gen|gender_gen|mengukur_gen|result_gen|monitor_gen' ui/file_list_gen.cmake
+
+echo "=== file_list triage components (need 3) ==="
+grep -E 'status_bar_gen|button_bar_gen|vital_card_gen' ui/file_list_gen.cmake
+
+echo "=== gen files on disk ==="
+ls ui/screens/{home,scanning,berhasil,age,gender,mengukur,result,monitor}_gen.c 2>&1
+ls ui/components/triage/{status_bar,button_bar,vital_card}_gen.c 2>&1
+# if Editor nests differently, find:
+find ui -name 'home_gen.c' -o -name 'status_bar_gen.c' -o -name 'button_bar_gen.c' -o -name 'vital_card_gen.c'
+
+echo "=== create APIs ==="
+grep -nE 'home_create|scanning_create|monitor_create' ui/ui_gen.h ui/screens/*_gen.h 2>/dev/null || true
+
+echo "=== sim rebuild ==="
+cmake -B sim/build -S sim
+cmake --build sim/build
+
+# then edit sim/src/main.c under HAS_UI:
+#   lv_screen_load(home_create());
+# run from repo root:
+#   ./sim/build/bin/lvgl_simulator
+```
+
+Pass criteria for closing T23:
+  - All 8 screen gens + 3 triage component gens exist
+  - file_list_gen.cmake lists them
+  - sim builds with HAS_UI and can lv_screen_load(home_create())
+  - No hand-edited fake gens
+
+## Remaining after export
+
+  - T26: sim wire (load home, SDL keys → mock buttons, nav show registry)
+  - F1–F4: plan follow-ups (fidelity / theme / icons / polish)
+
+Do NOT mark plan checkbox 23 complete until post-export verification passes.

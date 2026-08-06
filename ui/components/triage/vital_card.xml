@@ -1,0 +1,62 @@
+<component>
+	<previews>
+		<preview name="dark" width="214" height="88" style_bg_color="#color_dark_bg">
+			<set_subject name="subject_theme_dark" value="1" />
+		</preview>
+	</previews>
+
+	<api>
+		<prop name="icon" type="image" default="icon_heart_pulse" help="Vital icon" />
+		<prop name="icon_color" type="color" default="#color_dark_text" help="Icon recolor (per-vital)" />
+		<prop name="value" type="string" default="--" help="Big readout value" />
+		<prop name="unit" type="string" default="" help="Unit under/beside value" />
+		<prop name="label" type="string" default="Vital" help="Caption above/beside value" />
+	</api>
+
+	<styles>
+		<style
+			name="style_vital_card"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="#radius_default"
+			pad_ver="12"
+			pad_hor="14"
+			pad_gap="#space_lg"
+			flex_main_place="start"
+			flex_cross_place="center"
+			text_color="#color_dark_text"
+		/>
+		<style name="style_vital_icon" image_recolor_opa="100%" width="28" height="28" />
+		<style name="style_vital_value" text_font="font_inter_bold_20" text_color="#color_dark_text" />
+		<style name="style_vital_unit" text_font="font_body" text_color="#color_text_secondary" />
+		<style name="style_vital_label" text_font="font_inter_regular_12" text_color="#color_text_secondary" />
+	</styles>
+
+	<!-- Mengubah height="content" menjadi height="100%" agar mengisi penuh tinggi 88px -->
+	<view extends="lv_obj" flex_flow="row" width="100%" height="100%">
+		<style name="style_vital_card" />
+
+		<!-- Icon Sisi Kiri -->
+		<lv_image src="$icon" style_image_recolor="$icon_color">
+			<style name="style_vital_icon" />
+		</lv_image>
+
+		<!-- Block Teks Kanan: diset height="100%" & vertical_align="center" -->
+		<column gap="2" width="0" height="100%" flex_grow="1" horizontal_align="start" vertical_align="center">
+			<!-- Label atas -->
+			<lv_label text="$label">
+				<style name="style_vital_label" />
+			</lv_label>
+
+			<!-- Value + Unit bawah -->
+			<row gap="#space_xs" vertical_align="end" pad="0" width="content">
+				<lv_label text="$value">
+					<style name="style_vital_value" />
+				</lv_label>
+				<lv_label text="$unit" hidden="{!unit}">
+					<style name="style_vital_unit" />
+				</lv_label>
+			</row>
+		</column>
+	</view>
+</component>

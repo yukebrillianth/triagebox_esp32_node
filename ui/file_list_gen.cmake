@@ -22,6 +22,9 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list_section/list_section_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list_separator/list_separator_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list/list_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/triage/button_bar_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/triage/status_bar_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/triage/vital_card_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h1/h1_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h2/h2_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h3/h3_gen.c
@@ -35,6 +38,15 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_h3_data.c
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_h4_data.c
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_h5_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/battery_empty_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/battery_full_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/battery_medium_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_63636_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_63640_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_63653_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_63657_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_161221_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_361488_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_arrow_down_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_arrow_left_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_arrow_right_data.c
@@ -42,6 +54,7 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_battery_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_battery_full_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_bell_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_blood_pressure_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_bluetooth_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_calendar_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_camera_data.c
@@ -55,6 +68,7 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_download_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_edit_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_heart_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_heart_pulse_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_home_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_info_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_lock_data.c
@@ -62,11 +76,13 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_menu_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_minus_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_moon_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_oxygen_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_pause_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_play_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_plus_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_power_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_refresh_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_respiratory_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_search_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_settings_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_signal_data.c
@@ -81,6 +97,199 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_high_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_low_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_zero_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/screens/screen_components_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/logo_light_for_dark_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_385_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_386_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_387_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_388_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_389_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_583_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_584_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_585_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_586_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_587_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_1205_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_1206_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_1207_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_1235_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_1236_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_16_1237_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1497_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1498_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1499_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1522_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1523_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1524_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1525_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1526_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1530_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1531_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1532_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1533_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1534_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1544_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1545_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1546_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1547_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1548_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1552_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1553_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1554_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1555_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1556_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1566_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1567_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1568_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1569_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1570_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1574_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1575_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1576_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1577_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1578_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1588_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1589_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1590_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1591_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1592_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1596_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1597_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1598_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1599_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1600_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1610_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1611_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1612_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1613_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1614_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1618_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1619_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1620_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1621_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_36_1622_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1838_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1839_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1840_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1841_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1842_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1846_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1847_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1848_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1849_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_56_1850_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_3_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_12_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_82_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_83_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_88_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_104_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_105_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_110_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_111_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_112_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_124_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_125_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_130_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_131_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_136_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_137_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_138_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_145_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_150_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_151_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_156_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_157_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_162_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_163_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_164_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_215_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_216_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_217_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_218_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_219_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_224_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_225_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_230_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_231_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_232_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_271_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_272_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_278_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_279_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_284_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_285_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_286_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_294_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_299_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_304_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_305_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_310_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_317_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_318_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_319_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_320_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_321_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_325_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_326_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_327_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_328_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_329_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_348_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_349_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_60_350_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_363_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_364_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_365_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_369_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_370_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_375_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_376_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_418_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_419_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_420_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_421_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_422_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_426_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_427_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_428_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_429_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_430_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_450_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_451_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_456_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_457_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_458_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_667_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_668_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_669_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_673_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_674_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_687_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_688_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_689_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_834_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_835_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_840_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_63_841_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_865_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_866_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_1007_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_1008_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_1019_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_1020_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_1023_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_68_1024_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_282_31_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_282_32_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_282_33_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/vec_282_35_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/age_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/berhasil_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/gender_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/home_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/mengukur_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/monitor_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/result_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/scanning_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/ui_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/ui.c)

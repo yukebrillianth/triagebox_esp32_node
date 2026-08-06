@@ -1,0 +1,139 @@
+<screen permanent="true">
+	<styles>
+		<style
+			name="style_gender_root"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			text_color="#color_dark_text"
+			pad_all="0"
+			pad_gap="0"
+		/>
+		<style name="style_gender_content" pad_hor="40" pad_ver="0" />
+		<style
+			name="style_gender_title"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_18"
+			text_align="center"
+		/>
+		<style
+			name="style_gender_row"
+			width="400"
+			height="84"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="16"
+			pad_left="16"
+			pad_right="20"
+			pad_top="0"
+			pad_bottom="0"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+			text_color="#color_dark_text"
+		/>
+		<style name="style_gender_row_focused" bg_color="#color_accent" bg_opa="100%" text_color="#color_dark_text" />
+		<style
+			name="style_gender_icon_bg"
+			width="48"
+			height="48"
+			bg_color="#color_accent_text"
+			bg_opa="100%"
+			radius="100"
+			pad_all="0"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+		/>
+		<style name="style_gender_icon" image_recolor="#color_accent" image_recolor_opa="100%" />
+		<style name="style_gender_label" text_font="font_inter_bold_20" text_color="#color_dark_text" />
+	</styles>
+	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
+		<style name="style_gender_root" />
+		<status_bar width="480" height="48" />
+		<column
+			name="content"
+			width="100%"
+			grow="1"
+			gap="14"
+			pad="0"
+			horizontal_align="center"
+			vertical_align="center"
+			scrollable="false"
+		>
+			<style name="style_gender_content" />
+			<lv_label text="Pilih Jenis Kelamin" width="100%">
+				<style name="style_gender_title" />
+			</lv_label>
+			<row
+				name="opt_male"
+				gap="16"
+				clickable="true"
+				scrollable="false"
+				vertical_align="center"
+				horizontal_align="start"
+				content_align="center"
+				style_pad_hor="18"
+			>
+				<style name="style_gender_row" />
+				<style name="style_gender_row_focused" selector="focused" />
+				<column
+					width="48"
+					height="48"
+					horizontal_align="center"
+					vertical_align="center"
+					content_align="center"
+					scrollable="false"
+				>
+					<style name="style_gender_icon_bg" />
+					<lv_image src="icon_lock" width="24" height="24">
+						<style name="style_gender_icon" />
+					</lv_image>
+				</column>
+				<lv_label text="Laki-Laki" flex_grow="1">
+					<style name="style_gender_label" />
+				</lv_label>
+			</row>
+			<row
+				name="opt_female"
+				gap="16"
+				clickable="true"
+				scrollable="false"
+				vertical_align="center"
+				horizontal_align="start"
+				content_align="center"
+				style_pad_hor="18"
+			>
+				<style name="style_gender_row" />
+				<style name="style_gender_row_focused" selector="focused" />
+				<column
+					width="48"
+					height="48"
+					horizontal_align="center"
+					vertical_align="center"
+					content_align="center"
+					scrollable="false"
+				>
+					<style name="style_gender_icon_bg" />
+					<lv_image src="icon_bluetooth" width="24" height="24">
+						<style name="style_gender_icon" />
+					</lv_image>
+				</column>
+				<lv_label text="Perempuan" flex_grow="1">
+					<style name="style_gender_label" />
+				</lv_label>
+			</row>
+		</column>
+		<button_bar
+			width="480"
+			height="71"
+			label0="Up"
+			icon0="icon_chevron_up"
+			label1="Down"
+			icon1="icon_chevron_down"
+			label2="Back"
+			icon2="icon_arrow_left"
+			label3="Select"
+			icon3="icon_check"
+		/>
+	</view>
+</screen>

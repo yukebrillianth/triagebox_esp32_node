@@ -1,0 +1,134 @@
+<screen permanent="true">
+	<styles>
+		<style
+			name="style_result_root"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			text_color="#color_dark_text"
+			pad_all="0"
+			pad_gap="0"
+		/>
+		<style name="style_result_content" pad_hor="20" pad_ver="0" />
+		<style
+			name="style_result_banner"
+			width="440"
+			height="200"
+			bg_color="#color_danger"
+			bg_opa="100%"
+			radius="#radius_default"
+			pad_all="16"
+			pad_gap="12"
+			flex_main_place="center"
+			flex_cross_place="center"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+			text_color="#color_dark_text"
+		/>
+		<style
+			name="style_warn_circle"
+			bg_color="#color_dark_text"
+			bg_opa="100%"
+			radius="100%"
+			width="56"
+			height="56"
+			flex_main_place="center"
+			flex_cross_place="center"
+			pad_all="0"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+		/>
+		<style
+			name="style_warn_icon"
+			image_recolor="#color_danger"
+			image_recolor_opa="100%"
+			width="28"
+			height="28"
+		/>
+		<style
+			name="style_result_label"
+			text_font="font_inter_bold_24"
+			text_color="#color_dark_text"
+			text_align="center"
+		/>
+		<style
+			name="style_id_pill"
+			bg_opa="30%"
+			bg_color="#color_dark_bg"
+			radius="100"
+			pad_hor="16"
+			pad_ver="8"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_14"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+		/>
+		<style name="style_result_vital" width="100" height="72" />
+	</styles>
+
+	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
+		<style name="style_result_root" />
+
+		<status_bar width="480" height="48" />
+
+		<column
+			name="content"
+			width="100%"
+			grow="1"
+			gap="12"
+			pad="0"
+			horizontal_align="center"
+			vertical_align="center"
+		>
+			<style name="style_result_content" />
+
+			<lv_obj name="result_banner" flex_flow="column" width="440" height="200">
+				<style name="style_result_banner" />
+				<lv_obj flex_flow="column" width="56" height="56">
+					<style name="style_warn_circle" />
+					<lv_image src="icon_info" width="28" height="28" inner_align="center">
+						<style name="style_warn_icon" />
+					</lv_image>
+				</lv_obj>
+				<lv_label name="priority_label" text="MERAH - IMMEDIATE" width="100%">
+					<style name="style_result_label" />
+				</lv_label>
+				<lv_obj flex_flow="row" style_flex_main_place="center" style_flex_cross_place="center">
+					<style name="style_id_pill" />
+					<lv_label name="patient_id" text="ID Pasien: -" />
+				</lv_obj>
+			</lv_obj>
+
+			<row width="100%" gap="8" pad="0" horizontal_align="center">
+				<vital_card name="vc_spo2" icon="icon_oxygen" icon_color="#color_vital_spo2" label="SpO2 %" value="--" width="100">
+					<style name="style_result_vital" />
+				</vital_card>
+				<vital_card name="vc_hr" icon="icon_heart_pulse" icon_color="#color_vital_hr" label="HR bpm" value="--" width="100">
+					<style name="style_result_vital" />
+				</vital_card>
+				<vital_card name="vc_rr" icon="icon_respiratory" icon_color="#color_vital_rr" label="RR /min" value="--" width="100">
+					<style name="style_result_vital" />
+				</vital_card>
+				<vital_card name="vc_bp" icon="icon_blood_pressure" icon_color="#color_vital_bp" label="BP mmHg" value="--/--" width="100">
+					<style name="style_result_vital" />
+				</vital_card>
+			</row>
+		</column>
+
+		<button_bar
+			width="480"
+			height="71"
+			label0="Monitor"
+			icon0="icon_signal"
+			label1="Reset"
+			icon1="icon_refresh"
+			label2="Power"
+			icon2="icon_power"
+			color2="#color_danger"
+			label3="Menu"
+			icon3="icon_menu"
+		/>
+	</view>
+</screen>

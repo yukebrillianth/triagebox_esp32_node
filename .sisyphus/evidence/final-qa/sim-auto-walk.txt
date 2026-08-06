@@ -1,0 +1,13 @@
+Initializing custom C code using LVGL v9.5.0[User]	(0.165, +165)	 register_triage_screens: permanent screens registered (home=0x60000279e440 scanning=0x60000279e580 result=0x60000279e620) main.c:142
+[User]	(0.165, +0)	 main: HAS_TRIAGE_SCREENS=1 — home loaded, keys 1-4 drive bar main.c:215
+[User]	(0.165, +0)	 main: SIM_AUTO_WALK: start full triage key path main.c:243
+[User]	(0.370, +205)	 show_scanning: nav → SCANNING main.c:78
+[User]	(0.905, +535)	 show_berhasil: nav → BERHASIL main.c:83
+[User]	(0.918, +13)	 show_age: nav → AGE main.c:88
+[User]	(0.919, +1)	 show_gender: nav → GENDER main.c:93
+[User]	(0.925, +6)	 show_mengukur: nav → MENGUKUR main.c:98
+[User]	(2.973, +2048)	 show_result: nav → RESULT main.c:103
+[User]	(2.985, +12)	 show_monitor: nav → MONITOR main.c:108
+[User]	(2.991, +6)	 main: SIM_AUTO_WALK: ALL_SCREENS_OK (reached MONITOR) main.c:264
+[User]	(3.171, +180)	 main: SIM_AUTO_WALK: done, exit main.c:267
+EXIT:0

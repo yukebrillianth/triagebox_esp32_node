@@ -1,0 +1,96 @@
+<screen permanent="true">
+	<styles>
+		<style
+			name="style_scan_root"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			text_color="#color_dark_text"
+			pad_all="0"
+			pad_gap="0"
+		/>
+		<style name="style_scan_content" pad_hor="40" pad_ver="0" />
+		<style
+			name="style_scan_icon"
+			image_recolor="#color_accent"
+			image_recolor_opa="100%"
+			width="80"
+			height="80"
+		/>
+		<style
+			name="style_scan_title"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_24"
+			text_align="center"
+		/>
+		<style
+			name="style_scan_sub"
+			text_color="#color_text_secondary"
+			text_font="font_inter_regular_14"
+			text_align="center"
+		/>
+		<style
+			name="style_scan_dot"
+			bg_color="#color_accent"
+			bg_opa="100%"
+			radius="100%"
+			width="12"
+			height="12"
+		/>
+	</styles>
+
+	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
+		<style name="style_scan_root" />
+
+		<status_bar width="480" height="48" />
+
+		<column
+			name="content"
+			width="100%"
+			grow="1"
+			gap="24"
+			pad="0"
+			horizontal_align="center"
+			vertical_align="center"
+		>
+			<style name="style_scan_content" />
+
+			<lv_image src="icon_search" width="80" height="80" inner_align="center">
+				<style name="style_scan_icon" />
+			</lv_image>
+
+			<column width="100%" gap="8" pad="0" horizontal_align="center">
+				<lv_label text="Memindai RFID..." width="100%">
+					<style name="style_scan_title" />
+				</lv_label>
+				<lv_label text="Dekatkan gelang pasien ke sensor" width="100%">
+					<style name="style_scan_sub" />
+				</lv_label>
+			</column>
+
+			<row gap="8" pad="0" horizontal_align="center" vertical_align="center">
+				<lv_obj>
+					<style name="style_scan_dot" />
+				</lv_obj>
+				<lv_obj>
+					<style name="style_scan_dot" />
+				</lv_obj>
+				<lv_obj>
+					<style name="style_scan_dot" />
+				</lv_obj>
+			</row>
+		</column>
+
+		<button_bar
+			width="480"
+			height="71"
+			label0="Abort"
+			icon0="icon_close"
+			color0="#color_danger"
+			label2="Power"
+			icon2="icon_power"
+			color2="#color_danger"
+			label3="Menu"
+			icon3="icon_menu"
+		/>
+	</view>
+</screen>

@@ -1,0 +1,35 @@
+T16-T22 screen polish evidence
+date: 2026-07-29
+scope: ui/screens/{scanning,berhasil,age,gender,mengukur,result,monitor}.xml
+reference: home.xml dark-first pattern
+
+Shared pattern applied to all 7:
+- root view 480x480 flex column scrollable=false
+- solid dark root style bg #color_dark_bg (Editor-preview reliable)
+- status_bar width=480 height=48
+- content column grow=1 center
+- button_bar width=480 height=71 with Figma labels
+- tokens only (#color_*, #radius_*, #space_* via pad numbers matching space scale)
+- no raw hex
+- no *_gen edited
+- no Flow duplicate screens
+
+Per-screen:
+T16 scanning: title/sub exact, large icon_search recolor accent, 3 static accent dots, bar Abort(danger)/empty/Power(danger)/Menu
+T17 berhasil: green circle+check, Scan Berhasil!, patient_id named default -, START accent hint spangroup, bar Start/Restart/Power/Menu
+T18 age: 4 options 400x69, opt_*, focused bg #color_accent + white text (Figma solid green), clickable+scrollable=false+focusable, bar Up/Down/Back/Select
+T19 gender: opt_male/opt_female 400x84, same green focus fill, Laki-Laki/Perempuan, bar Up/Down/Back/Select
+T20 mengukur: measure_progress + measure_pct, 2x2 vital_card Indonesian labels, compact gap=8, bar Abort/empty/Power/Menu
+T21 result: result_banner danger, priority_label MERAH - IMMEDIATE, patient_id, 4 compact vitals SpO2%/HR bpm/RR /min/BP mmHg, bar Monitor/Reset/Power/Menu
+T22 monitor: patient_id+live dot, big SpO2 + mid HR/RR, footer Monitoring aktif + update_ago, bar Back/Stop(danger)/Power/Menu
+
+Validation (ElementTree + attrs):
+OK   scanning
+OK   berhasil
+OK   age
+OK   gender
+OK   mengukur
+OK   result
+OK   monitor
+extra_xml=none
+OVERALL=PASS

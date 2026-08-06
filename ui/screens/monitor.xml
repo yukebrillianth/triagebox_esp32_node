@@ -1,0 +1,135 @@
+<screen permanent="true">
+	<styles>
+		<style
+			name="style_mon_root"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			text_color="#color_dark_text"
+			pad_all="0"
+			pad_gap="0"
+		/>
+		<style name="style_mon_content" pad_hor="20" pad_ver="0" />
+		<style
+			name="style_live_dot"
+			bg_color="#color_status_ok"
+			bg_opa="100%"
+			radius="100%"
+			width="12"
+			height="12"
+		/>
+		<style
+			name="style_mon_id"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_14"
+		/>
+		<style name="style_big_card" width="440" height="130" />
+		<style name="style_mid_card" width="214" height="90" />
+		<style
+			name="style_footer"
+			width="440"
+			height="40"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="#radius_default"
+			pad_hor="16"
+			pad_ver="0"
+			flex_cross_place="center"
+			flex_main_place="space_between"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+		/>
+		<style
+			name="style_footer_text"
+			text_color="#color_dark_text"
+			text_font="font_inter_regular_13"
+		/>
+		<style
+			name="style_footer_muted"
+			text_color="#color_text_secondary"
+			text_font="font_inter_regular_12"
+		/>
+		<style
+			name="style_clock_icon"
+			image_recolor="#color_text_secondary"
+			image_recolor_opa="100%"
+			width="16"
+			height="16"
+		/>
+	</styles>
+
+	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
+		<style name="style_mon_root" />
+
+		<status_bar width="480" height="48" />
+
+		<column
+			name="content"
+			width="100%"
+			grow="1"
+			gap="10"
+			pad="0"
+			horizontal_align="center"
+			vertical_align="center"
+		>
+			<style name="style_mon_content" />
+
+			<row width="100%" gap="8" pad="0" vertical_align="center" horizontal_align="start">
+				<lv_obj>
+					<style name="style_live_dot" />
+				</lv_obj>
+				<lv_label name="patient_id" text="ID Pasien: -">
+					<style name="style_mon_id" />
+				</lv_label>
+			</row>
+
+			<vital_card name="vc_spo2" icon="icon_oxygen" icon_color="#color_vital_spo2" label="SpO2" value="--" unit="%">
+				<style name="style_big_card" />
+			</vital_card>
+
+			<row width="100%" gap="12" pad="0" horizontal_align="center">
+				<vital_card name="vc_hr" icon="icon_heart_pulse" icon_color="#color_vital_hr" label="HR" value="--" unit="bpm">
+					<style name="style_mid_card" />
+				</vital_card>
+				<vital_card name="vc_rr" icon="icon_respiratory" icon_color="#color_vital_rr" label="RR" value="--" unit="/min">
+					<style name="style_mid_card" />
+				</vital_card>
+			</row>
+
+			<lv_obj flex_flow="row" width="440" height="40">
+				<style name="style_footer" />
+				<row gap="8" pad="0" vertical_align="center">
+					<lv_obj>
+						<style name="style_live_dot" />
+					</lv_obj>
+					<lv_label text="Monitoring aktif">
+						<style name="style_footer_text" />
+					</lv_label>
+				</row>
+				<row gap="8" pad="0" vertical_align="center">
+					<lv_image src="icon_clock" width="16" height="16" inner_align="center">
+						<style name="style_clock_icon" />
+					</lv_image>
+					<lv_label name="update_ago" text="Update 5s lalu">
+						<style name="style_footer_muted" />
+					</lv_label>
+				</row>
+			</lv_obj>
+		</column>
+
+		<button_bar
+			width="480"
+			height="71"
+			label0="Back"
+			icon0="icon_arrow_left"
+			label1="Stop"
+			icon1="icon_pause"
+			color1="#color_danger"
+			label2="Power"
+			icon2="icon_power"
+			color2="#color_danger"
+			label3="Menu"
+			icon3="icon_menu"
+		/>
+	</view>
+</screen>

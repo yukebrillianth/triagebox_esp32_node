@@ -1,0 +1,39 @@
+=== triage components + screens inventory ===
+ui/components/triage/button_bar.xml
+ui/components/triage/status_bar.xml
+ui/components/triage/vital_card.xml
+ui/screens/age.xml
+ui/screens/berhasil.xml
+ui/screens/gender.xml
+ui/screens/home.xml
+ui/screens/mengukur.xml
+ui/screens/monitor.xml
+ui/screens/result.xml
+ui/screens/scanning.xml
+
+=== raw hex in new XML (expect empty) ===
+(none)
+
+=== Indonesian copy evidence ===
+ui/screens/age.xml:27:			<h4 text="Pilih Rentang Usia" />
+ui/screens/berhasil.xml:21:			<h2 text="Scan Berhasil!" />
+ui/screens/gender.xml:26:			<h4 text="Pilih Jenis Kelamin" />
+ui/screens/home.xml:17:			<h1 text="TriageBox" />
+ui/screens/home.xml:39:					<text text="Sistem OK" />
+ui/screens/mengukur.xml:15:			<h2 text="Mengukur..." />
+ui/screens/monitor.xml:43:					<text text="Monitoring aktif" />
+ui/screens/result.xml:37:				<lv_label name="priority_label" text="MERAH - IMMEDIATE">
+ui/screens/scanning.xml:17:			<h2 text="Memindai RFID..." />
+
+=== ButtonBar labels ===
+ui/screens/home.xml:56:		<button_bar label1="Scan" icon1="icon_search" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/scanning.xml:34:		<button_bar label0="Abort" icon0="icon_close" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/berhasil.xml:37:		<button_bar label0="Start" icon0="icon_play" label1="Restart" icon1="icon_refresh" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/age.xml:63:		<button_bar label0="Up" icon0="icon_chevron_up" label1="Down" icon1="icon_chevron_down" label2="Back" icon2="icon_chevron_left" label3="Select" icon3="icon_check" />
+ui/screens/gender.xml:46:		<button_bar label0="Up" icon0="icon_chevron_up" label1="Down" icon1="icon_chevron_down" label2="Back" icon2="icon_chevron_left" label3="Select" icon3="icon_check" />
+ui/screens/mengukur.xml:40:		<button_bar label0="Abort" icon0="icon_close" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/result.xml:54:		<button_bar label0="Monitor" icon0="icon_signal" label1="Reset" icon1="icon_refresh" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/monitor.xml:54:		<button_bar label0="Back" icon0="icon_chevron_left" label1="Stop" icon1="icon_close" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+
+=== subject_theme_dark default ===
+121:	     <bind_style subject="subject_theme_dark">. -->

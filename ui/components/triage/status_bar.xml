@@ -1,0 +1,65 @@
+<component>
+	<previews>
+		<preview name="dark" width="480" height="48" style_bg_color="#color_dark_bg">
+			<set_subject name="subject_theme_dark" value="1" />
+		</preview>
+	</previews>
+
+	<api>
+		<prop name="battery_icon" type="image" default="battery_full" help="Colored battery state icon" />
+		<prop name="battery_text" type="string" default="80%" help="Battery percent label" />
+		<prop name="link_text" type="string" default="Connected" help="Link / LoRa status label" />
+		<prop name="clock_text" type="string" default="--:--" help="Local clock HH:MM" />
+	</api>
+
+	<styles>
+		<style
+			name="style_status_bar"
+			width="480"
+			height="48"
+			bg_color="#color_dark_bg"
+			bg_opa="100%"
+			pad_hor="20"
+			border_width="0"
+			radius="0"
+			pad_ver="12"
+			flex_cross_place="center"
+			text_color="#color_dark_text"
+			text_font="font_inter_semi_bold_16"
+		/>
+		<style name="style_status_battery_icon" width="24" height="24" />
+		<style
+			name="style_status_accent_icon"
+			width="24"
+			height="24"
+			image_recolor="#color_accent"
+			image_recolor_opa="100%"
+		/>
+		<style name="style_status_clock" text_font="font_inter_regular_16" />
+	</styles>
+
+	<view extends="lv_obj" flex_flow="row" style_flex_main_place="space_between" scrollable="false">
+		<style name="style_status_bar" />
+
+		<row gap="8" vertical_align="center" pad="0">
+			<row gap="8" vertical_align="center" pad="0">
+				<lv_image name="sb_battery" src="$battery_icon" width="24" height="24" inner_align="center">
+					<style name="style_status_battery_icon" />
+				</lv_image>
+				<lv_label name="sb_battery_text" text="$battery_text" />
+			</row>
+			<row gap="8" vertical_align="center" pad="0">
+				<lv_image src="icon_signal" width="24" height="24" inner_align="center">
+					<style name="style_status_accent_icon" />
+				</lv_image>
+				<lv_label name="sb_link_text" text="$link_text" />
+			</row>
+		</row>
+
+		<row vertical_align="center" pad="0">
+			<lv_label name="sb_clock" text="$clock_text">
+				<style name="style_status_clock" />
+			</lv_label>
+		</row>
+	</view>
+</component>

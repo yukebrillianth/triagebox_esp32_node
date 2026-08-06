@@ -1,0 +1,55 @@
+
+#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
+#include "lvgl.h"
+#elif defined(LV_LVGL_H_INCLUDE_SYSTEM)
+#include <lvgl.h>
+#elif defined(LV_BUILD_TEST)
+#include "../lvgl.h"
+#else
+#include "lvgl/lvgl.h"
+#endif
+
+#ifndef LV_ATTRIBUTE_MEM_ALIGN
+#define LV_ATTRIBUTE_MEM_ALIGN
+#endif
+
+#ifndef LV_ATTRIBUTE_VEC_63_363_DATA
+#define LV_ATTRIBUTE_VEC_63_363_DATA
+#endif
+
+static const
+LV_ATTRIBUTE_MEM_ALIGN LV_ATTRIBUTE_LARGE_CONST LV_ATTRIBUTE_VEC_63_363_DATA
+uint8_t vec_63_363_data_map[] = {
+
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0x2a,0x19,0x2a,0x19,
+    0xdf,0xdf,0xff,0xff,
+    0xff,0xff,0xff,0xff,
+    0xff,0xff,0xff,0xff,
+    0xff,0xff,0xff,0xff,
+    0xdf,0xdf,
+
+};
+
+const lv_image_dsc_t vec_63_363_data = {
+  .header = {
+    .magic = LV_IMAGE_HEADER_MAGIC,
+    .cf = LV_COLOR_FORMAT_RGB565A8,
+    .flags = 0,
+    .w = 2,
+    .h = 9,
+    .stride = 4,
+    .reserved_2 = 0,
+  },
+  .data_size = sizeof(vec_63_363_data_map),
+  .data = vec_63_363_data_map,
+  .reserved = NULL,
+};
+

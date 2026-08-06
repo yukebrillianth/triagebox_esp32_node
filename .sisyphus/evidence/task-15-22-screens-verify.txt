@@ -1,0 +1,110 @@
+=== 8 required screens exist ===
+OK home.xml
+OK scanning.xml
+OK berhasil.xml
+OK age.xml
+OK gender.xml
+OK mengukur.xml
+OK result.xml
+OK monitor.xml
+
+=== required copy greps ===
+ui/screens/scanning.xml:17:			<h2 text="Memindai RFID..." />
+ui/screens/age.xml:27:			<h4 text="Pilih Rentang Usia" />
+ui/screens/result.xml:37:				<lv_label name="priority_label" text="MERAH - IMMEDIATE">
+ui/screens/monitor.xml:43:					<text text="Monitoring aktif" />
+
+=== more copy ===
+ui/screens/home.xml:18:			<h5 text="Sistem Triase Cerdas">
+ui/screens/home.xml:21:			<text text="Siap untuk memulai triase pasien bencana" align="center">
+ui/screens/scanning.xml:18:			<text text="Dekatkan gelang pasien ke sensor" align="center">
+ui/screens/berhasil.xml:21:			<h2 text="Scan Berhasil!" />
+ui/screens/berhasil.xml:33:				<text text="Tekan START untuk mulai pengukuran" align="center" width="100%" />
+ui/screens/age.xml:32:				<h4 text="6-17 Tahun" />
+ui/screens/age.xml:33:				<text text="Anak-anak &amp; Remaja">
+ui/screens/age.xml:40:				<h4 text="18-45 Tahun" />
+ui/screens/age.xml:48:				<h4 text="46-60 tahun" />
+ui/screens/age.xml:49:				<text text="Dewasa Tua">
+ui/screens/age.xml:57:				<text text="Lansia">
+ui/screens/gender.xml:26:			<h4 text="Pilih Jenis Kelamin" />
+ui/screens/gender.xml:34:				<h4 text="Laki-Laki" />
+ui/screens/gender.xml:42:				<h4 text="Perempuan" />
+ui/screens/mengukur.xml:15:			<h2 text="Mengukur..." />
+ui/screens/mengukur.xml:32:				<vital_card name="vc_rr" icon="icon_signal" label="Laju Pernapasan" value="--" unit="/min" />
+ui/screens/mengukur.xml:35:				<vital_card name="vc_hr" icon="icon_heart" label="Detak Jantung" value="--" unit="bpm" />
+ui/screens/mengukur.xml:36:				<vital_card name="vc_bp" icon="icon_signal" label="Tekanan Darah" value="--/--" unit="mmHg" />
+ui/screens/monitor.xml:47:					<lv_label name="update_ago" text="Update 5s lalu">
+
+=== raw hex outside #color_ ===
+(none)
+
+=== button_bar lines ===
+ui/screens/home.xml:61:		<button_bar label1="Scan" icon1="icon_search" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/scanning.xml:34:		<button_bar label0="Abort" icon0="icon_close" color0="#color_danger" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/berhasil.xml:37:		<button_bar label0="Start" icon0="icon_play" label1="Restart" icon1="icon_refresh" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/age.xml:63:		<button_bar label0="Up" icon0="icon_chevron_up" label1="Down" icon1="icon_chevron_down" label2="Back" icon2="icon_chevron_left" label3="Select" icon3="icon_check" />
+ui/screens/gender.xml:46:		<button_bar label0="Up" icon0="icon_chevron_up" label1="Down" icon1="icon_chevron_down" label2="Back" icon2="icon_chevron_left" label3="Select" icon3="icon_check" />
+ui/screens/mengukur.xml:40:		<button_bar label0="Abort" icon0="icon_close" color0="#color_danger" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/result.xml:54:		<button_bar label0="Monitor" icon0="icon_signal" label1="Reset" icon1="icon_refresh" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/monitor.xml:54:		<button_bar label0="Back" icon0="icon_chevron_left" label1="Stop" icon1="icon_close" color1="#color_danger" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+
+=== status_bar count per file ===
+home: 1
+scanning: 1
+berhasil: 1
+age: 1
+gender: 1
+mengukur: 1
+result: 1
+monitor: 1
+
+=== screen_components untouched ===
+MD5 (ui/screens/screen_components.xml) = 95c19bf3155bf06ca123e4b4d33c0202
+
+=== no new *_gen under screens from us ===
+ui/screens/screen_components_gen.c
+ui/screens/screen_components_gen.h
+=== post-polish button bars ===
+ui/screens/home.xml:61:		<button_bar label1="Scan" icon1="icon_search" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/scanning.xml:34:		<button_bar label0="Abort" icon0="icon_close" color0="#color_danger" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/berhasil.xml:37:		<button_bar label0="Start" icon0="icon_play" label1="Restart" icon1="icon_refresh" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/age.xml:63:		<button_bar label0="Up" icon0="icon_arrow_up" label1="Down" icon1="icon_arrow_down" label2="Back" icon2="icon_arrow_left" label3="Select" icon3="icon_check" />
+ui/screens/gender.xml:46:		<button_bar label0="Up" icon0="icon_arrow_up" label1="Down" icon1="icon_arrow_down" label2="Back" icon2="icon_arrow_left" label3="Select" icon3="icon_check" />
+ui/screens/mengukur.xml:40:		<button_bar label0="Abort" icon0="icon_close" color0="#color_danger" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/result.xml:54:		<button_bar label0="Monitor" icon0="icon_signal" label1="Reset" icon1="icon_refresh" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+ui/screens/monitor.xml:54:		<button_bar label0="Back" icon0="icon_arrow_left" label1="Stop" icon1="icon_pause" color1="#color_danger" label2="Power" icon2="icon_power" color2="#color_danger" label3="Menu" icon3="icon_menu" />
+
+=== age >60 ===
+33:				<text text="Anak-anak &amp; Remaja">
+41:				<text text="Dewasa">
+45:			<lv_obj name="opt_46_60" flex_flow="column" clickable="true">
+48:				<h4 text="46-60 tahun" />
+49:				<text text="Dewasa Tua">
+53:			<lv_obj name="opt_60_plus" flex_flow="column" clickable="true">
+56:				<h4 text="&gt;60 tahun" />
+57:				<text text="Lansia">
+
+=== icons exist in globals ===
+MISSING icon_arrow_up
+MISSING icon_arrow_down
+MISSING icon_arrow_left
+MISSING icon_pause
+MISSING icon_search
+MISSING icon_power
+MISSING icon_menu
+MISSING icon_play
+MISSING icon_refresh
+MISSING icon_close
+MISSING icon_check
+MISSING icon_heart
+MISSING icon_signal
+MISSING icon_info
+MISSING icon_clock
+MISSING icon_user
+MISSING icon_wifi
+MISSING icon_battery
+
+=== screen_components still intact ===
+<screen permanent="true">
+	<view extends="lv_obj">
+		<style name="style_screen_light" />

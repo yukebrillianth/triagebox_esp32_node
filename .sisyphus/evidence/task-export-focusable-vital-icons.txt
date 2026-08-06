@@ -1,0 +1,32 @@
+task-export-focusable-vital-icons
+date: 2026-07-29
+
+## focusable removal
+- Removed all focusable="true" from ui/screens/age.xml (4 opts) and ui/screens/gender.xml (2 opts)
+- Kept clickable="true" scrollable="false"
+- grep focusable under ui/screens: NONE
+
+## vital icons (copied from ~/Downloads)
+- ui/images/icons/oxygen.png (28x28, 514B)
+- ui/images/icons/heart-pulse.png (28x28, 680B)
+- ui/images/icons/respiratory.png (28x28, 493B)
+- ui/images/icons/blood-presure.png (28x28, 611B)  # user spelling preserved
+
+## globals.xml registrations (outside Flow fences, Lucide block)
+- icon_oxygen -> images/icons/oxygen.png
+- icon_heart_pulse -> images/icons/heart-pulse.png
+- icon_respiratory -> images/icons/respiratory.png
+- icon_blood_pressure -> images/icons/blood-presure.png
+
+## screen wiring
+- mengukur: SpO2=icon_oxygen, RR=icon_respiratory, HR=icon_heart_pulse, BP=icon_blood_pressure
+- result: SpO2=icon_oxygen, HR=icon_heart_pulse, RR=icon_respiratory, BP=icon_blood_pressure
+- monitor: SpO2=icon_oxygen, HR=icon_heart_pulse, RR=icon_respiratory (no BP card)
+- vital_card default icon -> icon_heart_pulse
+
+## ElementTree parse
+OK age, gender, mengukur, result, monitor, globals, vital_card
+
+## notes
+- T23 export still needs user Ctrl+B in LVGL Pro Editor
+- Do not reintroduce focusable; not a valid Pro XML attr on lv_obj

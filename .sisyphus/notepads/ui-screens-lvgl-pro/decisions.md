@@ -33,3 +33,14 @@
 - T5 icons still missing triage-specific assets.
 - T9-22 still human Editor work.
 - T26/T27 need screens + register show fns in runtime before full nav on device/sim UI.
+
+## 2026-07-28 Task 27
+- Plan wants triagebox_ui_init + full ui/generated; partial delivery is logic-only link-check (orchestrator approach)
+- sdkconfig still has CONFIG_SPIRAM not set despite sdkconfig.defaults — out of scope for link-check
+
+## T26 prep decisions
+- Direct `ui_action` on key edge in sim (in addition to mock push for keypad indev) so ButtonBar works without focus group / gen screens.
+- Single-slot mock button buffer: press then release on next edge is enough for indev; action fires on press only.
+
+## 2026-07-29 vital icon colors
+- Per-vital icon colors live as named tokens in globals.xml; screens pass icon_color, not raw hex.
