@@ -87,14 +87,36 @@ Karena `GPIO43`/`GPIO44` dipakai untuk link STM32, pin tersebut **bukan lagi kan
 
 ## Build & flash
 
+ESP-IDF **tidak** ada di `PATH` secara default — source dulu di **setiap shell baru** (terverifikasi dengan v6.0.2):
+
 ```bash
-idf.py set-target esp32s3
-idf.py menuconfig      # pastikan PSRAM octal + flash 16MB
-idf.py build
+source ~/.espressif/v6.0.2/esp-idf/export.sh
+```
+
+```bash
+idf.py build                          # target esp32s3 sudah dipin di sdkconfig.defaults
 idf.py -p /dev/cu.usbmodem* flash monitor
 ```
 
+Tidak perlu `idf.py set-target` maupun `menuconfig`: semua config board (PSRAM octal, flash 16 MB, dan setting LVGL yang wajib) sudah ada di `sdkconfig.defaults`. `sdkconfig` sendiri **tidak** di-commit — kalau kamu mengubah `sdkconfig.defaults`, hapus `sdkconfig` lalu build ulang supaya perubahannya terbaca.
+
+Cek cepat tanpa hardware sama sekali:
+
+```bash
+sh tools/run_selftests.sh   # codec RS485 + SVM, ASan/UBSan
+```
+
 Flash dan log memakai port USB-C yang sama (USB native ESP32-S3). Bila gagal flash: tutup serial monitor, tahan **BOOT** saat menyalakan, flash, lalu power-cycle.
+
+## Untuk kontributor baru
+
+| Kamu mengerjakan | Baca ini | Sentuh ini |
+| --- | --- | --- |
+| **STM32** (sensor, tombol, RFID, LoRa) | `docs/firmware-architecture.md` §wire format | `components/triagebox_link/tb_frame.[ch]` — pakai apa adanya di sisi STM32, jangan bikin framing sendiri |
+| **ML / SVM** | `docs/firmware-architecture.md` §SVM | `components/triagebox_ml/include/tb_svm_model.h` saja (bobot hasil training). `tb_svm.c` tidak perlu diubah |
+| **UI / layar** | `docs/ui-workflow.md` | XML di `ui/screens/` lewat LVGL Pro Editor, lalu export. **Jangan** edit `*_gen.c` |
+
+Aturan yang bikin repo ini tetap waras: `ui/logic/` platform-neutral (tanpa `ESP_PLATFORM`/SDL ifdef), `ui_action()` satu-satunya dispatcher tombol, dan `*_gen.c` selalu hasil export. Detail di `AGENTS.md`.
 
 ## Desain
 
@@ -125,5 +147,7 @@ Sesuai START dan enum backend: `RED` (Immediate), `YELLOW` (Delayed), `GREEN` (M
 ## Dokumentasi terkait
 
 - `AGENTS.md` — batasan hardware, GPIO terpakai, kontrak data untuk agen/kontributor
-- `docs/integration-esp32-stm32.md` — cara developer ESP32/STM32 memakai paket UI di `handoff/triagebox-ui/`
+- `docs/firmware-architecture.md` — arsitektur firmware, wire format RS485, cara isi model SVM
+- `docs/ui-workflow.md` — cara authoring layar di LVGL Pro Editor + export
+- `docs/integration-esp32-stm32.md` — hanya untuk yang mengintegrasikan UI ke tree firmware **lain**
 - `../triagebox-backend/docs/api-contract.md` — kontrak MQTT/REST/WS lengkap
