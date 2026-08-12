@@ -1,3 +1,0 @@
-Initializing custom C code using LVGL v9.5.0[User]	(0.145, +145)	 register_triage_screens: permanent screens registered (home=0x600003260690 scanning=0x600003260910 result=0x600003260460) main.c:142
-[User]	(0.145, +0)	 main: HAS_TRIAGE_SCREENS=1 — home loaded, keys 1-4 drive bar main.c:215
-IDLE_SMOKE: PASS (no segfault, survived 10s)

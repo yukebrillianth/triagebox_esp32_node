@@ -1,5 +1,0 @@
-cmake -B sim/build -S sim && cmake --build sim/build -j
-CONFIGURE+BUILD: binary sim/build/bin/lvgl_simulator exists (1.6M)
-HAS_UI gated on ui/ui.h presence - incomplete export uses welcome path
-RUN: survived 3s without crash (python alarm), then SIGTERM
-PASS

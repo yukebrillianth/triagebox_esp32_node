@@ -1,8 +1,0 @@
-T15 Home complete 2026-07-29
-- home.xml: logo_light_for_dark 249x58, flex center, SCAN hint, no scroll
-- status_bar: battery_empty/medium/full props, clock --:--, scrollable=false
-- button_bar: 4x120x71, gradient, inner_align center, scrollable=false
-- base_box: scrollable=false, invisible scrollbar
-- ui_status: battery thresholds + local HH:MM selftest PASS
-- Flow dups removed (no base/, no default.xml, no .lvgl-flow/)
-- 8 product screens only

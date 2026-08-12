@@ -1,5 +1,7 @@
 # Integrasi UI TriageBox → ESP32 & STM32
 
+> **Kalau kamu kerja langsung di repo `triagebox-lvgl`, lewati paket ini** — repo itu sekarang sudah berisi firmware ESP32 penuh (RS485 + SVM sudah ter-wire). Baca `docs/firmware-architecture.md`. Paket handoff ini untuk developer yang mengintegrasikan UI ke tree firmware lain.
+
 Paket siap-pakai ada di **`handoff/triagebox-ui/`** (di-generate ulang dengan `tools/make_handoff.sh`). Isinya hanya C + aset; XML LVGL Pro dan TTF sumber tetap di repo UI.
 
 Target: **Waveshare ESP32-S3-Touch-LCD-4 rev 3.0** (silkscreen!), 480×480, ESP-IDF v6.0.2, LVGL 9.5, `esp_lvgl_port` 2.9.
@@ -24,7 +26,7 @@ handoff/triagebox-ui/
 | Milik | Isi |
 | --- | --- |
 | **UI (paket ini)** | 8 layar, ButtonBar, status bar, state machine flow triage |
-| **ESP32 dev** | UART/RS485 RX dari STM32, C5.0 inference, LoRa TX |
+| **ESP32 dev** | UART/RS485 RX dari STM32, inference SVM |
 | **STM32 dev** | sensor (MAX30102 / AD8232 / MPX5010DP / RFID), 4 tombol fisik, kirim frame |
 
 UI **tidak** punya driver sensor dan **tidak** baca GPIO tombol. Semua data masuk lewat satu seam: `ui_mock.h` (§3).
@@ -48,7 +50,7 @@ typedef enum { UI_AGE_BAND_6_17, UI_AGE_BAND_18_45, UI_AGE_BAND_46_60, UI_AGE_BA
 typedef enum { UI_GENDER_M='M', UI_GENDER_F='F', UI_GENDER_U='U' } ui_gender_t;
 ```
 
-`priority` / `confidence` / `reasons` **milik ESP32** (hasil C5.0). STM32 tidak pernah mengirimnya.
+`priority` / `confidence` / `reasons` **milik ESP32** (hasil SVM di ESP32). STM32 tidak pernah mengirimnya.
 
 ## 3. Titik integrasi: ganti `ui_mock.c`
 
@@ -64,11 +66,11 @@ Sekarang UI dijalankan oleh mock deterministik supaya bisa di-demo tanpa STM32. 
 | `ui_mock_measure_progress()` | 0..100 dari elapsed / 60000 ms |
 | `ui_mock_measure_done()` | true saat window 60 s habis |
 | `ui_mock_get_vitals(vitals_t*)` | isi dari frame `VITAL` terakhir; `valid=false` bila stale |
-| `ui_mock_get_priority/confidence/reasons()` | hasil C5.0, **bukan** hardcode |
+| `ui_mock_get_priority/confidence/reasons()` | hasil SVM, **bukan** hardcode |
 | `ui_mock_push_button(index, pressed)` | dipanggil **RX task** saat frame `BUTTON` masuk |
 | `ui_mock_pop_button(btn_event_t*)` | dipanggil LVGL keypad indev — jangan dipanggil dari tempat lain |
 
-Frame STM32 → ESP32 (framing bebas, isi wajib): `VITAL`, `BUTTON`, `RFID`, `STATUS`. Lihat `AGENTS.md` §"Dual-MCU serial contract".
+Frame STM32 → ESP32: `VITAL`, `BUTTON`, `RFID`, `STATUS`. Wire format lengkap sudah diimplementasikan di `components/triagebox_link/tb_frame.h` — pakai file itu apa adanya di kedua sisi, jangan bikin framing sendiri. Ringkasannya di `AGENTS.md` §"Dual-MCU RS485 contract".
 
 Dua hal penting:
 

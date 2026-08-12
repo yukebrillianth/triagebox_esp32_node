@@ -1,2 +1,0 @@
-cc -fsyntax-only -std=c99 -x c ui/logic/ui_types.h
-exit code: 0

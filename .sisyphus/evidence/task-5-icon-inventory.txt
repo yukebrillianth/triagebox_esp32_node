@@ -1,4 +1,0 @@
-T5: Lucide (MIT) icons via Pro template ui/images/icons/raw/
-ui_icons.h maps triage roles -> existing Lucide-converted icon_* names
-Add more Lucide PNGs (nfc, droplets, wind, gauge, activity, triangle-alert) to raw/ then re-run convert in Editor
-PASS partial T5 (mapping complete; asset gaps documented)

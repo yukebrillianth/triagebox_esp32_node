@@ -6,9 +6,11 @@ Read this before writing any code. Prefer executable sources of truth (`mqtt-pay
 
 ## Scope of this repo
 
-**In scope:** LVGL screens, status bar, theme dark/light, display of vitals + triage result, serial receive of vitals + button/RFID events from STM32, UI state machine of the triage flow, mapping STM32 button events → LVGL keypad indev, **on-device Decision Tree C5.0 inference** (runtime only), packaging of vital+priority for LoRa TX toward the station.
+**In scope:** LVGL screens, status bar, theme dark/light, display of vitals + triage result, RS485 receive of vitals + button/RFID events from STM32, UI state machine of the triage flow, mapping STM32 button events → LVGL keypad indev, **on-device linear SVM inference** (runtime only), and sending the result back to the STM32 which owns the LoRa TX.
 
-**Out of scope:** sensor drivers (MAX30102 / AD8232 / MPX5010DP / RFID live on STM32), physical button GPIO (STM32 owns them), **training** of the C5.0 model (offline), MQTT broker/publish (station owns that), dashboard. Do not invent sensor code here.
+**Out of scope:** sensor drivers (MAX30102 / AD8232 / MPX5010DP / RFID live on STM32), physical button GPIO (STM32 owns them), **LoRa radio** (SX1278 hangs off the STM32 — no free SPI pins here), **training** of the SVM (offline), MQTT broker/publish (station owns that), dashboard. Do not invent sensor code here.
+
+> **Note on the ML model:** the PKM proposal (§2.2) specifies Decision Tree C5.0 and explicitly rejects SVM on memory grounds. The implementation was changed to **linear SVM** by the team after that was written. The proposal text has not been updated — flag this if a reviewer compares them.
 
 ## Hardware traps (will waste hours if missed)
 
@@ -88,28 +90,38 @@ Reject any snippet using `lv_indev_drv_t`, `lv_disp_drv_t`, or `lv_disp_draw_buf
 
 Physical button model: 4 keys on the **STM32**, context-dependent labels on the ESP32 ButtonBar. Prefer `LV_INDEV_TYPE_KEYPAD` + `lv_group_t` focus for list screens (age/gender); for fixed action bars, map each STM32 button event directly to the screen's action table (do not rely on focus for the bottom bar). The keypad `read_cb` reads the latest STM32 button state from a shared buffer filled by the serial RX task — never `gpio_get_level()` for the four keys.
 
-## Dual-MCU serial contract (STM32 ↔ ESP32)
+## Dual-MCU RS485 contract (STM32 ↔ ESP32)
 
-Framing is free to invent in this repo, but the **payload content** that eventually becomes MQTT vital must match the backend keys below. Suggested minimal frame kinds from STM32 → ESP32:
+**Implemented** in `components/triagebox_link/` — `tb_frame.h` is the authoritative wire format, this table is a summary. Full detail: `docs/firmware-architecture.md`.
 
-| Kind | Content |
-| --- | --- |
-| `VITAL` | hr, spo2, rr, bp_sys, bp_dia, battery, (optional ecg_status) — **no priority** |
-| `BUTTON` | which of 4 keys pressed/released (debounce on STM32) |
-| `RFID` | raw tag id when scanned |
-| `STATUS` | sensor OK flags |
+UART2 on GPIO44 (TX) / GPIO43 (RX) via the onboard SP3485, 115200 8N1. UART2 and not UART0 because those pins are the ESP32-S3 default console pins; the console stays on USB Serial/JTAG so `idf.py monitor` keeps working.
 
-ESP32 → STM32 (as needed): start/stop measure, power, abort. Keep the wire compact (binary preferred over JSON on the node link).
+```
+0xA5 0x5A | kind:u8 | len:u8 | payload[len] | crc16:u16   (CRC-16/CCITT-FALSE over kind+len+payload)
+```
 
-**ML ownership:** STM32 never sends `priority` / `confidence` / `reasons`. ESP32 runs the C5.0 tree on the received vitals (+ age/gender if operator filled them), then attaches those fields before LoRa TX. Station-side MQTT still uses the canonical JSON in the next section.
+| Kind | Dir | Payload |
+| --- | --- | --- |
+| `VITAL` 0x01 | STM32→ESP32 | `hr,spo2,rr,bp_sys,bp_dia:u16` + `battery:u8` + `flags:u8` (bit0 = valid) |
+| `BUTTON` 0x02 | STM32→ESP32 | `index:u8` (0..3) + `pressed:u8` (debounce on STM32) |
+| `RFID` 0x03 | STM32→ESP32 | `tag[len]` ASCII, ≤31, not NUL-terminated |
+| `STATUS` 0x04 | STM32→ESP32 | `sensor_ok:u8` bitmask + `battery:u8` |
+| `CMD` 0x10 | ESP32→STM32 | `cmd:u8` — START_SCAN / START_MEASURE / ABORT / POWER_OFF |
+| `RESULT` 0x11 | ESP32→STM32 | `priority:u8` + `confidence:u8` (0..100) + `tag[]` |
+
+`priority` on the wire uses the **LoRa numeric alias** (`0=BLACK, 1=RED, 2=YELLOW, 3=GREEN`), which is not `ui_priority_t` order. Always go through `tb_frame_priority_to_wire()` / `_from_wire()`. `tb_frame.c` has no malloc and no ESP-IDF dependency so the STM32 side can compile it verbatim.
+
+**ML ownership:** STM32 never sends `priority` / `confidence` / `reasons`. ESP32 runs the SVM on the received vitals and sends `RESULT` back; **the STM32 owns the LoRa TX** and forwards it to the station. Station-side MQTT still uses the canonical JSON in the next section.
 
 ### On-device inference constraints
 
-- Model is a **pre-trained C5.0 decision tree** compiled into firmware (rules/thresholds as static data or generated C). Training lives offline (Colab / host) — not on-device.
-- Inputs (proposal from PKM): hr, rr, bp_sys/bp_dia, spo2; optional age band + gender if collected on UI.
+- Model is a **pre-trained linear SVM** (one-vs-rest, 4 classes) compiled into firmware as `static const float` weights in `components/triagebox_ml/include/tb_svm_model.h`. Training lives offline (Colab / host) — not on-device. **The committed model is a zero placeholder: it classifies everything RED.**
+- Inputs: hr, spo2, rr, bp_sys, bp_dia. Age band + gender are collected by the UI for victim registration but are **not** model features.
 - Outputs **must** match backend contract: `priority` ∈ `RED|YELLOW|GREEN|BLACK`, `confidence` float 0–1 (or 0–100, backend normalizes), `reasons` string array (e.g. `"HR>130"`, `"SpO2<90"`).
-- Keep the tree tiny — ESP32-S3 has headroom, but do not pull a general ML framework. Plain if/else or a generated rule table is enough.
-- Inference runs after the 1-minute measure window (and can re-run on monitoring updates if priority may change). Always take the LVGL lock only for UI updates, never around the tree walk if it can block.
+- `reasons` is sent **empty**: an SVM has no rule path to quote and no separate threshold table was added. The backend defaults `reasons` to `[]`, so this is valid.
+- Invalid/stale vitals (`flags` bit0 clear) return BLACK with confidence 0 rather than guessing.
+- Keep it tiny — ESP32-S3 has headroom, but do not pull a general ML framework. A dot product over 5 floats is enough; `tb_svm_classify()` is ~40 flops and allocation-free.
+- Inference runs once when the measure window ends (`ui_runtime.c` → `pull_mock_priority_once`), and sends `RESULT` in the same call. It is cheap enough to run on the LVGL task; do not add a task for it.
 
 ## Data contract with backend (do not invent names)
 
@@ -178,7 +190,13 @@ This firmware talks to the STM32 over UART with an internal framing of your choo
 | `ui/` | LVGL Pro Editor project: XML (`globals.xml`, `screens/*.xml`, `components/`) + exported C |
 | `ui/logic/` | Hand-written C only: types, session, mock, input, nav, action, runtime (+ host selftests) |
 | `sim/` | SDL2 desktop simulator (LVGL v9.5, 480×480) |
-| `main/` | ESP-IDF app (build/link target; board bring-up is separate) |
+| `main/` | ESP-IDF app (bring-up only: `app_main.c`, `asset_fs.c`) |
+| `components/esp32_s3_touch_lcd_4/` | Vendored BSP: IDF-v6 patch + 180° panel/touch mirror. Overrides the managed copy. |
+| `components/triagebox_link/` | RS485 ↔ STM32: `tb_frame.c` codec (platform-neutral), `tb_link.c` UART2, `tb_ui_source.c` |
+| `components/triagebox_ml/` | Linear SVM inference + the exported model header |
+| `tools/run_selftests.sh` | Compiles and runs every `*_selftest.c` on the host under ASan/UBSan |
+
+`ui_mock.h` has **two** implementations, selected in CMake rather than by `#ifdef`: `ui/logic/ui_mock.c` (sim, deterministic fake) and `components/triagebox_link/tb_ui_source.c` (device, RS485 + SVM). Anything added to that header must be implemented in both. See `docs/firmware-architecture.md`.
 
 Shared `ui/` and `ui/logic/` must stay platform-neutral (no `ESP_PLATFORM` / SDL ifdefs there). Platform glue lives in `sim/` and `main/` only.
 

@@ -23,7 +23,13 @@ ui/sim/
 # Handoff drop: regenerate with tools/make_handoff.sh, never commit the copy
 handoff/
 
+# Agent / tooling local state (not firmware)
+.agents/
+.sisyphus/
+
+# Superseded LVGL Pro starter template — sim/ replaced it. Kept on disk only.
+lvgl_vscode_project/
+
 # OS
 .DS_Store
 ui/preview-bin/
-.sisyphus/

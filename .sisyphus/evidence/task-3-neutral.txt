@@ -1,1 +1,0 @@
-grep -nE 'lvgl|esp_|confidence|reasons|crc|packet_version' ui/logic/ui_types.h

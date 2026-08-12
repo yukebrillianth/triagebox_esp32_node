@@ -4,6 +4,17 @@
 #include "ui_types.h"
 
 /*
+ * This header has TWO implementations, chosen in CMake — not by #ifdef:
+ *   sim/    -> ui/logic/ui_mock.c                      (deterministic fake)
+ *   main/   -> components/triagebox_link/tb_ui_source.c (RS485 + SVM)
+ * Anything added here must be implemented in both.
+ *
+ * ponytail: the name says "mock" but it is really the data-feed seam; renaming
+ * to ui_feed.h touches 6 files plus the handoff docs already sent out, so it
+ * waits until one of those needs editing anyway.
+ */
+
+/*
  * QA shortcut: real hardware measure window is 60000 ms.
  * Keep this <= 5000 so host/sim UI can exercise Mengukur → Result quickly.
  */

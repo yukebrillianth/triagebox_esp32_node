@@ -1,7 +1,0 @@
-T2 STATUS: NOT DONE — globals.xml still Pro default theme colors
-Need Figma dark tokens in globals.xml:
-  screen_bg #0d1329 (have color_dark_bg 0x12151C - WRONG)
-  card_bg #1a2651
-  accent #00d460 (have 0x9429FF purple - WRONG)
-  danger #fb2c36 (have 0xE5484D - close but not exact)
-HUMAN: edit globals.xml in LVGL Pro Editor, then full re-export

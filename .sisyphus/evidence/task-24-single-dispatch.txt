@@ -1,6 +1,0 @@
-Single ui_action definition:
-ui/logic/ui_action.c:189:void ui_action(ui_screen_id_t screen, uint8_t btn_id)
-
-ui_action_on_key routes through ui_action:
-189:void ui_action(ui_screen_id_t screen, uint8_t btn_id)
-220:    ui_action(ui_nav_current(), btn_id);

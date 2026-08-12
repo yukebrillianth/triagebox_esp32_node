@@ -1,5 +1,0 @@
-Glyph coverage vs Indonesian copy (ASCII subset of skill Copy section)
-Strings: TriageBox, Sistem Triase Cerdas, Memindai RFID..., MERAH - IMMEDIATE, >60 tahun, mmHg, bpm, /min, %
-All use Latin letters/digits/punctuation in 0x20-0x7F except possible ellipsis …
-Pro symbols include degree emdash bullet; ellipsis may render as 3 dots or missing - acceptable for v1
-PASS baseline

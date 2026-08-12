@@ -1,2 +1,0 @@
-grep -n "gpio_get_level" ui/logic/ui_input.c
-ZERO_MATCHES

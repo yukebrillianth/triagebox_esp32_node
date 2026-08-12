@@ -1,7 +1,0 @@
-== grep -c 0x9429FF ui/globals.xml ==
-0
-(grep exit 1 — 1 means zero matches, expected)
-== grep -rn 0x9429FF ui/ ==
-no matches anywhere under ui/
-== old hex in globals.xml ==
-none — all old dark tokens removed

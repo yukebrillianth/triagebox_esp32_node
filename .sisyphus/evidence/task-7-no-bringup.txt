@@ -1,3 +1,0 @@
-command: grep -rniE 'st7701|gt911|ch32|rgb_panel|esp_lcd' main/
-result: PASS
-match_count: 0

@@ -1,37 +1,40 @@
-# TriageBox Node UI (LVGL)
+# TriageBox Node Firmware (ESP32-S3)
 
-Firmware antarmuka layar untuk **node TriageBox** — alat triase cerdas PKM-KC 2026 untuk korban bencana gempa. Berjalan di Waveshare **ESP32-S3-Touch-LCD-4** (480×480), menampilkan alur triase START dan monitoring tanda vital, dapat dioperasikan **penuh lewat 4 tombol fisik** maupun sentuh.
+Firmware node **TriageBox** — alat triase cerdas PKM-KC 2026 untuk korban bencana gempa. Berjalan di Waveshare **ESP32-S3-Touch-LCD-4** (480×480), menampilkan alur triase START dan monitoring tanda vital, dapat dioperasikan **penuh lewat 4 tombol fisik** maupun sentuh. ESP32 juga menjalankan inferensi triase lokal.
 
 Bagian dari sistem TriageBox:
 
 ```
-[ STM32 ] --serial (RS485)--> [ ESP32-S3 ] --LoRa--> Station --Ethernet--> Backend + Dashboard
- sensor filter                 UI + ML triase
- 4 tombol fisik                ^ repo ini
- RFID
+[ STM32 ] <--RS485--> [ ESP32-S3 ]        repo ini: UI + inferensi SVM
+ sensor filter          UI + ML triase
+ 4 tombol fisik
+ RFID RC522
+ LoRa SX1278 --------> Station --Ethernet--> Backend + Dashboard
 ```
 
 Satu node punya **dua MCU**:
 
-- **STM32** — filter sensor, baca 4 tombol fisik, baca RFID
-- **ESP32-S3** (repo ini) — UI layar, **inferensi triase (Decision Tree C5.0)**, kirim LoRa
+- **STM32** — filter sensor, baca 4 tombol fisik, baca RFID, **dan transmit LoRa**
+- **ESP32-S3** (repo ini) — UI layar + **inferensi triase (linear SVM)**
 
-Keduanya tersambung lewat **link serial** (kandidat utama RS485 via transceiver SP3485 onboard di `GPIO43`/`GPIO44`; framing internal bebas). Vital, event tombol, dan RFID mengalir dari STM32 ke ESP32.
+Keduanya tersambung **RS485** via transceiver SP3485 onboard di `GPIO44` (TX) / `GPIO43` (RX), UART2 @115200. Vital, event tombol, dan RFID mengalir dari STM32 ke ESP32; hasil inferensi dikirim balik lewat frame `RESULT`, lalu STM32 yang meneruskan ke station via LoRa. Radio tidak di ESP32 karena budget GPIO board ini sudah habis. Wire format lengkap: **`docs/firmware-architecture.md`**.
 
-Karena inferensi jalan di ESP32, node inilah yang **menghasilkan** `priority`, `confidence`, dan `reasons` — bukan meneruskan dari STM32. Ini yang membuat sistem tetap jalan saat jaringan lumpuh: keputusan triase diambil lokal, bukan di server.
+Karena inferensi jalan di ESP32, node inilah yang **menghasilkan** `priority` dan `confidence` — bukan meneruskan dari STM32. Ini yang membuat sistem tetap jalan saat jaringan lumpuh: keputusan triase diambil lokal, bukan di server.
 
 Repo terkait (sibling folder): `triagebox-backend` (NestJS + MQTT + PostgreSQL), `triagebox-dashboard` (Next.js command center).
 
 ## Peran repo ini
 
 - Alur UI triase: scan RFID → input usia/jenis kelamin (opsional) → pengukuran 1 menit → hasil kategori → monitoring
-- **Inferensi triase lokal** (Decision Tree C5.0) dari vital yang diterima STM32 → `priority` / `confidence` / `reasons`
+- **Inferensi triase lokal** (linear SVM, 5 fitur vital) → `priority` / `confidence`
 - Monitoring tanda vital near-realtime (HR, SpO₂, RR, tekanan darah, baterai)
 - Indikator status sistem, sensor, dan tautan LoRa
 - Navigasi tombol fisik (event dari STM32) + touch
-- Framing serial ↔ STM32 dan paket LoRa menuju station (payload vital mengikuti kontrak MQTT backend)
+- Codec frame RS485 ↔ STM32 (`components/triagebox_link/`, payload vital mengikuti kontrak MQTT backend)
 
-**Bukan** milik repo ini: driver sensor (MAX30102 / AD8232 / MPX5010DP), debounce tombol fisik, reader RFID (itu semua di STM32), training model C5.0 (offline / Colab), backend MQTT.
+**Bukan** milik repo ini: driver sensor (MAX30102 / AD8232 / MPX5010DP), debounce tombol fisik, reader RFID, **transmit LoRa** (itu semua di STM32), training model SVM (offline / Colab), backend MQTT.
+
+> Model SVM yang ter-commit masih **placeholder nol** — semua pasien jadi RED. Ganti `components/triagebox_ml/include/tb_svm_model.h` dari notebook training sebelum dipakai sungguhan.
 
 ## Hardware
 

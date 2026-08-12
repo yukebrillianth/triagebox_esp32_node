@@ -1,9 +1,0 @@
--- Generated /Users/yukebrillianth/Kuliah/PKM/triagebox-lvgl/sim/build/lv_conf.h from /Users/yukebrillianth/Kuliah/PKM/triagebox-lvgl/sim/lv_conf_sdl.defaults
--- /Users/yukebrillianth/Kuliah/PKM/triagebox-lvgl/sim/build/lv_conf.h
--- Using configuration: /Users/yukebrillianth/Kuliah/PKM/triagebox-lvgl/sim/build/lv_conf.h
--- Found exported UI project in: /Users/yukebrillianth/Kuliah/PKM/triagebox-lvgl/sim/../ui
--- Configuring done (4.5s)
--- Generating done (0.8s)
--- Build files have been written to: /Users/yukebrillianth/Kuliah/PKM/triagebox-lvgl/sim/build
-
-Exit code: 0

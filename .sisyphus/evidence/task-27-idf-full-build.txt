@@ -1,4 +1,0 @@
-T27: main links ui/logic sources + REQUIRES lvgl
-app_main calls ui_runtime_init only (no panel)
-idf.py build EXIT=0 (verified this session)
-PASS
