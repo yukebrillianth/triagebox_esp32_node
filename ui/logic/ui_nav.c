@@ -73,6 +73,27 @@ ui_gender_t ui_nav_pending_gender(void)
     return s_pending_gender;
 }
 
+void ui_nav_move_pending_age(int dir)
+{
+    int next = (int)s_pending_age + dir;
+
+    if (next < (int)UI_AGE_BAND_6_17) {
+        next = (int)UI_AGE_BAND_6_17;
+    } else if (next > (int)UI_AGE_BAND_OVER_60) {
+        next = (int)UI_AGE_BAND_OVER_60;
+    }
+    s_pending_age = (ui_age_band_t)next;
+}
+
+void ui_nav_move_pending_gender(int dir)
+{
+    if (dir < 0) {
+        s_pending_gender = UI_GENDER_M;
+    } else if (dir > 0) {
+        s_pending_gender = UI_GENDER_F;
+    }
+}
+
 void ui_nav_on_rfid_ready(const rfid_t *rfid)
 {
     if (s_current != UI_SCREEN_SCANNING || rfid == NULL || !rfid->present) {

@@ -1,0 +1,10 @@
+<!-- RFID contactless-scan icon. Paths verbatim from Figma node 16:582 "Icon" group;
+     frame/background chrome stripped. Black stroke + transparent bg so it recolors
+     at the use-site via image_recolor (matches the other Lucide-style icons). -->
+<svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M40.6176 19.4025C43.425 22.2148 45.0019 26.0262 45.0019 30C45.0019 33.9738 43.425 37.7852 40.6176 40.5975" stroke="#000000" stroke-width="6.25" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M47.6875 12.3325C52.3697 17.0201 54.9997 23.3746 54.9997 30C54.9997 36.6255 52.3697 42.9799 47.6875 47.6675" stroke="#000000" stroke-width="6.25" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12.3125 47.6675C7.63034 42.9799 5.00037 36.6255 5.00037 30C5.00037 23.3746 7.63034 17.0201 12.3125 12.3325" stroke="#000000" stroke-width="6.25" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M19.3825 40.5975C16.575 37.7852 14.9982 33.9738 14.9982 30C14.9982 26.0262 16.575 22.2148 19.3825 19.4025" stroke="#000000" stroke-width="6.25" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M30 35C32.7614 35 35 32.7614 35 30C35 27.2386 32.7614 25 30 25C27.2386 25 25 27.2386 25 30C25 32.7614 27.2386 35 30 35Z" stroke="#000000" stroke-width="6.25" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

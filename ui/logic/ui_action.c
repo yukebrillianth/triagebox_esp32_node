@@ -82,9 +82,11 @@ static void berhasil_action(uint8_t btn_id)
 static void age_action(uint8_t btn_id)
 {
     switch (btn_id) {
-    case 0: /* Up  — focus only, no nav */
-    case 1: /* Down — focus only, no nav */
-        action_noop();
+    case 0: /* Up */
+        ui_nav_move_pending_age(-1);
+        break;
+    case 1: /* Down */
+        ui_nav_move_pending_age(1);
         break;
     case 2: /* Back → Berhasil */
         ui_nav_go(UI_SCREEN_BERHASIL);
@@ -103,8 +105,10 @@ static void gender_action(uint8_t btn_id)
 {
     switch (btn_id) {
     case 0: /* Up */
+        ui_nav_move_pending_gender(-1);
+        break;
     case 1: /* Down */
-        action_noop();
+        ui_nav_move_pending_gender(1);
         break;
     case 2: /* Back → Age */
         ui_nav_go(UI_SCREEN_AGE);

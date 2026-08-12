@@ -31,6 +31,8 @@
 
 		<color name="color_buttonbar_top" value="0x000827" help="ButtonBar cell gradient top (Figma #000827)" />
 		<color name="color_buttonbar_bottom" value="0x1a2651" help="ButtonBar cell gradient bottom (Figma #1a2651)" />
+		<color name="color_priority_yellow" value="0xF0B100" help="START YELLOW / DELAYED priority" />
+		<color name="color_priority_green" value="0x00C950" help="START GREEN / MINOR priority" />
 		<color name="color_vital_spo2" value="0x51A2FF" help="SpO2 / oxygen vital icon" />
 		<color name="color_vital_hr" value="0xFB2C36" help="HR / heart-pulse vital icon" />
 		<color name="color_vital_rr" value="0x53EAFD" help="RR / respiratory vital icon" />
@@ -233,54 +235,37 @@
 		<data name="vec_63_688" src_path="images/vec_63_688.png" color_format="rgb565a8" />
 		<data name="vec_63_689" src_path="images/vec_63_689.png" color_format="rgb565a8" />
 
-		<!-- Lucide icons (agent; outside Figma Flow fences) -->
-		<data name="icon_arrow_down" src_path="images/icons/arrow_down.png" color_format="argb8888" />
+		<!-- Lucide icons used by the TriageBox UI (agent; outside Figma Flow fences) -->
 		<data name="icon_arrow_left" src_path="images/icons/arrow_left.png" color_format="argb8888" />
-		<data name="icon_arrow_right" src_path="images/icons/arrow_right.png" color_format="argb8888" />
-		<data name="icon_arrow_up" src_path="images/icons/arrow_up.png" color_format="argb8888" />
-		<data name="icon_battery" src_path="images/icons/battery.png" color_format="argb8888" />
-		<data name="icon_battery_full" src_path="images/icons/battery_full.png" color_format="argb8888" />
-		<data name="icon_bell" src_path="images/icons/bell.png" color_format="argb8888" />
-		<data name="icon_bluetooth" src_path="images/icons/bluetooth.png" color_format="argb8888" />
-		<data name="icon_calendar" src_path="images/icons/calendar.png" color_format="argb8888" />
-		<data name="icon_camera" src_path="images/icons/camera.png" color_format="argb8888" />
 		<data name="icon_check" src_path="images/icons/check.png" color_format="argb8888" />
 		<data name="icon_chevron_down" src_path="images/icons/chevron_down.png" color_format="argb8888" />
-		<data name="icon_chevron_left" src_path="images/icons/chevron_left.png" color_format="argb8888" />
-		<data name="icon_chevron_right" src_path="images/icons/chevron_right.png" color_format="argb8888" />
 		<data name="icon_chevron_up" src_path="images/icons/chevron_up.png" color_format="argb8888" />
-		<data name="icon_clock" src_path="images/icons/clock.png" color_format="argb8888" />
 		<data name="icon_close" src_path="images/icons/close.png" color_format="argb8888" />
-		<data name="icon_download" src_path="images/icons/download.png" color_format="argb8888" />
-		<data name="icon_edit" src_path="images/icons/edit.png" color_format="argb8888" />
-		<data name="icon_heart" src_path="images/icons/heart.png" color_format="argb8888" />
+		<data name="icon_gender_male" src_path="images/icons/male.png" color_format="argb8888" />
+		<data name="icon_gender_female" src_path="images/icons/female.png" color_format="argb8888" />
+		<data name="icon_monitor" src_path="images/icons/monitor.png" color_format="argb8888" />
+		<data name="icon_priority_immediate" src_path="images/icons/priority_immediate.png" color_format="argb8888" />
+		<data name="icon_priority_delayed" src_path="images/icons/priority_delayed.png" color_format="argb8888" />
+		<data name="icon_priority_minor" src_path="images/icons/priority_minor.png" color_format="argb8888" />
+		<data name="icon_vital_spo2_sm" src_path="images/icons/result-oxygen.png" color_format="argb8888" />
+		<data name="icon_vital_hr_sm" src_path="images/icons/result-heart-pulse.png" color_format="argb8888" />
+		<data name="icon_vital_rr_sm" src_path="images/icons/result-respiratory.png" color_format="argb8888" />
+		<data name="icon_vital_bp_sm" src_path="images/icons/result-blood-pressure.png" color_format="argb8888" />
+		<data name="icon_update" src_path="images/icons/update.png" color_format="argb8888" />
 		<data name="icon_heart_pulse" src_path="images/icons/heart-pulse.png" color_format="argb8888" />
 		<data name="icon_oxygen" src_path="images/icons/oxygen.png" color_format="argb8888" />
 		<data name="icon_respiratory" src_path="images/icons/respiratory.png" color_format="argb8888" />
 		<data name="icon_blood_pressure" src_path="images/icons/blood-presure.png" color_format="argb8888" />
-		<data name="icon_home" src_path="images/icons/home.png" color_format="argb8888" />
-		<data name="icon_info" src_path="images/icons/info.png" color_format="argb8888" />
-		<data name="icon_lock" src_path="images/icons/lock.png" color_format="argb8888" />
-		<data name="icon_mail" src_path="images/icons/mail.png" color_format="argb8888" />
 		<data name="icon_menu" src_path="images/icons/menu.png" color_format="argb8888" />
-		<data name="icon_minus" src_path="images/icons/minus.png" color_format="argb8888" />
-		<data name="icon_moon" src_path="images/icons/moon.png" color_format="argb8888" />
 		<data name="icon_pause" src_path="images/icons/pause.png" color_format="argb8888" />
 		<data name="icon_play" src_path="images/icons/play.png" color_format="argb8888" />
-		<data name="icon_plus" src_path="images/icons/plus.png" color_format="argb8888" />
 		<data name="icon_power" src_path="images/icons/power.png" color_format="argb8888" />
 		<data name="icon_refresh" src_path="images/icons/refresh.png" color_format="argb8888" />
 		<data name="icon_search" src_path="images/icons/search.png" color_format="argb8888" />
-		<data name="icon_settings" src_path="images/icons/settings.png" color_format="argb8888" />
+		<data name="icon_rfid_scan" src_path="images/icons/rfid-scan.png" color_format="argb8888" />
+		<data name="icon_rfid_scan_lg" src_path="images/icons/rfid-scan-lg.png" color_format="argb8888" />
 		<data name="icon_signal" src_path="images/icons/signal.png" color_format="argb8888" />
 		<data name="icon_star" src_path="images/icons/star.png" color_format="argb8888" />
-		<data name="icon_sun" src_path="images/icons/sun.png" color_format="argb8888" />
-		<data name="icon_trash" src_path="images/icons/trash.png" color_format="argb8888" />
-		<data name="icon_unlock" src_path="images/icons/unlock.png" color_format="argb8888" />
-		<data name="icon_upload" src_path="images/icons/upload.png" color_format="argb8888" />
-		<data name="icon_user" src_path="images/icons/user.png" color_format="argb8888" />
-		<data name="icon_volume" src_path="images/icons/volume.png" color_format="argb8888" />
-		<data name="icon_wifi" src_path="images/icons/wifi.png" color_format="argb8888" />
 		<data name="icon_wifi_high" src_path="images/icons/wifi_high.png" color_format="argb8888" />
 		<data name="icon_wifi_low" src_path="images/icons/wifi_low.png" color_format="argb8888" />
 		<data name="icon_wifi_zero" src_path="images/icons/wifi_zero.png" color_format="argb8888" />
@@ -291,6 +276,7 @@
 		<data name="battery_empty" src_path="images/battery.png" color_format="argb8888" />
 		<data name="battery_medium" src_path="images/battery-medium.png" color_format="argb8888" />
 		<data name="battery_full" src_path="images/battery-full.png" color_format="argb8888" />
+		<data name="battery_charging" src_path="images/battery-charging.png" color_format="argb8888" />
 	</images>
 
 	<fonts>

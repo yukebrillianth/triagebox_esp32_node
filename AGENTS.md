@@ -47,13 +47,15 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 ```
 
-Prefer the managed BSP `waveshare/esp32_s3_touch_lcd_4` (v3) over hand-rolled ST7701/GT911 init. Official demo repo: <https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4>. Wiki: <https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4>.
+Prefer the managed BSP `waveshare/esp32_s3_touch_lcd_4` over hand-rolled ST7701/GT911 init — but **pick the version by silkscreen revision, not by "latest"**. The physical board here is **rev 3.0** → BSP `^1.1.0` (TCA9554 expander). BSP `^2`/`3.x` targets HW **V4.0** (CH32V003 @ 0x24, different EXIO numbering). Official demo repo: <https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4>. Wiki: <https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4>.
+
+BSP 1.1.0 does **not** compile on ESP-IDF v6 as shipped: v6 removed `psram_trans_align` and `bits_per_pixel` from `esp_lcd_rgb_panel_config_t`, and the registry manifest claims `idf: >=5.3` with no upper bound so the solver never catches it. Workaround in tree: the component is vendored to `components/esp32_s3_touch_lcd_4/` (overrides the managed copy) with those two fields deleted, plus the 180° panel/touch mirror for the enclosure. Keep both — do not "upgrade" to `^3.0.0`.
 
 Pin LVGL to v9 — the port component accepts `>=8,<10`, so an unpinned resolve can silently give you v8:
 
 ```yaml
 dependencies:
-  waveshare/esp32_s3_touch_lcd_4: "^3.0.0"
+  waveshare/esp32_s3_touch_lcd_4: "^1.1.0"   # HW rev3.0 / TCA9554 — NOT ^3.0.0
   lvgl/lvgl: "^9.5.0"
   espressif/esp_lvgl_port: "^2.8.0"
 ```
@@ -225,6 +227,7 @@ Status today: **logic layer is done and selftestable on host**. The 8 triage scr
 - Do not add new dependencies when LVGL + ESP-IDF + the Waveshare BSP already cover the need.
 - Keep diffs small. Greenfield is not a license to scaffold "for later".
 - Workflow detail: `docs/ui-workflow.md`.
+- UI handoff to the ESP32/STM32 devs: `docs/integration-esp32-stm32.md`, package built by `tools/make_handoff.sh`.
 
 ## Skills
 

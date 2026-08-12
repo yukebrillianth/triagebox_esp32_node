@@ -520,46 +520,38 @@ const void * vec_63_688 = NULL;
 extern const void * vec_63_688_data;
 const void * vec_63_689 = NULL;
 extern const void * vec_63_689_data;
-const void * icon_arrow_down = NULL;
-extern const void * icon_arrow_down_data;
 const void * icon_arrow_left = NULL;
 extern const void * icon_arrow_left_data;
-const void * icon_arrow_right = NULL;
-extern const void * icon_arrow_right_data;
-const void * icon_arrow_up = NULL;
-extern const void * icon_arrow_up_data;
-const void * icon_battery = NULL;
-extern const void * icon_battery_data;
-const void * icon_battery_full = NULL;
-extern const void * icon_battery_full_data;
-const void * icon_bell = NULL;
-extern const void * icon_bell_data;
-const void * icon_bluetooth = NULL;
-extern const void * icon_bluetooth_data;
-const void * icon_calendar = NULL;
-extern const void * icon_calendar_data;
-const void * icon_camera = NULL;
-extern const void * icon_camera_data;
 const void * icon_check = NULL;
 extern const void * icon_check_data;
 const void * icon_chevron_down = NULL;
 extern const void * icon_chevron_down_data;
-const void * icon_chevron_left = NULL;
-extern const void * icon_chevron_left_data;
-const void * icon_chevron_right = NULL;
-extern const void * icon_chevron_right_data;
 const void * icon_chevron_up = NULL;
 extern const void * icon_chevron_up_data;
-const void * icon_clock = NULL;
-extern const void * icon_clock_data;
 const void * icon_close = NULL;
 extern const void * icon_close_data;
-const void * icon_download = NULL;
-extern const void * icon_download_data;
-const void * icon_edit = NULL;
-extern const void * icon_edit_data;
-const void * icon_heart = NULL;
-extern const void * icon_heart_data;
+const void * icon_gender_male = NULL;
+extern const void * icon_gender_male_data;
+const void * icon_gender_female = NULL;
+extern const void * icon_gender_female_data;
+const void * icon_monitor = NULL;
+extern const void * icon_monitor_data;
+const void * icon_priority_immediate = NULL;
+extern const void * icon_priority_immediate_data;
+const void * icon_priority_delayed = NULL;
+extern const void * icon_priority_delayed_data;
+const void * icon_priority_minor = NULL;
+extern const void * icon_priority_minor_data;
+const void * icon_vital_spo2_sm = NULL;
+extern const void * icon_vital_spo2_sm_data;
+const void * icon_vital_hr_sm = NULL;
+extern const void * icon_vital_hr_sm_data;
+const void * icon_vital_rr_sm = NULL;
+extern const void * icon_vital_rr_sm_data;
+const void * icon_vital_bp_sm = NULL;
+extern const void * icon_vital_bp_sm_data;
+const void * icon_update = NULL;
+extern const void * icon_update_data;
 const void * icon_heart_pulse = NULL;
 extern const void * icon_heart_pulse_data;
 const void * icon_oxygen = NULL;
@@ -568,52 +560,26 @@ const void * icon_respiratory = NULL;
 extern const void * icon_respiratory_data;
 const void * icon_blood_pressure = NULL;
 extern const void * icon_blood_pressure_data;
-const void * icon_home = NULL;
-extern const void * icon_home_data;
-const void * icon_info = NULL;
-extern const void * icon_info_data;
-const void * icon_lock = NULL;
-extern const void * icon_lock_data;
-const void * icon_mail = NULL;
-extern const void * icon_mail_data;
 const void * icon_menu = NULL;
 extern const void * icon_menu_data;
-const void * icon_minus = NULL;
-extern const void * icon_minus_data;
-const void * icon_moon = NULL;
-extern const void * icon_moon_data;
 const void * icon_pause = NULL;
 extern const void * icon_pause_data;
 const void * icon_play = NULL;
 extern const void * icon_play_data;
-const void * icon_plus = NULL;
-extern const void * icon_plus_data;
 const void * icon_power = NULL;
 extern const void * icon_power_data;
 const void * icon_refresh = NULL;
 extern const void * icon_refresh_data;
 const void * icon_search = NULL;
 extern const void * icon_search_data;
-const void * icon_settings = NULL;
-extern const void * icon_settings_data;
+const void * icon_rfid_scan = NULL;
+extern const void * icon_rfid_scan_data;
+const void * icon_rfid_scan_lg = NULL;
+extern const void * icon_rfid_scan_lg_data;
 const void * icon_signal = NULL;
 extern const void * icon_signal_data;
 const void * icon_star = NULL;
 extern const void * icon_star_data;
-const void * icon_sun = NULL;
-extern const void * icon_sun_data;
-const void * icon_trash = NULL;
-extern const void * icon_trash_data;
-const void * icon_unlock = NULL;
-extern const void * icon_unlock_data;
-const void * icon_upload = NULL;
-extern const void * icon_upload_data;
-const void * icon_user = NULL;
-extern const void * icon_user_data;
-const void * icon_volume = NULL;
-extern const void * icon_volume_data;
-const void * icon_wifi = NULL;
-extern const void * icon_wifi_data;
 const void * icon_wifi_high = NULL;
 extern const void * icon_wifi_high_data;
 const void * icon_wifi_low = NULL;
@@ -628,6 +594,8 @@ const void * battery_medium = NULL;
 extern const void * battery_medium_data;
 const void * battery_full = NULL;
 extern const void * battery_full_data;
+const void * battery_charging = NULL;
+extern const void * battery_charging_data;
 
 /*----------------
  * Global styles
@@ -1801,45 +1769,9 @@ void ui_init_gen(const char * asset_path)
         if (!vec_63_689) {
             vec_63_689 = &vec_63_689_data;
         }
-        /* icon_arrow_down */
-        if (!icon_arrow_down) {
-            icon_arrow_down = &icon_arrow_down_data;
-        }
         /* icon_arrow_left */
         if (!icon_arrow_left) {
             icon_arrow_left = &icon_arrow_left_data;
-        }
-        /* icon_arrow_right */
-        if (!icon_arrow_right) {
-            icon_arrow_right = &icon_arrow_right_data;
-        }
-        /* icon_arrow_up */
-        if (!icon_arrow_up) {
-            icon_arrow_up = &icon_arrow_up_data;
-        }
-        /* icon_battery */
-        if (!icon_battery) {
-            icon_battery = &icon_battery_data;
-        }
-        /* icon_battery_full */
-        if (!icon_battery_full) {
-            icon_battery_full = &icon_battery_full_data;
-        }
-        /* icon_bell */
-        if (!icon_bell) {
-            icon_bell = &icon_bell_data;
-        }
-        /* icon_bluetooth */
-        if (!icon_bluetooth) {
-            icon_bluetooth = &icon_bluetooth_data;
-        }
-        /* icon_calendar */
-        if (!icon_calendar) {
-            icon_calendar = &icon_calendar_data;
-        }
-        /* icon_camera */
-        if (!icon_camera) {
-            icon_camera = &icon_camera_data;
         }
         /* icon_check */
         if (!icon_check) {
@@ -1849,37 +1781,57 @@ void ui_init_gen(const char * asset_path)
         if (!icon_chevron_down) {
             icon_chevron_down = &icon_chevron_down_data;
         }
-        /* icon_chevron_left */
-        if (!icon_chevron_left) {
-            icon_chevron_left = &icon_chevron_left_data;
-        }
-        /* icon_chevron_right */
-        if (!icon_chevron_right) {
-            icon_chevron_right = &icon_chevron_right_data;
-        }
         /* icon_chevron_up */
         if (!icon_chevron_up) {
             icon_chevron_up = &icon_chevron_up_data;
-        }
-        /* icon_clock */
-        if (!icon_clock) {
-            icon_clock = &icon_clock_data;
         }
         /* icon_close */
         if (!icon_close) {
             icon_close = &icon_close_data;
         }
-        /* icon_download */
-        if (!icon_download) {
-            icon_download = &icon_download_data;
+        /* icon_gender_male */
+        if (!icon_gender_male) {
+            icon_gender_male = &icon_gender_male_data;
         }
-        /* icon_edit */
-        if (!icon_edit) {
-            icon_edit = &icon_edit_data;
+        /* icon_gender_female */
+        if (!icon_gender_female) {
+            icon_gender_female = &icon_gender_female_data;
         }
-        /* icon_heart */
-        if (!icon_heart) {
-            icon_heart = &icon_heart_data;
+        /* icon_monitor */
+        if (!icon_monitor) {
+            icon_monitor = &icon_monitor_data;
+        }
+        /* icon_priority_immediate */
+        if (!icon_priority_immediate) {
+            icon_priority_immediate = &icon_priority_immediate_data;
+        }
+        /* icon_priority_delayed */
+        if (!icon_priority_delayed) {
+            icon_priority_delayed = &icon_priority_delayed_data;
+        }
+        /* icon_priority_minor */
+        if (!icon_priority_minor) {
+            icon_priority_minor = &icon_priority_minor_data;
+        }
+        /* icon_vital_spo2_sm */
+        if (!icon_vital_spo2_sm) {
+            icon_vital_spo2_sm = &icon_vital_spo2_sm_data;
+        }
+        /* icon_vital_hr_sm */
+        if (!icon_vital_hr_sm) {
+            icon_vital_hr_sm = &icon_vital_hr_sm_data;
+        }
+        /* icon_vital_rr_sm */
+        if (!icon_vital_rr_sm) {
+            icon_vital_rr_sm = &icon_vital_rr_sm_data;
+        }
+        /* icon_vital_bp_sm */
+        if (!icon_vital_bp_sm) {
+            icon_vital_bp_sm = &icon_vital_bp_sm_data;
+        }
+        /* icon_update */
+        if (!icon_update) {
+            icon_update = &icon_update_data;
         }
         /* icon_heart_pulse */
         if (!icon_heart_pulse) {
@@ -1897,33 +1849,9 @@ void ui_init_gen(const char * asset_path)
         if (!icon_blood_pressure) {
             icon_blood_pressure = &icon_blood_pressure_data;
         }
-        /* icon_home */
-        if (!icon_home) {
-            icon_home = &icon_home_data;
-        }
-        /* icon_info */
-        if (!icon_info) {
-            icon_info = &icon_info_data;
-        }
-        /* icon_lock */
-        if (!icon_lock) {
-            icon_lock = &icon_lock_data;
-        }
-        /* icon_mail */
-        if (!icon_mail) {
-            icon_mail = &icon_mail_data;
-        }
         /* icon_menu */
         if (!icon_menu) {
             icon_menu = &icon_menu_data;
-        }
-        /* icon_minus */
-        if (!icon_minus) {
-            icon_minus = &icon_minus_data;
-        }
-        /* icon_moon */
-        if (!icon_moon) {
-            icon_moon = &icon_moon_data;
         }
         /* icon_pause */
         if (!icon_pause) {
@@ -1932,10 +1860,6 @@ void ui_init_gen(const char * asset_path)
         /* icon_play */
         if (!icon_play) {
             icon_play = &icon_play_data;
-        }
-        /* icon_plus */
-        if (!icon_plus) {
-            icon_plus = &icon_plus_data;
         }
         /* icon_power */
         if (!icon_power) {
@@ -1949,9 +1873,13 @@ void ui_init_gen(const char * asset_path)
         if (!icon_search) {
             icon_search = &icon_search_data;
         }
-        /* icon_settings */
-        if (!icon_settings) {
-            icon_settings = &icon_settings_data;
+        /* icon_rfid_scan */
+        if (!icon_rfid_scan) {
+            icon_rfid_scan = &icon_rfid_scan_data;
+        }
+        /* icon_rfid_scan_lg */
+        if (!icon_rfid_scan_lg) {
+            icon_rfid_scan_lg = &icon_rfid_scan_lg_data;
         }
         /* icon_signal */
         if (!icon_signal) {
@@ -1960,34 +1888,6 @@ void ui_init_gen(const char * asset_path)
         /* icon_star */
         if (!icon_star) {
             icon_star = &icon_star_data;
-        }
-        /* icon_sun */
-        if (!icon_sun) {
-            icon_sun = &icon_sun_data;
-        }
-        /* icon_trash */
-        if (!icon_trash) {
-            icon_trash = &icon_trash_data;
-        }
-        /* icon_unlock */
-        if (!icon_unlock) {
-            icon_unlock = &icon_unlock_data;
-        }
-        /* icon_upload */
-        if (!icon_upload) {
-            icon_upload = &icon_upload_data;
-        }
-        /* icon_user */
-        if (!icon_user) {
-            icon_user = &icon_user_data;
-        }
-        /* icon_volume */
-        if (!icon_volume) {
-            icon_volume = &icon_volume_data;
-        }
-        /* icon_wifi */
-        if (!icon_wifi) {
-            icon_wifi = &icon_wifi_data;
         }
         /* icon_wifi_high */
         if (!icon_wifi_high) {
@@ -2016,6 +1916,10 @@ void ui_init_gen(const char * asset_path)
         /* battery_full */
         if (!battery_full) {
             battery_full = &battery_full_data;
+        }
+        /* battery_charging */
+        if (!battery_charging) {
+            battery_charging = &battery_charging_data;
         }
     }
     #endif
@@ -2444,53 +2348,36 @@ void ui_init_gen(const char * asset_path)
     lv_xml_register_image(NULL, "vec_63_687", vec_63_687);
     lv_xml_register_image(NULL, "vec_63_688", vec_63_688);
     lv_xml_register_image(NULL, "vec_63_689", vec_63_689);
-    lv_xml_register_image(NULL, "icon_arrow_down", icon_arrow_down);
     lv_xml_register_image(NULL, "icon_arrow_left", icon_arrow_left);
-    lv_xml_register_image(NULL, "icon_arrow_right", icon_arrow_right);
-    lv_xml_register_image(NULL, "icon_arrow_up", icon_arrow_up);
-    lv_xml_register_image(NULL, "icon_battery", icon_battery);
-    lv_xml_register_image(NULL, "icon_battery_full", icon_battery_full);
-    lv_xml_register_image(NULL, "icon_bell", icon_bell);
-    lv_xml_register_image(NULL, "icon_bluetooth", icon_bluetooth);
-    lv_xml_register_image(NULL, "icon_calendar", icon_calendar);
-    lv_xml_register_image(NULL, "icon_camera", icon_camera);
     lv_xml_register_image(NULL, "icon_check", icon_check);
     lv_xml_register_image(NULL, "icon_chevron_down", icon_chevron_down);
-    lv_xml_register_image(NULL, "icon_chevron_left", icon_chevron_left);
-    lv_xml_register_image(NULL, "icon_chevron_right", icon_chevron_right);
     lv_xml_register_image(NULL, "icon_chevron_up", icon_chevron_up);
-    lv_xml_register_image(NULL, "icon_clock", icon_clock);
     lv_xml_register_image(NULL, "icon_close", icon_close);
-    lv_xml_register_image(NULL, "icon_download", icon_download);
-    lv_xml_register_image(NULL, "icon_edit", icon_edit);
-    lv_xml_register_image(NULL, "icon_heart", icon_heart);
+    lv_xml_register_image(NULL, "icon_gender_male", icon_gender_male);
+    lv_xml_register_image(NULL, "icon_gender_female", icon_gender_female);
+    lv_xml_register_image(NULL, "icon_monitor", icon_monitor);
+    lv_xml_register_image(NULL, "icon_priority_immediate", icon_priority_immediate);
+    lv_xml_register_image(NULL, "icon_priority_delayed", icon_priority_delayed);
+    lv_xml_register_image(NULL, "icon_priority_minor", icon_priority_minor);
+    lv_xml_register_image(NULL, "icon_vital_spo2_sm", icon_vital_spo2_sm);
+    lv_xml_register_image(NULL, "icon_vital_hr_sm", icon_vital_hr_sm);
+    lv_xml_register_image(NULL, "icon_vital_rr_sm", icon_vital_rr_sm);
+    lv_xml_register_image(NULL, "icon_vital_bp_sm", icon_vital_bp_sm);
+    lv_xml_register_image(NULL, "icon_update", icon_update);
     lv_xml_register_image(NULL, "icon_heart_pulse", icon_heart_pulse);
     lv_xml_register_image(NULL, "icon_oxygen", icon_oxygen);
     lv_xml_register_image(NULL, "icon_respiratory", icon_respiratory);
     lv_xml_register_image(NULL, "icon_blood_pressure", icon_blood_pressure);
-    lv_xml_register_image(NULL, "icon_home", icon_home);
-    lv_xml_register_image(NULL, "icon_info", icon_info);
-    lv_xml_register_image(NULL, "icon_lock", icon_lock);
-    lv_xml_register_image(NULL, "icon_mail", icon_mail);
     lv_xml_register_image(NULL, "icon_menu", icon_menu);
-    lv_xml_register_image(NULL, "icon_minus", icon_minus);
-    lv_xml_register_image(NULL, "icon_moon", icon_moon);
     lv_xml_register_image(NULL, "icon_pause", icon_pause);
     lv_xml_register_image(NULL, "icon_play", icon_play);
-    lv_xml_register_image(NULL, "icon_plus", icon_plus);
     lv_xml_register_image(NULL, "icon_power", icon_power);
     lv_xml_register_image(NULL, "icon_refresh", icon_refresh);
     lv_xml_register_image(NULL, "icon_search", icon_search);
-    lv_xml_register_image(NULL, "icon_settings", icon_settings);
+    lv_xml_register_image(NULL, "icon_rfid_scan", icon_rfid_scan);
+    lv_xml_register_image(NULL, "icon_rfid_scan_lg", icon_rfid_scan_lg);
     lv_xml_register_image(NULL, "icon_signal", icon_signal);
     lv_xml_register_image(NULL, "icon_star", icon_star);
-    lv_xml_register_image(NULL, "icon_sun", icon_sun);
-    lv_xml_register_image(NULL, "icon_trash", icon_trash);
-    lv_xml_register_image(NULL, "icon_unlock", icon_unlock);
-    lv_xml_register_image(NULL, "icon_upload", icon_upload);
-    lv_xml_register_image(NULL, "icon_user", icon_user);
-    lv_xml_register_image(NULL, "icon_volume", icon_volume);
-    lv_xml_register_image(NULL, "icon_wifi", icon_wifi);
     lv_xml_register_image(NULL, "icon_wifi_high", icon_wifi_high);
     lv_xml_register_image(NULL, "icon_wifi_low", icon_wifi_low);
     lv_xml_register_image(NULL, "icon_wifi_zero", icon_wifi_zero);
@@ -2498,6 +2385,7 @@ void ui_init_gen(const char * asset_path)
     lv_xml_register_image(NULL, "battery_empty", battery_empty);
     lv_xml_register_image(NULL, "battery_medium", battery_medium);
     lv_xml_register_image(NULL, "battery_full", battery_full);
+    lv_xml_register_image(NULL, "battery_charging", battery_charging);
 #endif
 
 #if defined(LV_USE_XML) && LV_USE_XML == 0

@@ -8,14 +8,8 @@
 			pad_all="0"
 			pad_gap="0"
 		/>
-		<style name="style_scan_content" pad_hor="40" pad_ver="0" />
-		<style
-			name="style_scan_icon"
-			image_recolor="#color_accent"
-			image_recolor_opa="100%"
-			width="80"
-			height="80"
-		/>
+		<style name="style_scan_content" pad_hor="0" pad_ver="41" />
+		<style name="style_scan_icon" image_recolor="#color_accent" image_recolor_opa="100%" width="85" height="85" />
 		<style
 			name="style_scan_title"
 			text_color="#color_dark_text"
@@ -28,6 +22,7 @@
 			text_font="font_inter_regular_14"
 			text_align="center"
 		/>
+		<style name="style_scan_text" width="220" height="82" />
 		<style
 			name="style_scan_dot"
 			bg_color="#color_accent"
@@ -35,7 +30,13 @@
 			radius="100%"
 			width="12"
 			height="12"
+			pad_all="0"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
 		/>
+		<style name="style_scan_dot_dim" bg_opa="74%" />
+		<style name="style_scan_dot_faint" bg_opa="38%" />
 	</styles>
 
 	<view extends="lv_obj" width="480" height="480" flex_flow="column" scrollable="false">
@@ -46,36 +47,47 @@
 		<column
 			name="content"
 			width="100%"
-			grow="1"
-			gap="24"
+			height="361"
+			gap="30"
 			pad="0"
-			horizontal_align="center"
-			vertical_align="center"
+			style_flex_main_place="center"
+			style_flex_cross_place="center"
+			scrollable="false"
 		>
 			<style name="style_scan_content" />
 
-			<lv_image src="icon_search" width="80" height="80" inner_align="center">
+			<lv_image src="icon_rfid_scan_lg" width="85" height="85">
 				<style name="style_scan_icon" />
 			</lv_image>
 
-			<column width="100%" gap="8" pad="0" horizontal_align="center">
-				<lv_label text="Memindai RFID..." width="100%">
+			<column width="100%" height="82" gap="8" pad="0" style_flex_cross_place="center">
+				<style name="style_scan_text" />
+				<lv_label text="Memindai RFID..." width="100%" height="36">
 					<style name="style_scan_title" />
 				</lv_label>
-				<lv_label text="Dekatkan gelang pasien ke sensor" width="100%">
+				<lv_label text="Dekatkan gelang pasien ke sensor" width="100%" height="23">
 					<style name="style_scan_sub" />
 				</lv_label>
 			</column>
 
-			<row gap="8" pad="0" horizontal_align="center" vertical_align="center">
-				<lv_obj>
+			<row
+				width="content"
+				height="12"
+				gap="8"
+				pad="0"
+				style_flex_main_place="center"
+				style_flex_cross_place="center"
+			>
+				<lv_obj name="scan_dot0">
 					<style name="style_scan_dot" />
 				</lv_obj>
-				<lv_obj>
+				<lv_obj name="scan_dot1">
 					<style name="style_scan_dot" />
+					<style name="style_scan_dot_dim" />
 				</lv_obj>
-				<lv_obj>
+				<lv_obj name="scan_dot2">
 					<style name="style_scan_dot" />
+					<style name="style_scan_dot_faint" />
 				</lv_obj>
 			</row>
 		</column>

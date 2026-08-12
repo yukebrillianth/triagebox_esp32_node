@@ -149,6 +149,14 @@ bool ui_check_target(uint32_t target);
  */
 #define COLOR_BUTTONBAR_BOTTOM lv_color_hex(0x1a2651)
 /**
+ * START YELLOW / DELAYED priority
+ */
+#define COLOR_PRIORITY_YELLOW lv_color_hex(0xF0B100)
+/**
+ * START GREEN / MINOR priority
+ */
+#define COLOR_PRIORITY_GREEN lv_color_hex(0x00C950)
+/**
  * SpO2 / oxygen vital icon
  */
 #define COLOR_VITAL_SPO2 lv_color_hex(0x51A2FF)
@@ -467,53 +475,36 @@ extern const void * vec_63_674;
 extern const void * vec_63_687;
 extern const void * vec_63_688;
 extern const void * vec_63_689;
-extern const void * icon_arrow_down;
 extern const void * icon_arrow_left;
-extern const void * icon_arrow_right;
-extern const void * icon_arrow_up;
-extern const void * icon_battery;
-extern const void * icon_battery_full;
-extern const void * icon_bell;
-extern const void * icon_bluetooth;
-extern const void * icon_calendar;
-extern const void * icon_camera;
 extern const void * icon_check;
 extern const void * icon_chevron_down;
-extern const void * icon_chevron_left;
-extern const void * icon_chevron_right;
 extern const void * icon_chevron_up;
-extern const void * icon_clock;
 extern const void * icon_close;
-extern const void * icon_download;
-extern const void * icon_edit;
-extern const void * icon_heart;
+extern const void * icon_gender_male;
+extern const void * icon_gender_female;
+extern const void * icon_monitor;
+extern const void * icon_priority_immediate;
+extern const void * icon_priority_delayed;
+extern const void * icon_priority_minor;
+extern const void * icon_vital_spo2_sm;
+extern const void * icon_vital_hr_sm;
+extern const void * icon_vital_rr_sm;
+extern const void * icon_vital_bp_sm;
+extern const void * icon_update;
 extern const void * icon_heart_pulse;
 extern const void * icon_oxygen;
 extern const void * icon_respiratory;
 extern const void * icon_blood_pressure;
-extern const void * icon_home;
-extern const void * icon_info;
-extern const void * icon_lock;
-extern const void * icon_mail;
 extern const void * icon_menu;
-extern const void * icon_minus;
-extern const void * icon_moon;
 extern const void * icon_pause;
 extern const void * icon_play;
-extern const void * icon_plus;
 extern const void * icon_power;
 extern const void * icon_refresh;
 extern const void * icon_search;
-extern const void * icon_settings;
+extern const void * icon_rfid_scan;
+extern const void * icon_rfid_scan_lg;
 extern const void * icon_signal;
 extern const void * icon_star;
-extern const void * icon_sun;
-extern const void * icon_trash;
-extern const void * icon_unlock;
-extern const void * icon_upload;
-extern const void * icon_user;
-extern const void * icon_volume;
-extern const void * icon_wifi;
 extern const void * icon_wifi_high;
 extern const void * icon_wifi_low;
 extern const void * icon_wifi_zero;
@@ -521,6 +512,7 @@ extern const void * logo_light_for_dark;
 extern const void * battery_empty;
 extern const void * battery_medium;
 extern const void * battery_full;
+extern const void * battery_charging;
 
 /*----------------
  * Subjects
@@ -575,6 +567,7 @@ void ui_init_gen(const char * asset_path);
 #include "components/list/list_separator/list_separator_gen.h"
 #include "components/list/list/list_gen.h"
 #include "components/triage/button_bar_gen.h"
+#include "components/triage/result_vital_gen.h"
 #include "components/triage/status_bar_gen.h"
 #include "components/triage/vital_card_gen.h"
 #include "components/typography/h1/h1_gen.h"

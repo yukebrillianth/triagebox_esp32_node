@@ -78,9 +78,9 @@ Karena `GPIO43`/`GPIO44` dipakai untuk link STM32, pin tersebut **bukan lagi kan
 
 | Komponen | Versi |
 | --- | --- |
-| ESP-IDF | ≥ 5.3.1 (CI resmi: 5.5.x / 6.0.x) |
-| LVGL | v9 (demo resmi menyediakan 8.4 dan 9.5) |
-| BSP | `waveshare/esp32_s3_touch_lcd_4` 3.0.0 |
+| ESP-IDF | ≥ 5.3.1 (dipakai di sini: 6.0.2) |
+| LVGL | v9.5 |
+| BSP | `waveshare/esp32_s3_touch_lcd_4` **^1.1.0** — board fisik rev **3.0** (TCA9554). Jangan `^3.0.0`, itu untuk HW V4.0 (CH32V003). BSP 1.1.0 perlu patch untuk IDF v6, sudah di-vendor ke `components/`. |
 
 ## Build & flash
 
@@ -122,4 +122,5 @@ Sesuai START dan enum backend: `RED` (Immediate), `YELLOW` (Delayed), `GREEN` (M
 ## Dokumentasi terkait
 
 - `AGENTS.md` — batasan hardware, GPIO terpakai, kontrak data untuk agen/kontributor
+- `docs/integration-esp32-stm32.md` — cara developer ESP32/STM32 memakai paket UI di `handoff/triagebox-ui/`
 - `../triagebox-backend/docs/api-contract.md` — kontrak MQTT/REST/WS lengkap

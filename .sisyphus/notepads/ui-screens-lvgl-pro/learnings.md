@@ -239,3 +239,13 @@
 ## [2026-07-29] PLAN CLOSED — user okay received ("Lanjuttt")
 - F1-F4 marked [x]. All 32/32 complete.
 - Boulder complete. Next efforts: STM32 serial link, C5.0 inference, LoRa TX, board bring-up.
+
+## [2026-08-07] Figma icon swap + touch/click wiring
+- Rendered real Figma SVGs → white-stroke alpha PNGs via rsvg-convert at Figma px (bar 24, vital 28, update 12). Color via LVGL image_recolor at use site.
+- New semantic symbols: icon_gender_male/female (was lock/bluetooth), icon_monitor (was signal), icon_warning (was info), icon_update (was clock), Age Up/Down now chevrons (matches Gender).
+- Removed unused source PNGs + globals decls: arrow_up/down, bluetooth, info, lock, clock. icon_star kept (monoicon default).
+- Touch: ui/logic/ui_bindings.c (added to user_config.cmake as lib-ui user source; called from ui.c after ui_init_gen). Finds button_bar_# → cell0..3 and opt_* by name, LV_EVENT_CLICKED → ui_action. Same dispatcher as keypad. No *_gen edits.
+- Age/Gender Up/Down now move pending selection (ui_nav_move_pending_age/gender); 50ms timer re-applies LV_STATE_FOCUSED via ui_bindings_sync_selection. Touch row = direct select.
+- Generated *_gen.c still hold OLD icon symbols (icon_lock/info/signal) until next Editor Ctrl+B. Sim builds+runs; screen still shows old glyphs for gender/result/monitor until re-export. Documented in ui-workflow.md known blockers.
+- IDF PYTHON for LVGLImage.py: system python is externally-managed; used a venv with pypng+lz4. Only needed for the 3 CLI-generated symbols experiment — reverted, real assets are plain PNG + full Editor export path.
+- Verified: sim build 0, idf build 0, SIM_AUTO_WALK ALL_SCREENS_OK, nav+runtime selftests ALL_PASS.

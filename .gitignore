@@ -20,6 +20,10 @@ dependencies.lock
 ui/sim/
 *.tmp
 
+# Handoff drop: regenerate with tools/make_handoff.sh, never commit the copy
+handoff/
+
 # OS
 .DS_Store
 ui/preview-bin/
+.sisyphus/

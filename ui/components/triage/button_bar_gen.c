@@ -80,7 +80,7 @@ lv_obj_t * button_bar_create(lv_obj_t * parent, const char * label0, const char 
         lv_style_set_bg_color(&style_bar_cell_pressed, COLOR_TRACK);
         lv_style_set_bg_opa(&style_bar_cell_pressed, (255 * 40 / 100));
         lv_style_set_image_recolor_opa(&style_cell_icon, (255 * 100 / 100));
-        lv_style_set_width(&style_cell_label, 120);
+        lv_style_set_width(&style_cell_label, lv_pct(100));
         lv_style_set_height(&style_cell_label, 19);
         lv_style_set_text_align(&style_cell_label, LV_TEXT_ALIGN_CENTER);
 

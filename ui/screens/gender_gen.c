@@ -140,7 +140,7 @@ lv_obj_t * gender_create(void)
         lv_obj_set_flag(column_0, LV_OBJ_FLAG_SCROLLABLE, false);
         lv_obj_add_style(column_0, &style_gender_icon_bg, 0);
         lv_obj_t * lv_image_0 = lv_image_create(column_0);
-        lv_image_set_src(lv_image_0, icon_lock);
+        lv_image_set_src(lv_image_0, icon_gender_male);
         lv_obj_set_width(lv_image_0, 24);
         lv_obj_set_height(lv_image_0, 24);
         lv_obj_add_style(lv_image_0, &style_gender_icon, 0);
@@ -163,7 +163,7 @@ lv_obj_t * gender_create(void)
         lv_obj_set_flag(column_1, LV_OBJ_FLAG_SCROLLABLE, false);
         lv_obj_add_style(column_1, &style_gender_icon_bg, 0);
         lv_obj_t * lv_image_1 = lv_image_create(column_1);
-        lv_image_set_src(lv_image_1, icon_bluetooth);
+        lv_image_set_src(lv_image_1, icon_gender_female);
         lv_obj_set_width(lv_image_1, 24);
         lv_obj_set_height(lv_image_1, 24);
         lv_obj_add_style(lv_image_1, &style_gender_icon, 0);
@@ -173,7 +173,7 @@ lv_obj_t * gender_create(void)
         lv_obj_set_flex_grow(lv_label_2, 1);
         lv_obj_add_style(lv_label_2, &style_gender_label, 0);
 
-        lv_obj_t * button_bar_0 = button_bar_create(lv_obj_0, "Up", "Down", "Back", "Select", icon_arrow_up, icon_arrow_down, icon_arrow_left, icon_check, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT);
+        lv_obj_t * button_bar_0 = button_bar_create(lv_obj_0, "Up", "Down", "Back", "Select", icon_chevron_up, icon_chevron_down, icon_arrow_left, icon_check, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT);
         lv_obj_set_width(button_bar_0, 480);
         lv_obj_set_height(button_bar_0, 71);
 

@@ -27,6 +27,10 @@ ui_age_band_t ui_nav_pending_age(void);
 void ui_nav_set_pending_gender(ui_gender_t gender);
 ui_gender_t ui_nav_pending_gender(void);
 
+/* Move list focus by dir (-1 up, +1 down), clamped to the band/gender range. */
+void ui_nav_move_pending_age(int dir);
+void ui_nav_move_pending_gender(int dir);
+
 /* Non-button transitions delivered by the mock/hardware integration layer. */
 void ui_nav_on_rfid_ready(const rfid_t *rfid);
 void ui_nav_on_measure_done(void);

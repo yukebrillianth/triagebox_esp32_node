@@ -39,7 +39,10 @@ lv_obj_t * scanning_create(void)
     static lv_style_t style_scan_icon;
     static lv_style_t style_scan_title;
     static lv_style_t style_scan_sub;
+    static lv_style_t style_scan_text;
     static lv_style_t style_scan_dot;
+    static lv_style_t style_scan_dot_dim;
+    static lv_style_t style_scan_dot_faint;
 
     static bool style_inited = false;
 
@@ -50,30 +53,41 @@ lv_obj_t * scanning_create(void)
         lv_style_init(&style_scan_icon);
         lv_style_init(&style_scan_title);
         lv_style_init(&style_scan_sub);
+        lv_style_init(&style_scan_text);
         lv_style_init(&style_scan_dot);
+        lv_style_init(&style_scan_dot_dim);
+        lv_style_init(&style_scan_dot_faint);
 
         lv_style_set_bg_color(&style_scan_root, COLOR_DARK_BG);
         lv_style_set_bg_opa(&style_scan_root, (255 * 100 / 100));
         lv_style_set_text_color(&style_scan_root, COLOR_DARK_TEXT);
         lv_style_set_pad_all(&style_scan_root, 0);
         lv_style_set_pad_gap(&style_scan_root, 0);
-        lv_style_set_pad_hor(&style_scan_content, 40);
-        lv_style_set_pad_ver(&style_scan_content, 0);
+        lv_style_set_pad_hor(&style_scan_content, 0);
+        lv_style_set_pad_ver(&style_scan_content, 41);
         lv_style_set_image_recolor(&style_scan_icon, COLOR_ACCENT);
         lv_style_set_image_recolor_opa(&style_scan_icon, (255 * 100 / 100));
-        lv_style_set_width(&style_scan_icon, 80);
-        lv_style_set_height(&style_scan_icon, 80);
+        lv_style_set_width(&style_scan_icon, 85);
+        lv_style_set_height(&style_scan_icon, 85);
         lv_style_set_text_color(&style_scan_title, COLOR_DARK_TEXT);
         lv_style_set_text_font(&style_scan_title, font_inter_semi_bold_24);
         lv_style_set_text_align(&style_scan_title, LV_TEXT_ALIGN_CENTER);
         lv_style_set_text_color(&style_scan_sub, COLOR_TEXT_SECONDARY);
         lv_style_set_text_font(&style_scan_sub, font_inter_regular_14);
         lv_style_set_text_align(&style_scan_sub, LV_TEXT_ALIGN_CENTER);
+        lv_style_set_width(&style_scan_text, 220);
+        lv_style_set_height(&style_scan_text, 82);
         lv_style_set_bg_color(&style_scan_dot, COLOR_ACCENT);
         lv_style_set_bg_opa(&style_scan_dot, (255 * 100 / 100));
         lv_style_set_radius(&style_scan_dot, lv_pct(100));
         lv_style_set_width(&style_scan_dot, 12);
         lv_style_set_height(&style_scan_dot, 12);
+        lv_style_set_pad_all(&style_scan_dot, 0);
+        lv_style_set_border_width(&style_scan_dot, 0);
+        lv_style_set_outline_width(&style_scan_dot, 0);
+        lv_style_set_shadow_width(&style_scan_dot, 0);
+        lv_style_set_bg_opa(&style_scan_dot_dim, (255 * 74 / 100));
+        lv_style_set_bg_opa(&style_scan_dot_faint, (255 * 38 / 100));
 
         style_inited = true;
     }
@@ -96,38 +110,55 @@ lv_obj_t * scanning_create(void)
         lv_obj_set_width(status_bar_0, 480);
         lv_obj_set_height(status_bar_0, 48);
 
-        lv_obj_t * content = column_create(lv_obj_0, 0, 24, 1, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+        lv_obj_t * content = column_create(lv_obj_0, 0, 30, 0, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_name(content, "content");
         lv_obj_set_width(content, lv_pct(100));
+        lv_obj_set_height(content, 361);
+        lv_obj_set_style_flex_main_place(content, LV_FLEX_ALIGN_CENTER, 0);
+        lv_obj_set_style_flex_cross_place(content, LV_FLEX_ALIGN_CENTER, 0);
+        lv_obj_set_flag(content, LV_OBJ_FLAG_SCROLLABLE, false);
         lv_obj_add_style(content, &style_scan_content, 0);
         lv_obj_t * lv_image_0 = lv_image_create(content);
-        lv_image_set_src(lv_image_0, icon_search);
-        lv_obj_set_width(lv_image_0, 80);
-        lv_obj_set_height(lv_image_0, 80);
-        lv_image_set_inner_align(lv_image_0, LV_IMAGE_ALIGN_CENTER);
+        lv_image_set_src(lv_image_0, icon_rfid_scan_lg);
+        lv_obj_set_width(lv_image_0, 85);
+        lv_obj_set_height(lv_image_0, 85);
         lv_obj_add_style(lv_image_0, &style_scan_icon, 0);
 
-        lv_obj_t * column_0 = column_create(content, 0, 8, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_t * column_0 = column_create(content, 0, 8, 0, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_width(column_0, lv_pct(100));
+        lv_obj_set_height(column_0, 82);
+        lv_obj_set_style_flex_cross_place(column_0, LV_FLEX_ALIGN_CENTER, 0);
+        lv_obj_add_style(column_0, &style_scan_text, 0);
         lv_obj_t * lv_label_0 = lv_label_create(column_0);
         lv_label_set_text(lv_label_0, "Memindai RFID...");
         lv_obj_set_width(lv_label_0, lv_pct(100));
+        lv_obj_set_height(lv_label_0, 36);
         lv_obj_add_style(lv_label_0, &style_scan_title, 0);
 
         lv_obj_t * lv_label_1 = lv_label_create(column_0);
         lv_label_set_text(lv_label_1, "Dekatkan gelang pasien ke sensor");
         lv_obj_set_width(lv_label_1, lv_pct(100));
+        lv_obj_set_height(lv_label_1, 23);
         lv_obj_add_style(lv_label_1, &style_scan_sub, 0);
 
-        lv_obj_t * row_0 = row_create(content, 0, 8, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-        lv_obj_t * lv_obj_1 = lv_obj_create(row_0);
-        lv_obj_add_style(lv_obj_1, &style_scan_dot, 0);
+        lv_obj_t * row_0 = row_create(content, 0, 8, 0, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_set_width(row_0, LV_SIZE_CONTENT);
+        lv_obj_set_height(row_0, 12);
+        lv_obj_set_style_flex_main_place(row_0, LV_FLEX_ALIGN_CENTER, 0);
+        lv_obj_set_style_flex_cross_place(row_0, LV_FLEX_ALIGN_CENTER, 0);
+        lv_obj_t * scan_dot0 = lv_obj_create(row_0);
+        lv_obj_set_name(scan_dot0, "scan_dot0");
+        lv_obj_add_style(scan_dot0, &style_scan_dot, 0);
 
-        lv_obj_t * lv_obj_2 = lv_obj_create(row_0);
-        lv_obj_add_style(lv_obj_2, &style_scan_dot, 0);
+        lv_obj_t * scan_dot1 = lv_obj_create(row_0);
+        lv_obj_set_name(scan_dot1, "scan_dot1");
+        lv_obj_add_style(scan_dot1, &style_scan_dot, 0);
+        lv_obj_add_style(scan_dot1, &style_scan_dot_dim, 0);
 
-        lv_obj_t * lv_obj_3 = lv_obj_create(row_0);
-        lv_obj_add_style(lv_obj_3, &style_scan_dot, 0);
+        lv_obj_t * scan_dot2 = lv_obj_create(row_0);
+        lv_obj_set_name(scan_dot2, "scan_dot2");
+        lv_obj_add_style(scan_dot2, &style_scan_dot, 0);
+        lv_obj_add_style(scan_dot2, &style_scan_dot_faint, 0);
 
         lv_obj_t * button_bar_0 = button_bar_create(lv_obj_0, "Abort", "", "Power", "Menu", icon_close, NULL, icon_power, icon_menu, COLOR_DANGER, COLOR_DARK_TEXT, COLOR_DANGER, COLOR_DARK_TEXT);
         lv_obj_set_width(button_bar_0, 480);

@@ -85,7 +85,7 @@
 					scrollable="false"
 				>
 					<style name="style_gender_icon_bg" />
-					<lv_image src="icon_lock" width="24" height="24">
+					<lv_image src="icon_gender_male" width="24" height="24">
 						<style name="style_gender_icon" />
 					</lv_image>
 				</column>
@@ -114,7 +114,7 @@
 					scrollable="false"
 				>
 					<style name="style_gender_icon_bg" />
-					<lv_image src="icon_bluetooth" width="24" height="24">
+					<lv_image src="icon_gender_female" width="24" height="24">
 						<style name="style_gender_icon" />
 					</lv_image>
 				</column>

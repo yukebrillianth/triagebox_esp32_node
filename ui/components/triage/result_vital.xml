@@ -1,0 +1,62 @@
+<component>
+	<previews>
+		<preview name="dark" width="104" height="89" style_bg_color="#color_dark_bg">
+			<set_subject name="subject_theme_dark" value="1" />
+		</preview>
+	</previews>
+
+	<!--
+    Result-screen-only vital tile. Figma node 16:1219 (Scan Result): 104x89, vertical
+    stack of icon 20x20 / value / caption, all centered. Deliberately NOT the shared
+    `vital_card` component, which is a horizontal 214x88 icon-left layout used by
+    Mengukur and Monitor. Two different Figma shapes -> two components.
+    -->
+	<api>
+		<prop name="icon" type="image" default="icon_vital_hr_sm" help="Vital icon (20x20 source)" />
+		<prop name="icon_color" type="color" default="#color_dark_text" help="Icon recolor (per-vital)" />
+		<prop name="value" type="string" default="--" help="Big readout value" />
+		<prop name="caption" type="string" default="Vital" help="Caption with unit, e.g. 'SpO2 %'" />
+	</api>
+
+	<styles>
+		<style
+			name="style_rv_card"
+			bg_color="#color_dark_panel"
+			bg_opa="100%"
+			radius="#radius_default"
+			pad_ver="10"
+			pad_hor="8"
+			pad_gap="4"
+			flex_main_place="center"
+			flex_cross_place="center"
+			border_width="0"
+			outline_width="0"
+			shadow_width="0"
+			text_color="#color_dark_text"
+		/>
+		<style name="style_rv_icon" image_recolor_opa="100%" width="20" height="20" />
+		<style name="style_rv_value" text_font="font_inter_bold_20" text_color="#color_dark_text" text_align="center" />
+		<style
+			name="style_rv_label"
+			text_font="font_inter_regular_12"
+			text_color="#color_text_secondary"
+			text_align="center"
+		/>
+	</styles>
+
+	<view extends="lv_obj" flex_flow="column" width="104" height="89" scrollable="false">
+		<style name="style_rv_card" />
+
+		<lv_image src="$icon" width="20" height="20" style_image_recolor="$icon_color">
+			<style name="style_rv_icon" />
+		</lv_image>
+
+		<lv_label name="lbl_value" text="$value" width="100%">
+			<style name="style_rv_value" />
+		</lv_label>
+
+		<lv_label name="lbl_caption" text="$caption" width="100%">
+			<style name="style_rv_label" />
+		</lv_label>
+	</view>
+</component>

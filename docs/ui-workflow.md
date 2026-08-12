@@ -61,7 +61,37 @@ Shared screen rules (already in XML):
 3. The 8 screens under `ui/screens/` (table above). Copy is Bahasa Indonesia, match Figma.
 4. Validate layout in the Editor live preview (human).
 
+## Interaction / logic (for the UI developer)
+
+You author XML; the interaction wiring is already hand-written C and stays out of the generated files.
+
+- **One dispatcher.** Every touch cell and every physical/keypad button calls `ui_action(screen, btn_id)` in `ui/logic/ui_action.c`. There is no second code path. To change what a button does, edit that screen's table there.
+- **Touch is auto-wired.** `ui/logic/ui_bindings.c` runs from `ui_init()` (via `ui.c`) after the Editor creates the screens. It finds each `button_bar_#` → `cell0..cell3` by name and attaches `LV_EVENT_CLICKED` → `ui_action`. It also wires Age `opt_6_17/18_45/46_60/60_plus` and Gender `opt_male/opt_female` clicks.
+- **The contract is the object name.** As long as your XML keeps the ButtonBar cells named `cell0..cell3` and the option rows named `opt_*`, clicking works with zero extra code. Rename a node → update the name list in `ui_bindings.c`.
+- **Age/Gender selection.** Up/Down (buttons 0/1) move the pending selection (`ui_nav_move_pending_age/gender`); the focused green card is re-applied every 50 ms by `ui_bindings_sync_selection()`. Select (button 3) commits and navigates. Touch a row directly to select it.
+- **Nav map** lives in `ui/logic/ui_action.c` per screen (Abort→Home, Restart→Scanning, Reset→Home, Stop→Result, Back Age→Berhasil, Back Gender→Age, …). Power/Menu are logged no-ops in v1.
+
+So: to make a button "do something", you never touch generated C — edit the action table. To make a new clickable thing, give it a stable `name=` in XML and add one `bind_option(...)` line.
+
+## Icon assets (Figma, pixel-exact)
+
+Real Figma glyphs live under `ui/images/icons/` as monochrome white PNGs at their Figma pixel size (bar/status/gender/monitor/warning = 24×24, vitals = 28×28, update = 12×12). Color comes from LVGL `image_recolor` at the use site, never baked in. Semantic symbols in `globals.xml`:
+
+| Symbol | Role | Symbol | Role |
+| --- | --- | --- | --- |
+| `icon_search` | Scan | `icon_gender_male` | Male ♂ |
+| `icon_close` | Abort | `icon_gender_female` | Female ♀ |
+| `icon_play` | Start | `icon_monitor` | Monitor (eye) |
+| `icon_refresh` | Restart / Reset | `icon_warning` | Triage warning |
+| `icon_chevron_up/down` | Up / Down (Age+Gender) | `icon_update` | Monitor update |
+| `icon_arrow_left` | Back | `icon_oxygen/heart_pulse/respiratory/blood_pressure` | Vitals |
+| `icon_check` | Select | `icon_power` / `icon_menu` | Power / Menu |
+| `icon_pause` | Stop | `icon_signal` | Link status |
+
+Re-exporting an icon: drop a white 24×24 (or Figma-size) PNG into `ui/images/icons/`, add/rename its `<data>` in `globals.xml`, reference it from XML, then full re-export.
+
 ## Compile and export code (full project) — human gate T23
+
 
 1. Open **`ui/`** in LVGL Pro Editor.
 2. **Ctrl+B**, hammer icon, or **Compile & export code**.
@@ -200,7 +230,8 @@ Expect `ALL_PASS` (or the printed screen walk) and exit 0. These do **not** need
 | **T23 full Pro export (HUMAN)** | XML for 8 screens + 3 triage components is in-tree. `file_list_gen.cmake` still only lists Pro template components + `screen_components_gen`. **No** `home_gen` … `monitor_gen`, **no** `status_bar_gen` / `button_bar_gen` / `vital_card_gen`. Blocked on Editor Ctrl+B. |
 | Partial / template-only gen | `ui.h` / `ui.c` / template `*_gen` may exist while triage gens are missing. Do not treat that as T23 complete. |
 | `globals_gen.*` | May be absent until a full export that emits them. |
-| Missing dedicated triage icons | Generic battery/wifi/heart stand-ins exist; some Figma glyphs still optional. |
+| Missing dedicated triage icons | Resolved: real Figma glyphs are in `ui/images/icons/`. Only battery/wifi state variants remain generic. |
+| **Pending re-export after icon swap** | `globals.xml` + screen XML now reference `icon_gender_male/female`, `icon_monitor`, `icon_warning`, `icon_update`, and chevron Up/Down on Age. The committed `*_gen.c` still hold the old symbols until the next Editor **Ctrl+B**. Sim builds and runs meanwhile, but Gender/Result/Monitor keep the old glyphs on screen. |
 | Pro CLI | Not available. Export is GUI-only. |
 | **T26 sim full walk** | Prep done: logic linked, keys 1-4/`p`/`c`, runtime timer. Full 8-screen walk still needs T23 export (`HAS_TRIAGE_SCREENS`). |
 | **F1–F4** | Follow-ups after export (fidelity / light theme / icons / polish as plan defines). |

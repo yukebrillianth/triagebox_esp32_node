@@ -23,6 +23,7 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list_separator/list_separator_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list/list_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/triage/button_bar_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/triage/result_vital_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/triage/status_bar_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/triage/vital_card_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h1/h1_gen.c
@@ -38,6 +39,7 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_h3_data.c
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_h4_data.c
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_h5_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/battery_charging_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/battery_empty_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/battery_full_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/battery_medium_data.c
@@ -47,53 +49,36 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_63657_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_161221_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_361488_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_arrow_down_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_arrow_left_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_arrow_right_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_arrow_up_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_battery_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_battery_full_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_bell_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_blood_pressure_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_bluetooth_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_calendar_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_camera_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_check_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_chevron_down_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_chevron_left_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_chevron_right_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_chevron_up_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_clock_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_close_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_download_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_edit_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_heart_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_gender_female_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_gender_male_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_heart_pulse_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_home_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_info_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_lock_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_mail_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_menu_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_minus_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_moon_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_monitor_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_oxygen_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_pause_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_play_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_plus_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_power_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_priority_delayed_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_priority_immediate_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_priority_minor_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_refresh_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_respiratory_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_rfid_scan_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_rfid_scan_lg_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_search_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_settings_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_signal_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_star_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_sun_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_trash_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_unlock_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_upload_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_user_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_volume_data.c
-  ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_update_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_vital_bp_sm_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_vital_hr_sm_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_vital_rr_sm_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/icon_vital_spo2_sm_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_high_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_low_data.c
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_zero_data.c

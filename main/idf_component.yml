@@ -1,4 +1,4 @@
 dependencies:
-  waveshare/esp32_s3_touch_lcd_4: "^3.0.0"
+  waveshare/esp32_s3_touch_lcd_4: "^1.1.0"
   lvgl/lvgl: "^9.5.0"
   espressif/esp_lvgl_port: "^2.8.0"

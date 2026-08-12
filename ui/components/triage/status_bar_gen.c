@@ -53,6 +53,8 @@ lv_obj_t * status_bar_create(lv_obj_t * parent, const void * battery_icon, const
         lv_style_set_bg_color(&style_status_bar, COLOR_DARK_BG);
         lv_style_set_bg_opa(&style_status_bar, (255 * 100 / 100));
         lv_style_set_pad_hor(&style_status_bar, 20);
+        lv_style_set_border_width(&style_status_bar, 0);
+        lv_style_set_radius(&style_status_bar, 0);
         lv_style_set_pad_ver(&style_status_bar, 12);
         lv_style_set_flex_cross_place(&style_status_bar, LV_FLEX_ALIGN_CENTER);
         lv_style_set_text_color(&style_status_bar, COLOR_DARK_TEXT);

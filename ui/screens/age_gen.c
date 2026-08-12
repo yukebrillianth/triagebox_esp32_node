@@ -178,7 +178,7 @@ lv_obj_t * age_create(void)
         lv_obj_set_width(lv_label_8, lv_pct(100));
         lv_obj_add_style(lv_label_8, &style_option_sub, 0);
 
-        lv_obj_t * button_bar_0 = button_bar_create(lv_obj_0, "Up", "Down", "Back", "Select", icon_arrow_up, icon_arrow_down, icon_arrow_left, icon_check, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT);
+        lv_obj_t * button_bar_0 = button_bar_create(lv_obj_0, "Up", "Down", "Back", "Select", icon_chevron_up, icon_chevron_down, icon_arrow_left, icon_check, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DARK_TEXT);
         lv_obj_set_width(button_bar_0, 480);
         lv_obj_set_height(button_bar_0, 71);
 

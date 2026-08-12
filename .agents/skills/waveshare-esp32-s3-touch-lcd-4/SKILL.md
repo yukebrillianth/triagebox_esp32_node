@@ -103,13 +103,13 @@ Current demos use **80 MHz** PSRAM. The wiki's 120 MHz tip is older/experimental
 | ESP-IDF | ≥ 5.3.1 (CI: 5.5.x / 6.0.x) |
 | Arduino-ESP32 | wiki 3.0.7; CI 3.3.11 |
 | LVGL | Arduino demos 8.4; ESP-IDF demos 8.4 **and 9.5** |
-| BSP | `waveshare/esp32_s3_touch_lcd_4` 3.0.0 |
+| BSP | `waveshare/esp32_s3_touch_lcd_4` — **version follows HW revision**: HW V3.0 → `^1.1.0` (TCA9554), HW V4.0 → `^2`/`3.x` (CH32V003 @ 0x24) |
 
-This project targets **LVGL v9**. Pin it in `idf_component.yml`:
+This project targets **LVGL v9** and the board in hand is **rev 3.0**. Pin in `idf_component.yml`:
 
 ```yaml
 dependencies:
-  waveshare/esp32_s3_touch_lcd_4: "^3.0.0"
+  waveshare/esp32_s3_touch_lcd_4: "^1.1.0"   # rev3.0 / TCA9554 — ^3.0.0 is V4.0 only
   lvgl/lvgl: "^9.5.0"
   espressif/esp_lvgl_port: "^2.8.0"
 ```

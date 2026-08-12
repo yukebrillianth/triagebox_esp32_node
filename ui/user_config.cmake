@@ -19,5 +19,9 @@
 # =============================================================================
 
 list(APPEND LV_EDITOR_PROJECT_SOURCES
-    # ${CMAKE_CURRENT_LIST_DIR}/my_file.c
+    ${CMAKE_CURRENT_LIST_DIR}/logic/ui_bindings.c
+    ${CMAKE_CURRENT_LIST_DIR}/logic/ui_action.c
+    ${CMAKE_CURRENT_LIST_DIR}/logic/ui_nav.c
+    ${CMAKE_CURRENT_LIST_DIR}/logic/ui_session.c
+    ${CMAKE_CURRENT_LIST_DIR}/logic/ui_types.c
 )

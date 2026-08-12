@@ -3,8 +3,11 @@
 #include <stdio.h>
 #include <time.h>
 
-const char *ui_status_battery_icon(uint8_t percent)
+const char *ui_status_battery_icon(uint8_t percent, bool charging)
 {
+	if (charging) {
+		return "battery_charging";
+	}
 	if (percent < 25) {
 		return "battery_empty";
 	}
