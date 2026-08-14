@@ -31,6 +31,8 @@ idf_component_register(
         spiffs
         triagebox_link
         triagebox_ml
+        triagebox_board
+        triagebox_debug
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE LV_LVGL_H_INCLUDE_SIMPLE LV_USE_XML=0)

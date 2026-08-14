@@ -26,6 +26,8 @@
 		<color name="color_accent_text" value="0xFFFFFF" help="Text/icon on accent" />
 		<color name="color_danger" value="0xfb2c36" help="Destructive / Power / RED" />
 		<color name="color_status_ok" value="0x00c950" help="Status OK indicator" />
+		<color name="color_status_warn" value="0xF0B100" help="Status degraded indicator (sebagian sensor mati)" />
+		<color name="color_status_error" value="0xfb2c36" help="Status failed indicator (tidak ada data / gagal)" />
 		<color name="color_track" value="0x9AA3B2" help="Neutral track" />
 		<!-- ─────────────────── <lvgl-figma-flow end="consts"/> ──────────────────── -->
 

@@ -99,14 +99,15 @@ lv_obj_t * vital_card_create(lv_obj_t * parent, const void * icon, lv_color_t ic
 
         lv_obj_t * row_0 = row_create(column_0, 0, SPACE_XS, 0, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_START);
         lv_obj_set_width(row_0, LV_SIZE_CONTENT);
-        lv_obj_t * lv_label_1 = lv_label_create(row_0);
-        lv_label_set_text(lv_label_1, value);
-        lv_obj_add_style(lv_label_1, &style_vital_value, 0);
+        lv_obj_t * lbl_value = lv_label_create(row_0);
+        lv_obj_set_name(lbl_value, "lbl_value");
+        lv_label_set_text(lbl_value, value);
+        lv_obj_add_style(lbl_value, &style_vital_value, 0);
 
-        lv_obj_t * lv_label_2 = lv_label_create(row_0);
-        lv_label_set_text(lv_label_2, unit);
-        lv_obj_set_flag(lv_label_2, LV_OBJ_FLAG_HIDDEN, !unit);
-        lv_obj_add_style(lv_label_2, &style_vital_unit, 0);
+        lv_obj_t * lv_label_1 = lv_label_create(row_0);
+        lv_label_set_text(lv_label_1, unit);
+        lv_obj_set_flag(lv_label_1, LV_OBJ_FLAG_HIDDEN, !unit);
+        lv_obj_add_style(lv_label_1, &style_vital_unit, 0);
 
         the_root = lv_obj_0;
     }

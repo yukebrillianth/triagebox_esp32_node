@@ -137,6 +137,14 @@ bool ui_check_target(uint32_t target);
  */
 #define COLOR_STATUS_OK lv_color_hex(0x00c950)
 /**
+ * Status degraded indicator (sebagian sensor mati)
+ */
+#define COLOR_STATUS_WARN lv_color_hex(0xF0B100)
+/**
+ * Status failed indicator (tidak ada data / gagal)
+ */
+#define COLOR_STATUS_ERROR lv_color_hex(0xfb2c36)
+/**
  * Neutral track
  */
 #define COLOR_TRACK lv_color_hex(0x9AA3B2)

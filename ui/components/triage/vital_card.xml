@@ -50,7 +50,7 @@
 
 			<!-- Value + Unit bawah -->
 			<row gap="#space_xs" vertical_align="end" pad="0" width="content">
-				<lv_label text="$value">
+				<lv_label name="lbl_value" text="$value">
 					<style name="style_vital_value" />
 				</lv_label>
 				<lv_label text="$unit" hidden="{!unit}">

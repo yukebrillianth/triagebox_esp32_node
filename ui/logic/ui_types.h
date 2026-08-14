@@ -28,6 +28,19 @@ typedef struct {
     bool present;
 } rfid_t;
 
+/*
+ * Health of the STM32 link, for the three Home status dots. The ESP32 cannot
+ * see the sensors or the LoRa radio directly — everything here is either
+ * reported by the STM32 in a STATUS frame or derived from frame arrival times.
+ */
+typedef struct {
+    uint8_t sensor_mask;    /* UI_SENSOR_* bits from ui_status.h; set = OK */
+    bool lora_ok;           /* as reported by the STM32 */
+    bool lora_reported;     /* false until the first STATUS frame arrives */
+    uint32_t link_age_ms;   /* since the last frame of any kind */
+    bool link_never_seen;   /* no frame has ever arrived */
+} link_status_t;
+
 typedef enum {
     UI_PRIORITY_RED,
     UI_PRIORITY_YELLOW,

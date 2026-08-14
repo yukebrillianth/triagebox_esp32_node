@@ -1,0 +1,13 @@
+menu "TriageBox debug"
+
+    config TB_DEBUG_CONSOLE
+        bool "Enable serial debug console (frame injection + stats)"
+        default n
+        help
+            Adds rfid/vital/status/btn/stats commands over USB Serial/JTAG so the
+            triage flow can be demoed and profiled without the STM32 attached.
+
+            Keep this OFF for anything a patient touches: it lets anyone connected
+            over USB fake vital signs and drive the UI.
+
+endmenu

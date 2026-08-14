@@ -25,3 +25,14 @@ CONFIG_LV_LOG_LEVEL_WARN=y
 CONFIG_LV_LOG_PRINTF=y
 CONFIG_ESP_TASK_WDT_INIT=n
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+# UART0's default console pins ARE the RS485 pins (boot log: "GPIO 44 and 43 are
+# used as console UART I/O pins"), so every log line would be injected onto the
+# STM32 link. Console goes to USB Serial/JTAG only; idf.py monitor still works
+# over the same USB-C.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_UART_DEFAULT=n
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+# Debug console (rfid/vital/status/btn/stats over USB) so the triage flow can be
+# demoed and profiled without the STM32. TURN THIS OFF before any real patient
+# use: it lets anyone on the USB port fake vital signs.
+CONFIG_TB_DEBUG_CONSOLE=y

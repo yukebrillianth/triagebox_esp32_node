@@ -73,7 +73,10 @@ static void dispatch(const tb_frame_t *f)
 
     case TB_FRAME_STATUS:
         if (f->len >= 2) {
-            tb_ui_source_on_status(f->payload[0], f->payload[1]);
+            /* 3rd byte (lora_ok) is optional so an older STM32 build still
+             * parses; -1 tells tb_ui_source "not reported". */
+            int lora = (f->len >= 3) ? (f->payload[2] != 0) : -1;
+            tb_ui_source_on_status(f->payload[0], f->payload[1], lora);
         }
         break;
 
@@ -95,6 +98,7 @@ static void rx_task(void *arg)
         for (int i = 0; i < n; i++) {
             tb_frame_t f;
             if (tb_frame_feed(&s_parser, buf[i], &f)) {
+                tb_ui_source_mark_frame();
                 dispatch(&f);
             }
         }

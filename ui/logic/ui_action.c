@@ -1,6 +1,7 @@
 #include "ui_action.h"
 
-#include <stdio.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 #include "ui_nav.h"
 #include "ui_session.h"
@@ -20,23 +21,58 @@ static void action_noop(void)
 {
 }
 
-static void action_power_menu_noop(uint8_t btn_id)
+static bool s_power_requested;
+static bool s_beep_requested;
+
+/* Only commit-type presses beep. In a disaster zone a click on every Up/Down
+ * is noise the operator would learn to ignore. */
+static void beep(void)
 {
-    /* Power (2) / Menu (3) — undefined in Figma flow. */
+    s_beep_requested = true;
+}
+
+bool ui_action_take_beep_request(void)
+{
+    bool req = s_beep_requested;
+
+    s_beep_requested = false;
+    return req;
+}
+
+static void action_power(uint8_t btn_id)
+{
+    /* Raise a request only. ui_bindings owns the confirm dialog so this file
+     * stays LVGL-free, and so a brushed button cannot kill a running measure. */
     (void)btn_id;
-    printf("ui_action: power/menu no-op (btn=%u screen=%d)\n",
-           (unsigned)btn_id, (int)ui_nav_current());
+    s_power_requested = true;
+}
+
+bool ui_action_take_power_request(void)
+{
+    bool req = s_power_requested;
+
+    s_power_requested = false;
+    return req;
+}
+
+static void action_menu_noop(uint8_t btn_id)
+{
+    /* Menu (3) — undefined in the Figma flow. */
+    (void)btn_id;
 }
 
 static void home_action(uint8_t btn_id)
 {
     switch (btn_id) {
     case 1: /* Scan */
+        beep();
         ui_nav_go(UI_SCREEN_SCANNING);
         break;
     case 2: /* Power */
+        action_power(btn_id);
+        break;
     case 3: /* Menu */
-        action_power_menu_noop(btn_id);
+        action_menu_noop(btn_id);
         break;
     default: /* 0 empty */
         action_noop();
@@ -50,9 +86,11 @@ static void scanning_action(uint8_t btn_id)
     case 0: /* Abort → Home */
         ui_nav_go(UI_SCREEN_HOME);
         break;
-    case 2:
-    case 3:
-        action_power_menu_noop(btn_id);
+    case 2: /* Power */
+        action_power(btn_id);
+        break;
+    case 3: /* Menu */
+        action_menu_noop(btn_id);
         break;
     default: /* 1 empty */
         action_noop();
@@ -64,14 +102,18 @@ static void berhasil_action(uint8_t btn_id)
 {
     switch (btn_id) {
     case 0: /* Start → Age */
+        beep();
         ui_nav_go(UI_SCREEN_AGE);
         break;
     case 1: /* Restart → Scanning (clear RFID/session) */
+        beep();
         ui_nav_go(UI_SCREEN_SCANNING);
         break;
-    case 2:
-    case 3:
-        action_power_menu_noop(btn_id);
+    case 2: /* Power */
+        action_power(btn_id);
+        break;
+    case 3: /* Menu */
+        action_menu_noop(btn_id);
         break;
     default:
         action_noop();
@@ -92,6 +134,7 @@ static void age_action(uint8_t btn_id)
         ui_nav_go(UI_SCREEN_BERHASIL);
         break;
     case 3: /* Select → Gender; commit pending age */
+        beep();
         ui_session_set_age(ui_nav_pending_age());
         ui_nav_go(UI_SCREEN_GENDER);
         break;
@@ -114,6 +157,7 @@ static void gender_action(uint8_t btn_id)
         ui_nav_go(UI_SCREEN_AGE);
         break;
     case 3: /* Select → Mengukur; commit pending gender */
+        beep();
         ui_session_set_gender(ui_nav_pending_gender());
         ui_nav_go(UI_SCREEN_MENGUKUR);
         break;
@@ -129,9 +173,11 @@ static void mengukur_action(uint8_t btn_id)
     case 0: /* Abort → Home */
         ui_nav_go(UI_SCREEN_HOME);
         break;
-    case 2:
-    case 3:
-        action_power_menu_noop(btn_id);
+    case 2: /* Power */
+        action_power(btn_id);
+        break;
+    case 3: /* Menu */
+        action_menu_noop(btn_id);
         break;
     default: /* 1 empty */
         action_noop();
@@ -146,11 +192,14 @@ static void result_action(uint8_t btn_id)
         ui_nav_go(UI_SCREEN_MONITOR);
         break;
     case 1: /* Reset → Home + session clear (ui_nav_go HOME resets) */
+        beep();
         ui_nav_go(UI_SCREEN_HOME);
         break;
-    case 2:
-    case 3:
-        action_power_menu_noop(btn_id);
+    case 2: /* Power */
+        action_power(btn_id);
+        break;
+    case 3: /* Menu */
+        action_menu_noop(btn_id);
         break;
     default:
         action_noop();
@@ -165,11 +214,14 @@ static void monitor_action(uint8_t btn_id)
         ui_nav_go(UI_SCREEN_RESULT);
         break;
     case 1: /* Stop → Result */
+        beep();
         ui_nav_go(UI_SCREEN_RESULT);
         break;
-    case 2:
-    case 3:
-        action_power_menu_noop(btn_id);
+    case 2: /* Power */
+        action_power(btn_id);
+        break;
+    case 3: /* Menu */
+        action_menu_noop(btn_id);
         break;
     default:
         action_noop();

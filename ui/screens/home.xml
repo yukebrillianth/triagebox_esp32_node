@@ -101,26 +101,26 @@
 
 			<row gap="16" pad="0" horizontal_align="center" vertical_align="start" style_margin_top="32">
 				<column gap="6" pad="0" horizontal_align="center">
-					<lv_obj>
+					<lv_obj name="stat_dot_sys">
 						<style name="style_home_status_dot" />
 					</lv_obj>
-					<lv_label text="Sistem OK" width="50" height="15">
+					<lv_label name="stat_text_sys" text="Sistem OK" width="content" height="15">
 						<style name="style_home_status_text" />
 					</lv_label>
 				</column>
 				<column gap="6" pad="0" horizontal_align="center">
-					<lv_obj>
+					<lv_obj name="stat_dot_sensor">
 						<style name="style_home_status_dot" />
 					</lv_obj>
-					<lv_label text="Sensor OK" width="51" height="15">
+					<lv_label name="stat_text_sensor" text="Sensor OK" width="content" height="15">
 						<style name="style_home_status_text" />
 					</lv_label>
 				</column>
 				<column gap="6" pad="0" horizontal_align="center">
-					<lv_obj>
+					<lv_obj name="stat_dot_lora">
 						<style name="style_home_status_dot" />
 					</lv_obj>
-					<lv_label text="LoRa OK" width="42" height="15">
+					<lv_label name="stat_text_lora" text="LoRa OK" width="content" height="15">
 						<style name="style_home_status_text" />
 					</lv_label>
 				</column>

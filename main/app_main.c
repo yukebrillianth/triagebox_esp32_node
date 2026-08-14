@@ -5,7 +5,9 @@
 #include "esp_spiffs.h"
 
 #include "asset_fs.h"
+#include "tb_debug.h"
 #include "tb_link.h"
+#include "ui_board.h"
 
 #include "ui.h"
 #include "ui_input.h"
@@ -96,6 +98,10 @@ void app_main(void)
         return;
     }
 
+    /* Needs the I2C bus the display brought up. Enables the backlight and puts
+     * the buzzer in a known-quiet state before any screen appears. */
+    ui_board_init();
+
 
     asset_fs_init();
     ui_init(ASSET_LVGL_PATH);
@@ -115,4 +121,10 @@ void app_main(void)
 
     ESP_LOGI(TAG, "TriageBox UI up on %dx%d", (int)lv_display_get_horizontal_resolution(disp),
              (int)lv_display_get_vertical_resolution(disp));
+
+#if CONFIG_TB_DEBUG_CONSOLE
+    /* Last: the REPL takes over stdin, and it needs the UI already running so
+     * injected frames land on live screens. */
+    tb_debug_console_start();
+#endif
 }

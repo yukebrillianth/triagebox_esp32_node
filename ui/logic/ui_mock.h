@@ -54,4 +54,10 @@ void ui_mock_cycle_priority(void);
 void ui_mock_push_button(uint8_t index, bool pressed);
 bool ui_mock_pop_button(btn_event_t *out);
 
+/* Health of the STM32 link, for the Home status dots. */
+void ui_mock_get_link_status(link_status_t *out);
+
+/* Operator confirmed power-off: tell the STM32, which owns the power hold. */
+void ui_mock_power_off(void);
+
 #endif /* UI_LOGIC_UI_MOCK_H */

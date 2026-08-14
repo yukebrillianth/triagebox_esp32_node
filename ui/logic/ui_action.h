@@ -1,6 +1,7 @@
 #ifndef UI_LOGIC_UI_ACTION_H
 #define UI_LOGIC_UI_ACTION_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "ui_nav.h"
@@ -21,5 +22,21 @@ void ui_action(ui_screen_id_t screen, uint8_t btn_id);
 
 /* Map LV_KEY_* → btn 0..3 on the current screen, then call ui_action. */
 void ui_action_on_key(uint32_t lv_key);
+
+/*
+ * Power is confirmed, not immediate: losing a running measurement because the
+ * button was brushed would throw away a patient's triage. ui_action only raises
+ * the request; ui_bindings shows the dialog and calls ui_mock_power_off() on
+ * confirm. Kept as a flag so this file stays LVGL-free.
+ */
+bool ui_action_take_power_request(void);
+
+/*
+ * True once if the last action was a commit-type press worth a beep (Scan,
+ * Start, Select, Stop, Reset) rather than list navigation. Raised here, not in
+ * the touch callback, so physical buttons and touch beep identically — same
+ * reason ui_action() is the single dispatcher.
+ */
+bool ui_action_take_beep_request(void);
 
 #endif /* UI_LOGIC_UI_ACTION_H */

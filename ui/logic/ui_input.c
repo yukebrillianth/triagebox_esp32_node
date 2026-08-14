@@ -1,6 +1,7 @@
 #include "lvgl.h"
 
 #include "ui_input.h"
+#include "ui_action.h"
 #include "ui_mock.h"
 #include "ui_types.h"
 
@@ -26,6 +27,15 @@ static void keypad_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         s_last_key = s_button_keys[event.index];
         data->key = s_last_key;
         data->state = event.pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+
+        /*
+         * Dispatch here as well as handing the key to LVGL. The bottom
+         * ButtonBar is a fixed action bar, not a focus group (AGENTS.md), so no
+         * widget is focused and LVGL alone would drop the key -- physical
+         * buttons did nothing at all before this. Same ui_action() the touch
+         * handler uses, so both paths stay identical.
+         */
+        if(event.pressed) ui_action_on_key(s_last_key);
     }
 }
 

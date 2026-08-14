@@ -29,6 +29,10 @@ static bool s_btn_pending;
 static btn_event_t s_btn;
 
 static uint8_t s_sensor_mask;
+static bool s_lora_ok;
+static bool s_lora_reported;
+static uint32_t s_last_frame_ms;
+static bool s_frame_seen;
 
 /* Measure window state, owned by the LVGL task only — no lock needed. */
 static uint32_t s_now_ms;
@@ -81,12 +85,24 @@ void tb_ui_source_on_rfid(const rfid_t *r)
     portEXIT_CRITICAL(&s_mux);
 }
 
-void tb_ui_source_on_status(uint8_t sensor_ok_mask, uint8_t battery)
+void tb_ui_source_on_status(uint8_t sensor_ok_mask, uint8_t battery, int lora_ok)
 {
     portENTER_CRITICAL(&s_mux);
     s_sensor_mask = sensor_ok_mask;
     /* Battery also rides on VITAL, but STATUS keeps arriving while idle. */
     s_vitals.battery = battery;
+    if (lora_ok >= 0) {
+        s_lora_ok = (lora_ok != 0);
+        s_lora_reported = true;
+    }
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void tb_ui_source_mark_frame(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_last_frame_ms = s_now_ms;
+    s_frame_seen = true;
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -107,6 +123,10 @@ void ui_mock_init(void)
     s_btn_pending = false;
     memset(&s_btn, 0, sizeof(s_btn));
     s_sensor_mask = 0;
+    s_lora_ok = false;
+    s_lora_reported = false;
+    s_last_frame_ms = 0;
+    s_frame_seen = false;
     portEXIT_CRITICAL(&s_mux);
 
     s_now_ms = 0;
@@ -279,4 +299,38 @@ bool ui_mock_pop_button(btn_event_t *out)
     portEXIT_CRITICAL(&s_mux);
 
     return pending;
+}
+
+void ui_mock_get_link_status(link_status_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    portENTER_CRITICAL(&s_mux);
+    out->sensor_mask = s_sensor_mask;
+    out->lora_ok = s_lora_ok;
+    out->lora_reported = s_lora_reported;
+    out->link_age_ms = s_frame_seen ? (s_now_ms - s_last_frame_ms) : 0U;
+    out->link_never_seen = !s_frame_seen;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void ui_mock_power_off(void)
+{
+    /*
+     * The STM32 owns the power rail (EXIO5/SYS_EN is behind the IO expander, and
+     * bsp_io_expander_init() is never called), so the ESP32 cannot cut its own
+     * power. This is a request. With no STM32 attached the bytes go into the
+     * UART FIFO and nothing happens -- log unconditionally so that silence is
+     * diagnosable instead of looking like a dead button.
+     */
+    esp_err_t err = tb_link_send_cmd(TB_CMD_POWER_OFF);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "POWER_OFF sent to STM32 (frames_ok=%u) -- if nothing "
+                      "happens the STM32 is not attached or ignores it",
+                 (unsigned)tb_link_frames_ok());
+    } else {
+        ESP_LOGW(TAG, "POWER_OFF not sent: %s", esp_err_to_name(err));
+    }
 }

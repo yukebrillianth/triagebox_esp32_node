@@ -163,34 +163,40 @@ lv_obj_t * home_create(void)
         lv_obj_t * row_0 = row_create(home_content, 0, 16, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_margin_top(row_0, 32, 0);
         lv_obj_t * column_1 = column_create(row_0, 0, 6, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-        lv_obj_t * lv_obj_2 = lv_obj_create(column_1);
-        lv_obj_add_style(lv_obj_2, &style_home_status_dot, 0);
+        lv_obj_t * stat_dot_sys = lv_obj_create(column_1);
+        lv_obj_set_name(stat_dot_sys, "stat_dot_sys");
+        lv_obj_add_style(stat_dot_sys, &style_home_status_dot, 0);
 
-        lv_obj_t * lv_label_2 = lv_label_create(column_1);
-        lv_label_set_text(lv_label_2, "Sistem OK");
-        lv_obj_set_width(lv_label_2, 50);
-        lv_obj_set_height(lv_label_2, 15);
-        lv_obj_add_style(lv_label_2, &style_home_status_text, 0);
+        lv_obj_t * stat_text_sys = lv_label_create(column_1);
+        lv_obj_set_name(stat_text_sys, "stat_text_sys");
+        lv_label_set_text(stat_text_sys, "Sistem OK");
+        lv_obj_set_width(stat_text_sys, LV_SIZE_CONTENT);
+        lv_obj_set_height(stat_text_sys, 15);
+        lv_obj_add_style(stat_text_sys, &style_home_status_text, 0);
 
         lv_obj_t * column_2 = column_create(row_0, 0, 6, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-        lv_obj_t * lv_obj_3 = lv_obj_create(column_2);
-        lv_obj_add_style(lv_obj_3, &style_home_status_dot, 0);
+        lv_obj_t * stat_dot_sensor = lv_obj_create(column_2);
+        lv_obj_set_name(stat_dot_sensor, "stat_dot_sensor");
+        lv_obj_add_style(stat_dot_sensor, &style_home_status_dot, 0);
 
-        lv_obj_t * lv_label_3 = lv_label_create(column_2);
-        lv_label_set_text(lv_label_3, "Sensor OK");
-        lv_obj_set_width(lv_label_3, 51);
-        lv_obj_set_height(lv_label_3, 15);
-        lv_obj_add_style(lv_label_3, &style_home_status_text, 0);
+        lv_obj_t * stat_text_sensor = lv_label_create(column_2);
+        lv_obj_set_name(stat_text_sensor, "stat_text_sensor");
+        lv_label_set_text(stat_text_sensor, "Sensor OK");
+        lv_obj_set_width(stat_text_sensor, LV_SIZE_CONTENT);
+        lv_obj_set_height(stat_text_sensor, 15);
+        lv_obj_add_style(stat_text_sensor, &style_home_status_text, 0);
 
         lv_obj_t * column_3 = column_create(row_0, 0, 6, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-        lv_obj_t * lv_obj_4 = lv_obj_create(column_3);
-        lv_obj_add_style(lv_obj_4, &style_home_status_dot, 0);
+        lv_obj_t * stat_dot_lora = lv_obj_create(column_3);
+        lv_obj_set_name(stat_dot_lora, "stat_dot_lora");
+        lv_obj_add_style(stat_dot_lora, &style_home_status_dot, 0);
 
-        lv_obj_t * lv_label_4 = lv_label_create(column_3);
-        lv_label_set_text(lv_label_4, "LoRa OK");
-        lv_obj_set_width(lv_label_4, 42);
-        lv_obj_set_height(lv_label_4, 15);
-        lv_obj_add_style(lv_label_4, &style_home_status_text, 0);
+        lv_obj_t * stat_text_lora = lv_label_create(column_3);
+        lv_obj_set_name(stat_text_lora, "stat_text_lora");
+        lv_label_set_text(stat_text_lora, "LoRa OK");
+        lv_obj_set_width(stat_text_lora, LV_SIZE_CONTENT);
+        lv_obj_set_height(stat_text_lora, 15);
+        lv_obj_add_style(stat_text_lora, &style_home_status_text, 0);
 
         lv_obj_t * button_bar_0 = button_bar_create(lv_obj_0, "", "Scan", "Power", "Menu", NULL, icon_search, icon_power, icon_menu, COLOR_DARK_TEXT, COLOR_DARK_TEXT, COLOR_DANGER, COLOR_DARK_TEXT);
         lv_obj_set_width(button_bar_0, 480);

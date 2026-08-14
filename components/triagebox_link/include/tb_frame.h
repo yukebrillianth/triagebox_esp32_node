@@ -30,7 +30,7 @@ typedef enum {
     TB_FRAME_VITAL  = 0x01, /* hr,spo2,rr,bp_sys,bp_dia:u16 + battery:u8 + flags:u8 */
     TB_FRAME_BUTTON = 0x02, /* index:u8 (0..3) + pressed:u8 */
     TB_FRAME_RFID   = 0x03, /* tag[len] ASCII, len <= 31, not NUL-terminated */
-    TB_FRAME_STATUS = 0x04, /* sensor_ok:u8 bitmask + battery:u8 */
+    TB_FRAME_STATUS = 0x04, /* sensor_ok:u8 bitmask + battery:u8 [+ lora_ok:u8] */
     TB_FRAME_CMD    = 0x10, /* cmd:u8, see tb_cmd_t */
     TB_FRAME_RESULT = 0x11  /* priority:u8 (LoRa order!) + confidence:u8 (0..100) + tag[] */
 } tb_frame_kind_t;

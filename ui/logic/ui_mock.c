@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "ui_status.h" /* UI_SENSOR_* bits */
+
 /* Fixed mock RFID for all QA (matches backend demo seed). */
 static const char k_mock_rfid[] = "3021";
 
@@ -215,4 +217,25 @@ bool ui_mock_pop_button(btn_event_t *out)
     }
     s_btn_pending = false;
     return true;
+}
+
+void ui_mock_get_link_status(link_status_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    /* Desktop QA has no STM32: report a fully healthy link so the Home dots
+     * are exercised in their green state. The device implementation in
+     * tb_ui_source.c reports what actually arrived. */
+    out->sensor_mask = UI_SENSOR_ALL;
+    out->lora_ok = true;
+    out->lora_reported = true;
+    out->link_age_ms = 0;
+    out->link_never_seen = false;
+}
+
+void ui_mock_power_off(void)
+{
+    /* Nothing to power down in the sim; the device build sends POWER_OFF to the
+     * STM32, which holds the rail. */
 }

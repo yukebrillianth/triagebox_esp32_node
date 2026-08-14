@@ -138,20 +138,21 @@ endif()
 # Hand-written logic (platform-neutral). Selftests are host-only — not linked.
 set(UI_LOGIC_DIR "${UI_DIR}/logic")
 set(UI_LOGIC_SOURCES
-  ${UI_LOGIC_DIR}/ui_mock.c
   ${UI_LOGIC_DIR}/ui_runtime.c
-  ${UI_LOGIC_DIR}/ui_status.c
   ${UI_LOGIC_DIR}/ui_input.c
 )
-# ui_types/session/nav/action live in ui/user_config.cmake so the Editor preview
-# can link ui_bindings.c. When lib-ui is present they arrive via lib-ui_user;
-# adding them here too would be a duplicate symbol.
+# ui_types/session/nav/action/status/mock live in ui/user_config.cmake so the
+# Editor preview can link ui_bindings.c. When lib-ui is present they arrive via
+# lib-ui_user; adding them here too would be a duplicate symbol.
 if(NOT UI_LIB)
   list(APPEND UI_LOGIC_SOURCES
     ${UI_LOGIC_DIR}/ui_types.c
     ${UI_LOGIC_DIR}/ui_session.c
     ${UI_LOGIC_DIR}/ui_nav.c
     ${UI_LOGIC_DIR}/ui_action.c
+    ${UI_LOGIC_DIR}/ui_status.c
+    ${UI_LOGIC_DIR}/ui_mock.c
+    ${UI_LOGIC_DIR}/ui_board_stub.c
   )
 endif()
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${UI_LOGIC_SOURCES})
