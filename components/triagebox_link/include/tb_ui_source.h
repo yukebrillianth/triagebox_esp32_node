@@ -21,6 +21,13 @@ void tb_ui_source_on_status(uint8_t sensor_ok_mask, uint8_t battery, int lora_ok
 /* Latest sensor-OK bitmask from TB_FRAME_STATUS (0 until the first frame). */
 uint8_t tb_ui_source_sensor_mask(void);
 
+/*
+ * Button events the queue had to refuse. Non-zero means the UI stopped draining
+ * (LVGL task blocked) -- not that the operator pressed too fast. Surfaced by the
+ * `stats` console command.
+ */
+uint32_t tb_ui_source_buttons_dropped(void);
+
 /* Called by the RX task on every accepted frame so the "Sistem" dot can tell
  * a live STM32 from a silent one. */
 void tb_ui_source_mark_frame(void);

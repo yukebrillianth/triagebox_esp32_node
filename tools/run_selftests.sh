@@ -30,6 +30,13 @@ run components/triagebox_link/tb_frame_selftest.c \
     components/triagebox_link/tb_frame.c \
     ui/logic/ui_types.c
 
+# Snapshot decode + button state-to-edge diff. tb_i2c_codec.c is deliberately
+# ESP-IDF-free so the real file runs here, not a copy.
+run components/triagebox_link/tb_i2c_codec_selftest.c \
+    components/triagebox_link/tb_i2c_codec_selftest.c \
+    components/triagebox_link/tb_i2c_codec.c \
+    ui/logic/ui_types.c
+
 run components/triagebox_ml/tb_svm_selftest.c \
     components/triagebox_ml/tb_svm_selftest.c \
     components/triagebox_ml/tb_svm.c

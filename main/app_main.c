@@ -6,7 +6,7 @@
 
 #include "asset_fs.h"
 #include "tb_debug.h"
-#include "tb_link.h"
+#include "tb_link_i2c.h"
 #include "ui_board.h"
 
 #include "ui.h"
@@ -73,11 +73,6 @@ void app_main(void)
 
     ESP_ERROR_CHECK(mount_assets());
 
-    /* Before ui_runtime_init(): the RX task must be draining the line before
-     * the UI starts polling, or the STM32's first frames are lost. A missing
-     * STM32 is not fatal — no frames simply means the UI idles on Home. */
-    ESP_ERROR_CHECK(tb_link_start());
-
     ui_runtime_init();
 
     /* Default lvgl_port task_stack (7168) overflows once tiny_ttf rasterizes
@@ -101,6 +96,20 @@ void app_main(void)
     /* Needs the I2C bus the display brought up. Enables the backlight and puts
      * the buzzer in a known-quiet state before any screen appears. */
     ui_board_init();
+
+    /*
+     * The STM32 link shares that same I2C bus, so it cannot start any earlier
+     * than this -- bsp_i2c_get_handle() is only valid once the display is up.
+     * That is a change from the RS485 transport, which owned its own UART and
+     * started before the display.
+     *
+     * Still before the first screen loads, so the Home status dots have real
+     * data on their first paint. Not fatal if the STM32 is absent: polls fail,
+     * the dots show the link down, and the UI runs.
+     */
+    if (tb_link_start() != ESP_OK) {
+        ESP_LOGW(TAG, "STM32 link did not start -- UI will run without vitals");
+    }
 
 
     asset_fs_init();

@@ -22,7 +22,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "tb_link.h"
+#include "tb_i2c_codec.h"
+#include "tb_link_i2c.h"
 #include "tb_svm.h"
 #include "tb_ui_source.h"
 #include "ui_mock.h"
@@ -109,10 +110,11 @@ static const char *i2c_known(uint8_t addr)
     case 0x21: case 0x22: case 0x23:
     case 0x24: case 0x25: case 0x26: case 0x27: return "TCA9554 expander (strapped)";
     case 0x3c: return "SW6106 PMIC (datasheet 9.17: slave address 0x3C)";
+    case 0x42: return "STM32F411 link slave (tb_regs.h) -- try `i2clink`";
     case 0x51: return "PCF85063A RTC";
     case 0x5d: return "GT911 touch";
     case 0x6a: case 0x6b: return "QMI8658 IMU -- marked NC on V3.0, so unexpected";
-    default:   return "unknown -- STM32F411? something on the Interface header?";
+    default:   return "unknown -- something on the Interface header?";
     }
 }
 
@@ -458,9 +460,107 @@ static int cmd_stats(int argc, char **argv)
     }
 
     printf("\n--- link ---\n");
-    printf("frames_ok=%u crc_errors=%u\n",
-           (unsigned)tb_link_frames_ok(), (unsigned)tb_link_crc_errors());
+    printf("polls_ok=%u polls_failed=%u btn_dropped=%u\n",
+           (unsigned)tb_link_frames_ok(), (unsigned)tb_link_crc_errors(),
+           (unsigned)tb_ui_source_buttons_dropped());
     printf("\n");
+    return 0;
+}
+
+/*
+ * Read and decode the STM32's whole snapshot in one shot. `i2creg 0x42 0 48`
+ * would show the same bytes, but reading hex and applying tb_regs.h offsets by
+ * hand is exactly where mistakes happen -- and this also proves the ESP32's
+ * decode path agrees with the STM32's layout, which raw hex cannot.
+ *
+ * Read-only, like every other I2C command here.
+ */
+static int cmd_i2clink(int argc, char **argv)
+{
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_dev_handle_t dev = NULL;
+    uint8_t raw[TB_REG_READ_END];
+    uint8_t reg = TB_REG_PROTO_VER;
+    vitals_t v;
+    esp_err_t err;
+    const i2c_device_config_t cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = TB_I2C_SLAVE_ADDR,
+        .scl_speed_hz = 100000,
+    };
+
+    (void)argc;
+    (void)argv;
+
+    if (bus == NULL) {
+        printf("i2c bus not up\n");
+        return 1;
+    }
+    /* Own handle rather than reusing the poll task's: this must work even if
+     * tb_link_start() failed, which is precisely when it is most useful. */
+    err = i2c_master_bus_add_device(bus, &cfg, &dev);
+    if (err != ESP_OK) {
+        printf("add_device failed: %s\n", esp_err_to_name(err));
+        return 1;
+    }
+
+    err = i2c_master_transmit_receive(dev, &reg, 1, raw, sizeof(raw), 200);
+    if (err != ESP_OK) {
+        printf("read failed: %s\n", esp_err_to_name(err));
+        printf("  check SDA=GPIO15->PB3, SCL=GPIO7->PB10, and that the STM32\n"
+               "  is running (not halted at a breakpoint).\n");
+        (void)i2c_master_bus_rm_device(dev);
+        return 1;
+    }
+
+    printf("proto_ver : 0x%02x %s\n", raw[TB_REG_PROTO_VER],
+           (raw[TB_REG_PROTO_VER] == TB_PROTO_VER) ? "(ok)"
+                                                   : "(MISMATCH -- tb_regs.h "
+                                                     "differs from the STM32)");
+    printf("seq       : %u   (must change between calls, or the superloop is stuck)\n",
+           raw[TB_REG_SEQ]);
+    printf("flags     : 0x%02x  hr=%d spo2=%d rr=%d bp=%d measuring=%d\n",
+           raw[TB_REG_FLAGS],
+           (raw[TB_REG_FLAGS] & TB_FLAG_HR_VALID) ? 1 : 0,
+           (raw[TB_REG_FLAGS] & TB_FLAG_SPO2_VALID) ? 1 : 0,
+           (raw[TB_REG_FLAGS] & TB_FLAG_RR_VALID) ? 1 : 0,
+           (raw[TB_REG_FLAGS] & TB_FLAG_BP_VALID) ? 1 : 0,
+           (raw[TB_REG_FLAGS] & TB_FLAG_MEASURING) ? 1 : 0);
+    printf("buttons   : 0x%02x  [%c%c%c%c]  (1=pressed, left to right)\n",
+           raw[TB_REG_BUTTONS],
+           (raw[TB_REG_BUTTONS] & TB_BTN_1) ? '1' : '.',
+           (raw[TB_REG_BUTTONS] & TB_BTN_2) ? '2' : '.',
+           (raw[TB_REG_BUTTONS] & TB_BTN_3) ? '3' : '.',
+           (raw[TB_REG_BUTTONS] & TB_BTN_4) ? '4' : '.');
+    printf("sensor_ok : 0x%02x  ecg=%d max30102=%d mic=%d rfid=%d lora=%d\n",
+           raw[TB_REG_SENSOR_OK],
+           (raw[TB_REG_SENSOR_OK] & TB_SENSOR_ECG) ? 1 : 0,
+           (raw[TB_REG_SENSOR_OK] & TB_SENSOR_MAX30102) ? 1 : 0,
+           (raw[TB_REG_SENSOR_OK] & TB_SENSOR_MIC) ? 1 : 0,
+           (raw[TB_REG_SENSOR_OK] & TB_SENSOR_RFID) ? 1 : 0,
+           (raw[TB_REG_SENSOR_OK] & TB_SENSOR_LORA) ? 1 : 0);
+    printf("battery   : %u%s\n", raw[TB_REG_BATTERY],
+           (raw[TB_REG_BATTERY] == 0xFFU) ? " (not measured)" : "%");
+
+    if (tb_i2c_decode_vitals(raw, &v)) {
+        printf("decoded   : hr=%u spo2=%u rr=%u bp=%u/%u valid=%d\n",
+               v.hr, v.spo2, v.rr, v.bp_sys, v.bp_dia, (int)v.valid);
+    } else {
+        printf("decoded   : REFUSED (proto_ver mismatch)\n");
+    }
+
+    if (raw[TB_REG_RFID_LEN] > 0U) {
+        uint8_t n = raw[TB_REG_RFID_LEN];
+        if (n > TB_RFID_MAX) {
+            n = TB_RFID_MAX;
+        }
+        printf("rfid      : %u bytes \"%.*s\"\n", raw[TB_REG_RFID_LEN], (int)n,
+               (const char *)&raw[TB_REG_RFID]);
+    } else {
+        printf("rfid      : none\n");
+    }
+
+    (void)i2c_master_bus_rm_device(dev);
     return 0;
 }
 
@@ -483,6 +583,7 @@ void tb_debug_console_start(void)
         {.command = "i2creg", .help = "Read regs: i2creg <addr> <reg> [count] [split]", .func = cmd_i2creg},
         {.command = "i2craw", .help = "Read with no reg pointer: i2craw <addr> [count]", .func = cmd_i2craw},
         {.command = "i2cdump", .help = "Dump reg space: i2cdump <addr> [start] [end]", .func = cmd_i2cdump},
+        {.command = "i2clink", .help = "Read + decode the STM32 snapshot at 0x42", .func = cmd_i2clink},
         {.command = "stats",  .help = "CPU/heap/stack report",                   .func = cmd_stats},
     };
 

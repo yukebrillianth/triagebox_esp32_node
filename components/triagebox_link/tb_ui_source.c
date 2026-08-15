@@ -8,7 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "tb_link.h"
+#include "tb_link_i2c.h"
 #include "tb_svm.h"
 #include "tb_ui_source.h"
 #include "ui_board.h"
@@ -26,8 +26,21 @@ static bool s_have_vitals;
 static rfid_t s_rfid;
 static bool s_rfid_ready;
 
-static bool s_btn_pending;
-static btn_event_t s_btn;
+/*
+ * Button events, ring buffer. The I2C link publishes a STATE bitmask, so one
+ * poll can legitimately yield up to 4 edges at once (two fingers, or a poll
+ * missed while the LVGL task was busy). A single slot silently dropped all but
+ * the last, which on the Age/Gender screens shows up as a key that "sometimes
+ * does nothing" -- the worst kind of bug to chase.
+ *
+ * 8 is two full press+release cycles on all four keys: more than a human can
+ * generate inside one 50 ms tick, and 96 bytes.
+ */
+#define BTN_QUEUE_LEN 8U
+static btn_event_t s_btn_q[BTN_QUEUE_LEN];
+static uint8_t s_btn_head; /* next write */
+static uint8_t s_btn_tail; /* next read */
+static uint32_t s_btn_dropped;
 
 static uint8_t s_sensor_mask;
 static bool s_lora_ok;
@@ -61,18 +74,30 @@ void tb_ui_source_on_vital(const vitals_t *v)
 
 void tb_ui_source_on_button(uint8_t index, bool pressed)
 {
-    /* Single slot, same as the mock: the UI drains it every 50 ms and a human
-     * cannot press faster. ponytail: ceiling is one event per LVGL tick —
-     * switch to a FreeRTOS queue if the STM32 ever bursts BUTTON frames. */
+    uint8_t next;
+
     if (index > 3U) {
         return;
     }
     portENTER_CRITICAL(&s_mux);
-    s_btn.index = index;
-    s_btn.pressed = pressed;
-    s_btn.timestamp_ms = s_now_ms;
-    s_btn_pending = true;
+    next = (uint8_t)((s_btn_head + 1U) % BTN_QUEUE_LEN);
+    if (next == s_btn_tail) {
+        /* Full. Drop the NEWEST rather than overwriting the oldest: the UI is
+         * mid-sequence on the events already queued, and reordering them would
+         * be worse than losing one. Counted so it is not silent. */
+        ++s_btn_dropped;
+    } else {
+        s_btn_q[s_btn_head].index = index;
+        s_btn_q[s_btn_head].pressed = pressed;
+        s_btn_q[s_btn_head].timestamp_ms = s_now_ms;
+        s_btn_head = next;
+    }
     portEXIT_CRITICAL(&s_mux);
+}
+
+uint32_t tb_ui_source_buttons_dropped(void)
+{
+    return s_btn_dropped;
 }
 
 void tb_ui_source_on_rfid(const rfid_t *r)
@@ -121,8 +146,10 @@ void ui_mock_init(void)
     s_have_vitals = false;
     memset(&s_rfid, 0, sizeof(s_rfid));
     s_rfid_ready = false;
-    s_btn_pending = false;
-    memset(&s_btn, 0, sizeof(s_btn));
+    memset(s_btn_q, 0, sizeof(s_btn_q));
+    s_btn_head = 0;
+    s_btn_tail = 0;
+    s_btn_dropped = 0;
     s_sensor_mask = 0;
     s_lora_ok = false;
     s_lora_reported = false;
@@ -290,12 +317,12 @@ bool ui_mock_pop_button(btn_event_t *out)
     bool pending;
 
     portENTER_CRITICAL(&s_mux);
-    pending = s_btn_pending;
+    pending = (s_btn_head != s_btn_tail);
     if (pending) {
         if (out != NULL) {
-            *out = s_btn;
+            *out = s_btn_q[s_btn_tail];
         }
-        s_btn_pending = false;
+        s_btn_tail = (uint8_t)((s_btn_tail + 1U) % BTN_QUEUE_LEN);
     }
     portEXIT_CRITICAL(&s_mux);
 
@@ -322,17 +349,19 @@ void ui_mock_power_off(void)
      * Two steps, in this order.
      *
      * 1. Tell the STM32. It has to stop acquisition, park its sensors and stop
-     *    transmitting before the rail drops -- it does not own the rail, but it
-     *    does own everything hanging off it. Fire-and-forget: a missing or
-     *    unresponsive STM32 must not block the operator's shutdown.
+     *    transmitting before the rail drops. It does not own the rail, but it
+     *    does own everything hanging off it -- and on this build the STM32 is
+     *    powered FROM the ESP32 board's 3V3, so when the rail goes it goes too.
+     *    Fire-and-forget: a missing or unresponsive STM32 must not block the
+     *    operator's shutdown.
      * 2. Cut the rail ourselves. On board V3.0 the SW6106 PMIC owns power (no
      *    SYS_EN exists; the earlier "the STM32 owns the power rail (EXIO5/
      *    SYS_EN)" comment here was V4.0 reasoning -- on V3 EXIO5 is BLC), and it
      *    sits on the shared I2C bus at 0x3c. See ui_board_power_off().
      *
-     * The delay is the STM32's head start. 150 ms is one 750 ms LoRa cycle's
-     * worth of slack without making the button feel broken; the frame is only
-     * ~7 bytes so it has long since left the UART.
+     * The delay is the STM32's head start -- the only window it gets, since it
+     * loses power with us. 150 ms is enough for the register write to land and
+     * for its superloop to notice, without making the button feel broken.
      *
      * Log unconditionally: silence would look like a dead button.
      */
