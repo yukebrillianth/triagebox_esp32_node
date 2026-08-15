@@ -652,8 +652,19 @@ static void result_beep_tick(void)
         apply_priority(ui_session_get_priority());
         beep_for_priority(ui_session_get_priority());
     }
-    /* Vitals keep arriving, so refresh every tick rather than once. Only the
-     * current screen is touched; the others are skipped inside each helper. */
+}
+
+/*
+ * Push the latest readings into whichever screen is showing. Must be called
+ * unconditionally: this used to live at the tail of result_beep_tick(), which
+ * returns early unless the current screen is Result WITH a priority -- so
+ * Monitor and Mengukur were never refreshed and sat at their authored "--"
+ * while Result, reached later in the flow, worked fine.
+ *
+ * Only the current screen is touched; each helper skips a NULL root.
+ */
+static void refresh_current_screen(void)
+{
     switch (ui_nav_current()) {
     case UI_SCREEN_RESULT:   apply_result_vitals(); break;
     case UI_SCREEN_MENGUKUR: apply_mengukur(); break;
@@ -673,6 +684,9 @@ static void selection_timer_cb(lv_timer_t *timer)
     /* A result announcement outranks a button click: start it first so the
      * click beep cannot truncate the pattern. */
     result_beep_tick();
+    /* Vitals keep arriving, so refresh every tick rather than once. Separate
+     * from result_beep_tick() because that one returns early off Result. */
+    refresh_current_screen();
     if (ui_action_take_beep_request() && s_beep_pulses == 0 && !s_beep_is_on) {
         beep_start(1, 1);
     }
