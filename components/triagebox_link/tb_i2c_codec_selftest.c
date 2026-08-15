@@ -121,6 +121,41 @@ static void test_decode_validity_rules(void)
     assert(v.valid);
 }
 
+/*
+ * The display mask is per-field and must NOT collapse into `valid`. This is the
+ * regression: with the ECG unplugged the STM32 reports SpO2 and RR but no HR,
+ * `valid` goes false, and every tile on the Monitor screen went blank -- three
+ * working sensors hidden by one missing cable.
+ */
+static void test_decode_valid_mask_is_per_field(void)
+{
+    uint8_t raw[TB_REG_READ_END];
+    vitals_t v;
+
+    make_snapshot(raw);
+    raw[TB_REG_FLAGS] = TB_FLAG_SPO2_VALID | TB_FLAG_RR_VALID; /* no ECG */
+    assert(tb_i2c_decode_vitals(raw, &v));
+
+    assert(!v.valid); /* SVM still refuses: HR is a feature it needs */
+    assert((v.valid_mask & UI_VITAL_SPO2) != 0U);
+    assert((v.valid_mask & UI_VITAL_RR) != 0U);
+    assert((v.valid_mask & UI_VITAL_HR) == 0U);
+    assert((v.valid_mask & UI_VITAL_BP) == 0U);
+
+    /* Every flag set maps to every bit set, and BP tracks its own wire bit. */
+    raw[TB_REG_FLAGS] = TB_FLAG_HR_VALID | TB_FLAG_SPO2_VALID |
+                        TB_FLAG_RR_VALID | TB_FLAG_BP_VALID;
+    assert(tb_i2c_decode_vitals(raw, &v));
+    assert(v.valid_mask == (UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR |
+                            UI_VITAL_BP));
+
+    /* Nothing measured: no tile shows a number. */
+    raw[TB_REG_FLAGS] = 0U;
+    assert(tb_i2c_decode_vitals(raw, &v));
+    assert(v.valid_mask == 0U);
+    assert(!v.valid);
+}
+
 static void test_decode_null_safe(void)
 {
     uint8_t raw[TB_REG_READ_END];
@@ -262,6 +297,7 @@ int main(void)
     test_decode_endianness();
     test_decode_rejects_wrong_version();
     test_decode_validity_rules();
+    test_decode_valid_mask_is_per_field();
     test_decode_null_safe();
     test_buttons_masked();
     test_diff_single();

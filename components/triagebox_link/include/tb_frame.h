@@ -31,16 +31,20 @@ typedef enum {
     TB_FRAME_BUTTON = 0x02, /* index:u8 (0..3) + pressed:u8 */
     TB_FRAME_RFID   = 0x03, /* tag[len] ASCII, len <= 31, not NUL-terminated */
     TB_FRAME_STATUS = 0x04, /* sensor_ok:u8 bitmask + battery:u8 [+ lora_ok:u8] */
-    TB_FRAME_CMD    = 0x10, /* cmd:u8, see tb_cmd_t */
+    TB_FRAME_CMD    = 0x10, /* cmd:u8, see TB_CMD_* in tb_regs.h */
     TB_FRAME_RESULT = 0x11  /* priority:u8 (LoRa order!) + confidence:u8 (0..100) + tag[] */
 } tb_frame_kind_t;
 
-typedef enum {
-    TB_CMD_START_SCAN    = 0x01,
-    TB_CMD_START_MEASURE = 0x02,
-    TB_CMD_ABORT         = 0x03,
-    TB_CMD_POWER_OFF     = 0x04
-} tb_cmd_t;
+/*
+ * The command numbering used to live here as `tb_cmd_t`. It moved to tb_regs.h
+ * when the STM32 link became I2C, because that header is the shared contract
+ * (byte-identical copy in the STM32 project) and TB_CMD_* belongs with the
+ * command register it is written to.
+ *
+ * They cannot both exist: tb_regs.h defines TB_CMD_* as macros, so leaving the
+ * enum here made the preprocessor rewrite its body into `0x01U = 0x01` in any
+ * file that included both. Include tb_regs.h for commands.
+ */
 
 /* TB_FRAME_VITAL flags bit 0: readings are fresh and trustworthy. */
 #define TB_VITAL_FLAG_VALID 0x01U

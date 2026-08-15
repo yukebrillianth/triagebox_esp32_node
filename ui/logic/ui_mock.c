@@ -15,6 +15,9 @@ static const vitals_t k_base_vitals = {
     .bp_sys = 120,
     .bp_dia = 80,
     .battery = 80,
+    /* The sim fakes a fully instrumented patient: every tile has a number, so
+     * QA sees the populated layout. The device fills this from the wire flags. */
+    .valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP,
     .valid = true,
 };
 

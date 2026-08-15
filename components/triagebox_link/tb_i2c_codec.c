@@ -34,11 +34,21 @@ bool tb_i2c_decode_vitals(const uint8_t *raw, vitals_t *out)
     out->battery = raw[TB_REG_BATTERY];
 
     /*
-     * vitals_t has one `valid` flag but the wire has one bit per vital, because
-     * the readings come from different sensors on different cadences. Collapse
-     * conservatively: valid only when heart rate AND SpO2 are both good, since
-     * those are the two the SVM weighs most and the two the operator reads off
-     * the Monitor screen. RR alone is not enough to call a measurement good.
+     * Per-field freshness passes straight through: the wire already has one bit
+     * per vital because the readings come from different sensors on different
+     * cadences, and the screens render tile by tile. Collapsing this to a single
+     * flag here was a real bug -- with the ECG unplugged, HR is absent, and the
+     * Monitor screen showed nothing at all despite good SpO2 and RR.
+     */
+    out->valid_mask = (uint8_t)
+        (((flags & TB_FLAG_HR_VALID) ? UI_VITAL_HR : 0U) |
+         ((flags & TB_FLAG_SPO2_VALID) ? UI_VITAL_SPO2 : 0U) |
+         ((flags & TB_FLAG_RR_VALID) ? UI_VITAL_RR : 0U) |
+         ((flags & TB_FLAG_BP_VALID) ? UI_VITAL_BP : 0U));
+
+    /*
+     * `valid` is the SVM gate, not a display flag. HR AND SpO2 both good, since
+     * those are the two the model weighs most; RR alone is not a measurement.
      *
      * BP is deliberately NOT required: nothing measures pressure yet, so
      * demanding TB_FLAG_BP_VALID would make every measurement invalid forever.

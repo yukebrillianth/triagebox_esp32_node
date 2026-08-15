@@ -425,22 +425,35 @@ static void set_tile(lv_obj_t *root, const char *tile_name, const char *text)
 }
 
 /* Fill the four vital tiles on any screen that has them. Both tile components
- * (result_vital, vital_card) name their readout label "lbl_value". */
+ * (result_vital, vital_card) name their readout label "lbl_value".
+ *
+ * Each tile is gated on its OWN validity bit, not on a whole-snapshot flag: one
+ * unplugged sensor must not blank the three that are working. A tile whose bit
+ * is clear is left at its authored "--". */
 static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
 {
     char buf[16];
 
-    if (root == NULL || v == NULL || !v->valid) {
-        return; /* keep the authored "--" rather than invent a reading */
+    if (root == NULL || v == NULL) {
+        return;
     }
-    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->spo2);
-    set_tile(root, "vc_spo2", buf);
-    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->hr);
-    set_tile(root, "vc_hr", buf);
-    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->rr);
-    set_tile(root, "vc_rr", buf);
-    lv_snprintf(buf, sizeof(buf), "%u/%u", (unsigned)v->bp_sys, (unsigned)v->bp_dia);
-    set_tile(root, "vc_bp", buf);
+    if (v->valid_mask & UI_VITAL_SPO2) {
+        lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->spo2);
+        set_tile(root, "vc_spo2", buf);
+    }
+    if (v->valid_mask & UI_VITAL_HR) {
+        lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->hr);
+        set_tile(root, "vc_hr", buf);
+    }
+    if (v->valid_mask & UI_VITAL_RR) {
+        lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->rr);
+        set_tile(root, "vc_rr", buf);
+    }
+    if (v->valid_mask & UI_VITAL_BP) {
+        lv_snprintf(buf, sizeof(buf), "%u/%u", (unsigned)v->bp_sys,
+                    (unsigned)v->bp_dia);
+        set_tile(root, "vc_bp", buf);
+    }
 }
 
 static void set_patient_id(lv_obj_t *root, const char *prefix)
@@ -492,21 +505,28 @@ static void apply_mengukur(void)
 static void apply_monitor(void)
 {
     const vitals_t *v = ui_session_get_vitals();
-    static const struct { const char *name; int field; } k_fields[] = {
-        {"spo2_value", 0}, {"hr_value", 1}, {"rr_value", 2},
+    static const struct { const char *name; uint8_t bit; } k_fields[] = {
+        {"spo2_value", UI_VITAL_SPO2},
+        {"hr_value",   UI_VITAL_HR},
+        {"rr_value",   UI_VITAL_RR},
     };
 
     if (monitor == NULL || v == NULL) {
         return;
     }
     set_patient_id(monitor, "ID Pasien: ");
-    if (!v->valid) {
-        return;
-    }
     for (unsigned i = 0; i < sizeof(k_fields) / sizeof(k_fields[0]); i++) {
-        lv_obj_t *label = lv_obj_find_by_name(monitor, k_fields[i].name);
-        unsigned value = (k_fields[i].field == 0) ? v->spo2
-                       : (k_fields[i].field == 1) ? v->hr : v->rr;
+        lv_obj_t *label;
+        unsigned value;
+
+        /* Per-field again: this is the live monitoring screen, so a working
+         * sensor must keep updating while another is unplugged. */
+        if ((v->valid_mask & k_fields[i].bit) == 0U) {
+            continue;
+        }
+        label = lv_obj_find_by_name(monitor, k_fields[i].name);
+        value = (k_fields[i].bit == UI_VITAL_SPO2) ? v->spo2
+              : (k_fields[i].bit == UI_VITAL_HR)   ? v->hr : v->rr;
         if (label != NULL) {
             lv_label_set_text_fmt(label, "%u", value);
         }

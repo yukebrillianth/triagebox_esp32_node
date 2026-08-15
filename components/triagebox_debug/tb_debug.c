@@ -49,7 +49,9 @@ static int cmd_vital(int argc, char **argv)
     /* Defaults are a healthy adult; override any prefix of the arguments. */
     vitals_t v = {
         .hr = 90, .spo2 = 98, .rr = 18, .bp_sys = 120, .bp_dia = 80,
-        .battery = 80, .valid = true,
+        .battery = 80,
+        .valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP,
+        .valid = true,
     };
 
     if (argc > 1) v.hr     = (uint16_t)atoi(argv[1]);
@@ -411,7 +413,9 @@ static int cmd_stats(int argc, char **argv)
     const int iterations = 1000;
     vitals_t v = {
         .hr = 112, .spo2 = 93, .rr = 24, .bp_sys = 100, .bp_dia = 65,
-        .battery = 80, .valid = true,
+        .battery = 80,
+        .valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP,
+        .valid = true,
     };
     float conf = 0.0f;
     int64_t t0;
@@ -543,8 +547,16 @@ static int cmd_i2clink(int argc, char **argv)
            (raw[TB_REG_BATTERY] == 0xFFU) ? " (not measured)" : "%");
 
     if (tb_i2c_decode_vitals(raw, &v)) {
-        printf("decoded   : hr=%u spo2=%u rr=%u bp=%u/%u valid=%d\n",
-               v.hr, v.spo2, v.rr, v.bp_sys, v.bp_dia, (int)v.valid);
+        printf("decoded   : hr=%u spo2=%u rr=%u bp=%u/%u\n",
+               v.hr, v.spo2, v.rr, v.bp_sys, v.bp_dia);
+        /* valid_mask is what the screens render from; `valid` only gates the
+         * SVM. Printing both makes "the number is there but the tile is blank"
+         * a one-line diagnosis. */
+        printf("shown     : hr=%d spo2=%d rr=%d bp=%d   svm_valid=%d\n",
+               (v.valid_mask & UI_VITAL_HR) ? 1 : 0,
+               (v.valid_mask & UI_VITAL_SPO2) ? 1 : 0,
+               (v.valid_mask & UI_VITAL_RR) ? 1 : 0,
+               (v.valid_mask & UI_VITAL_BP) ? 1 : 0, (int)v.valid);
     } else {
         printf("decoded   : REFUSED (proto_ver mismatch)\n");
     }

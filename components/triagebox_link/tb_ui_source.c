@@ -248,9 +248,12 @@ void ui_mock_get_vitals(vitals_t *out)
     }
     portENTER_CRITICAL(&s_mux);
     *out = s_vitals;
-    /* No VITAL frame yet means no readings — the screens render "--" on
-     * !valid, so never claim validity we do not have. */
-    out->valid = s_have_vitals && s_vitals.valid;
+    /* No snapshot has arrived yet, so nothing is measured -- clear both the
+     * display mask and the SVM gate rather than trusting a zeroed struct. */
+    if (!s_have_vitals) {
+        out->valid_mask = 0U;
+        out->valid = false;
+    }
     portEXIT_CRITICAL(&s_mux);
 }
 

@@ -92,7 +92,9 @@
  * RED and BLACK -- the two that matter most -- so it fails silently and badly.
  */
 
-/* Commands. Same numbering as tb_cmd_t in the ESP32's tb_frame.h. */
+/* Commands. This is the single definition -- the ESP32's tb_frame.h used to
+ * carry an equivalent tb_cmd_t enum and no longer does, because macros and an
+ * enum with the same names cannot coexist in one translation unit. */
 #define TB_CMD_NONE          0x00U
 #define TB_CMD_START_SCAN    0x01U
 #define TB_CMD_START_MEASURE 0x02U
