@@ -17,3 +17,7 @@ void ui_board_buzzer(bool on)
 {
     (void)on;
 }
+
+void ui_board_power_off(void)
+{
+}

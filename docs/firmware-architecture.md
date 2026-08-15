@@ -3,7 +3,7 @@
 Repo ini berisi firmware ESP32-S3 lengkap untuk node TriageBox: **display + inference**. Semua sensor, 4 tombol fisik, RC522, dan LoRa SX1278 dipegang STM32.
 
 ```
-                   RS485 (SP3485)
+                RS485 (MAX13487EESA+)
   STM32  ──────────────────────────────>  ESP32-S3  ──> LVGL 480×480
   (sensor,btn,      VITAL/BUTTON/RFID/       │
    RC522, LoRa)     STATUS                   │  SVM inference
@@ -99,11 +99,27 @@ Cara mengganti dari notebook training (sklearn `LinearSVC` + `StandardScaler`):
 
 Urutan baris `K_W`/`K_B` **wajib** `RED, YELLOW, GREEN, BLACK` (urutan `ui_priority_t`), bukan urutan wire. Isi juga header komentarnya: tanggal training, ukuran dataset, akurasi, sensitivitas — target PKM akurasi >90%, sensitivitas >95%.
 
-## Catatan hardware yang belum terverifikasi
+## Catatan hardware
 
 `tb_link.c` pakai `UART_NUM_2` di GPIO44 (TX) / GPIO43 (RX). UART2, bukan UART0, karena GPIO43/44 adalah pin console default ESP32-S3 — console tetap di USB Serial/JTAG sehingga `idf.py monitor` masih jalan saat link aktif.
 
-**TODO:** `README.md` menyebut SP3485 auto TX/RX switching, jadi mode UART biasa (tanpa pin DE) seharusnya benar. Cek skematik revisi board fisik sebelum menyolder. Kalau DE ternyata manual, ganti ke `UART_MODE_RS485_HALF_DUPLEX` + RTS — dan budget GPIO tidak punya kandidat bebas, jadi ada peripheral yang harus dikorbankan.
+**Transceiver RS485 sudah terverifikasi dari skematik V3.0: `MAX13487EESA+` (U7), bukan SP3485** seperti yang lama tertulis di `README.md`. MAX13487E adalah varian *AutoDirection* — arah TX/RX diatur di dalam chip, **tidak ada pin DE/RE**. Jadi mode UART biasa memang benar: `UART_MODE_RS485_HALF_DUPLEX` + RTS tidak diperlukan, dan tidak ada peripheral yang perlu dikorbankan untuk pin DE. U7 jalan di 5 V dengan level shifter transistor diskrit ke net 3V3 `485_TXD`/`485_RXD`; terminasi 120 Ω dipilih lewat `SW1`, dipakai bersama CAN.
+
+### Power off (SW6106)
+
+Board V3.0 **tidak punya `SYS_EN`**. Baterai dan rail 5 V/3V3 dipegang **SW6106 PMIC di I²C `0x3c`** (pin `LED4/I2C` di-strap ke GND lewat R8 0R, jadi chip berada di mode I²C). Pin `KEY`-nya hanya ke tactile switch, tanpa net MCU — jadi satu-satunya cara firmware mematikan dirinya sendiri adalah lewat register.
+
+`ui_board_power_off()` (`components/triagebox_board/ui_board.c`) menjalankan urutan dari **SW6106 I2C Register List RG006_1_v1.2**:
+
+1. Baca `REG 0x49`, batalkan kalau bit 3 (*key control output power off enable*) tidak set.
+2. Write-unlock: `REG 0x01` ← `0x40` (bit 7:6 = 1), lalu `REG 0x01` ← `0x80` (= 2).
+3. `REG 0x03` ← `0x10` (bit 4 = *output power off*, self-clearing).
+
+> **Terverifikasi di hardware: ini benar-benar mematikan board, bahkan saat USB tersambung.** Tidak ada mode dry-run — sekali dipanggil, board mati. Simpan dulu apa pun yang harus selamat.
+
+`ui_mock_power_off()` mengirim `TB_CMD_POWER_OFF` ke STM32 dulu, tunggu 150 ms, baru cut rail — STM32 tidak memegang rail tapi memegang sensor dan LoRa yang menempel di rail itu, jadi ia butuh waktu untuk parkir. Frame-nya fire-and-forget: STM32 yang tidak ada tidak boleh menghalangi shutdown.
+
+Urutan write ini dipatok di `components/triagebox_board/ui_board_power_selftest.c`, yang meng-compile `ui_board.c` asli di host lewat `components/triagebox_board/test_fakes/`.
 
 ## Verifikasi
 
@@ -111,9 +127,29 @@ Urutan baris `K_W`/`K_B` **wajib** `RED, YELLOW, GREEN, BLACK` (urutan `ui_prior
 sh tools/run_selftests.sh          # semua selftest host, ASan+UBSan, tanpa hardware
 source ~/.espressif/v6.0.2/esp-idf/export.sh && idf.py build
 cmake -S sim -B /tmp/simcheck && cmake --build /tmp/simcheck -j8   # sim masih pakai mock
-idf.py -p /dev/cu.usbmodem11301 flash monitor
+idf.py flash monitor               # port auto-detect; -p COM7 / -p /dev/cu.usbmodem* kalau perlu
 ```
 
 Yang dicek di board: log `tb_link: uart2 up: tx=44 rx=43 @115200` dan `TriageBox UI up on 480x480`, tanpa panic. **Tanpa STM32 tersambung UI harus idle di Home**, bukan crash — itu memang kondisi yang diuji.
 
 **Loopback tanpa STM32:** jumper GPIO43↔GPIO44, kirim `CMD`, lalu cek `tb_link_frames_ok()` naik. Membuktikan UART + codec benar sebelum sisi STM32 siap. Frame `CMD`/`RESULT` yang kembali sengaja diabaikan `dispatch()` (log level DEBUG).
+
+## Debug console
+
+`CONFIG_TB_DEBUG_CONSOLE` (menuconfig → *TriageBox debug*) menambah REPL di USB Serial/JTAG. **Jangan aktif di unit produksi** — siapa pun yang tersambung USB bisa memalsukan tanda vital. REPL start paling akhir di `app_main()` supaya frame yang disuntik jatuh ke layar yang sudah hidup, dan supaya bus I²C sudah dibawa naik BSP.
+
+| Command | Fungsi |
+| --- | --- |
+| `rfid [tag]` | Suntik frame RFID |
+| `vital [hr spo2 rr sys dia]` | Suntik VITAL |
+| `status [mask] [lora_ok]` | Suntik STATUS |
+| `btn 0..3` | Tekan tombol fisik |
+| `i2c [timeout_ms]` | Scan bus `0x08..0x77` + nama device yang dikenal |
+| `i2creg <addr> <reg> [count] [split]` | Baca register |
+| `i2craw <addr> [count]` | Baca tanpa write pointer register |
+| `i2cdump <addr> [start] [end]` | Dump ruang register, hanya yang non-zero yang ditandai |
+| `stats` | CPU/heap/stack + `frames_ok`/`crc_errors` |
+
+Semua perintah I²C **read-only** — tidak ada `i2cwrite`. Alamat `0x3c` adalah charger 4 A dengan LiPo menempel; write yang salah bisa mengubah tegangan cut-off atau mematikan power path. Satu-satunya write ke PMIC ada di `ui_board_power_off()`, urutannya dari datasheet dan dipatok selftest.
+
+Catatan pemakaian: pointer register **tidak auto-increment** di TCA9554 maupun SW6106 — `count > 1` membaca register yang sama berulang, jadi baca satu-satu. Byte `ff` setelah byte pertama biasanya bus floating, bukan data.

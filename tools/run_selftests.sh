@@ -16,6 +16,7 @@ run() { # run <selftest.c> <extra .c files...>
     # -I every dir holding a header we might need; harmless if unused.
     if ! $CC $FLAGS -I ui/logic -I components/triagebox_link/include \
         -I components/triagebox_ml/include \
+        -I components/triagebox_board/test_fakes \
         -o "$OUT/$name" "$@" -lm 2>"$OUT/$name.log"; then
         echo "FAIL (compile) $name"; cat "$OUT/$name.log"; fail=1; return
     fi
@@ -48,6 +49,13 @@ run ui/logic/ui_runtime_selftest.c \
 
 run ui/logic/ui_status_selftest.c \
     ui/logic/ui_status_selftest.c ui/logic/ui_status.c
+
+# The real ui_board.c, compiled against components/triagebox_board/test_fakes/
+# instead of ESP-IDF. It is the only function in the tree that cuts power to a
+# running device, so the sequence is worth pinning on the host.
+run components/triagebox_board/ui_board_power_selftest.c \
+    components/triagebox_board/ui_board_power_selftest.c \
+    components/triagebox_board/ui_board.c
 
 [ "$fail" -eq 0 ] && echo "all selftests OK"
 exit "$fail"

@@ -13,6 +13,9 @@ idf_component_register(
     REQUIRES
         console
         esp_timer
+        esp_driver_i2c
+        # `i2c` scans the bus the BSP owns, via bsp_i2c_get_handle().
+        waveshare__esp32_s3_touch_lcd_4
         triagebox_link
         triagebox_ml
 )

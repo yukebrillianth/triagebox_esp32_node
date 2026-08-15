@@ -8,8 +8,8 @@
 
 /*
  * RS485 link to the STM32 (UART2 on GPIO44 TX / GPIO43 RX via the onboard
- * SP3485). Owns an RX task that parses frames and hands them to tb_ui_source,
- * which is what ui/logic/ reads through ui_mock.h.
+ * MAX13487EESA+). Owns an RX task that parses frames and hands them to
+ * tb_ui_source, which is what ui/logic/ reads through ui_mock.h.
  *
  * Start this before ui_runtime_init() so no button frame is dropped.
  */

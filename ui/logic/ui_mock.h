@@ -57,7 +57,11 @@ bool ui_mock_pop_button(btn_event_t *out);
 /* Health of the STM32 link, for the Home status dots. */
 void ui_mock_get_link_status(link_status_t *out);
 
-/* Operator confirmed power-off: tell the STM32, which owns the power hold. */
+/*
+ * Operator confirmed power-off. On device this tells the STM32 (so it can park
+ * sensors and LoRa), then cuts the rail via the SW6106 PMIC -- it does not
+ * return. The sim implementation just logs.
+ */
 void ui_mock_power_off(void);
 
 #endif /* UI_LOGIC_UI_MOCK_H */

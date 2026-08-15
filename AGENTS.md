@@ -14,11 +14,11 @@ Read this before writing any code. Prefer executable sources of truth (`mqtt-pay
 
 ## Hardware traps (will waste hours if missed)
 
-1. **Board revision is not optional.** V4.0 uses **CH32V003 @ I²C 0x24**. Older boards use **TCA9554**. Check silkscreen under the flex. Do not mix EXIO numbering across revisions.
-2. On V4, `LCD_RST`, `TP_RST`, backlight PWM, buzzer, `SYS_EN`, battery ADC are **not ESP32 GPIOs** — they go through the CH32. Dark screen = CH32 init failed.
+1. **Board revision is not optional.** V4.0 uses **CH32V003 @ I²C 0x24**. Older boards use **TCA9554**. Check silkscreen under the flex. Do not mix EXIO numbering across revisions. **This repo runs on V3.0 (TCA9554 @ 0x20)** — treat V4 notes as context only.
+2. On V4, `LCD_RST`, `TP_RST`, backlight PWM, buzzer, `SYS_EN`, battery ADC are **not ESP32 GPIOs** — they go through the CH32. Dark screen = CH32 init failed. **On V3 there is no `SYS_EN` at all** (EXIO5 is `BLC`); the **SW6106 PMIC @ 0x3c** owns the battery and the rails, and `ui_board_power_off()` cuts power by writing to it.
 3. **Framebuffer must live in PSRAM** (`fb_in_psram = 1`). OPI/octal PSRAM required. Without it the panel looks dead.
-4. Shared I²C: SDA `GPIO15`, SCL `GPIO7` — GT911 + PCF85063A + CH32 + external header all share it. Run **I²C bus recovery** after a soft reset (SDA can stick low).
-5. **Dual-MCU link consumes RS485 pins.** Planned path is serial to STM32 over RS485 on `GPIO43` (RX) / `GPIO44` (TX) via the onboard SP3485. Those pins are **not free** for other uses once the link is wired. Confirm on the physical rev + schematic before committing.
+4. Shared I²C: SDA `GPIO15`, SCL `GPIO7`. **Verified by bus scan on V3.0: `0x20` TCA9554, `0x3c` SW6106, `0x51` PCF85063A, `0x5d` GT911.** The 10-pin `Interface` header also exposes SDA/SCL, so external devices can add addresses. `0x26` ACKs but refuses every transaction — a partial-decode phantom, not a second expander. QMI8658 is **NC**, so `0x6a`/`0x6b` are free. Run **I²C bus recovery** after a soft reset (SDA can stick low). Re-scan any time with the `i2c` console command.
+5. **Dual-MCU link consumes RS485 pins.** Planned path is serial to STM32 over RS485 on `GPIO43` (RX) / `GPIO44` (TX) via the onboard **MAX13487EESA+** (U7) — an *AutoDirection* transceiver, so there is **no DE/RE pin to drive** and plain UART mode is correct. Those pins are **not free** for other uses once the link is wired.
 6. **4 physical buttons live on the STM32**, not on ESP32 GPIOs. Do not invent free ESP32 pins for buttons. Button presses arrive as serial frames from the STM32 and feed the LVGL keypad indev `read_cb`.
 7. Touch INT is wiki-mapped to `GPIO16` but official BSP leaves it `GPIO_NUM_NC` (poll mode). Do not depend on INT unless you re-enable it deliberately.
 8. Flash + logs share the same USB-C. Close serial monitor before flashing. Hold BOOT on power-up if the board is crash-looping.
@@ -36,8 +36,13 @@ source ~/.espressif/v6.0.2/esp-idf/export.sh
 ```bash
 idf.py set-target esp32s3
 idf.py build
-idf.py -p <port> flash monitor
+idf.py flash monitor    # port auto-detect; -p COM7 (Win) / -p /dev/cu.usbmodem* (mac) to force
 ```
+
+> **`ui_board_power_off()` really cuts power** — it writes the SW6106's shutdown
+> register and the board dies, **even over USB**. There is no dry-run mode, so
+> anything that must survive has to be persisted first. Sequence and rationale:
+> `docs/firmware-architecture.md` §Power off.
 
 Required sdkconfig shape (N16R8):
 
@@ -94,7 +99,7 @@ Physical button model: 4 keys on the **STM32**, context-dependent labels on the 
 
 **Implemented** in `components/triagebox_link/` — `tb_frame.h` is the authoritative wire format, this table is a summary. Full detail: `docs/firmware-architecture.md`.
 
-UART2 on GPIO44 (TX) / GPIO43 (RX) via the onboard SP3485, 115200 8N1. UART2 and not UART0 because those pins are the ESP32-S3 default console pins; the console stays on USB Serial/JTAG so `idf.py monitor` keeps working.
+UART2 on GPIO44 (TX) / GPIO43 (RX) via the onboard MAX13487EESA+, 115200 8N1. UART2 and not UART0 because those pins are the ESP32-S3 default console pins; the console stays on USB Serial/JTAG so `idf.py monitor` keeps working.
 
 ```
 0xA5 0x5A | kind:u8 | len:u8 | payload[len] | crc16:u16   (CRC-16/CCITT-FALSE over kind+len+payload)
@@ -193,6 +198,8 @@ This firmware talks to the STM32 over UART with an internal framing of your choo
 | `main/` | ESP-IDF app (bring-up only: `app_main.c`, `asset_fs.c`) |
 | `components/esp32_s3_touch_lcd_4/` | Vendored BSP: IDF-v6 patch + 180° panel/touch mirror. Overrides the managed copy. |
 | `components/triagebox_link/` | RS485 ↔ STM32: `tb_frame.c` codec (platform-neutral), `tb_link.c` UART2, `tb_ui_source.c` |
+| `components/triagebox_board/` | Backlight + buzzer via TCA9554, and `ui_board_power_off()` via the SW6106 PMIC. `test_fakes/` lets the host selftest compile the real file. |
+| `components/triagebox_debug/` | `CONFIG_TB_DEBUG_CONSOLE` REPL: frame injection + I²C scan/read (`i2c`, `i2creg`, `i2craw`, `i2cdump`) + `stats`. Off by default. |
 | `components/triagebox_ml/` | Linear SVM inference + the exported model header |
 | `tools/run_selftests.sh` | Compiles and runs every `*_selftest.c` on the host under ASan/UBSan |
 
