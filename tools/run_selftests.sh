@@ -64,5 +64,12 @@ run components/triagebox_board/ui_board_power_selftest.c \
     components/triagebox_board/ui_board_power_selftest.c \
     components/triagebox_board/ui_board.c
 
+# The real tb_ui_source.c against test_fakes/ as well: the RFID gate decides
+# which patient's ID a set of vitals is filed under.
+run components/triagebox_link/tb_ui_source_selftest.c \
+    components/triagebox_link/tb_ui_source_selftest.c \
+    components/triagebox_link/tb_ui_source.c \
+    ui/logic/ui_types.c
+
 [ "$fail" -eq 0 ] && echo "all selftests OK"
 exit "$fail"

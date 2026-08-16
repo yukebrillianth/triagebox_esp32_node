@@ -27,6 +27,13 @@ static rfid_t s_rfid;
 static bool s_rfid_ready;
 
 /*
+ * True while we are waiting for the STM32 to confirm it dropped the last
+ * patient's tag. See ui_mock_start_scan() -- this is the whole fix for "press
+ * Restart, start a scan, and it already has a value with no card present".
+ */
+static bool s_rfid_gate;
+
+/*
  * Button events, ring buffer. The I2C link publishes a STATE bitmask, so one
  * poll can legitimately yield up to 4 edges at once (two fingers, or a poll
  * missed while the LVGL task was busy). A single slot silently dropped all but
@@ -106,8 +113,21 @@ void tb_ui_source_on_rfid(const rfid_t *r)
         return;
     }
     portENTER_CRITICAL(&s_mux);
-    s_rfid = *r;
-    s_rfid_ready = r->present;
+    if (s_rfid_gate) {
+        /* An empty snapshot is the STM32 saying "old tag gone"; only then do we
+         * start believing tags again. Anything with a tag still in it was latched
+         * before our START_SCAN landed, whatever its contents. */
+        if (!r->present) {
+            s_rfid_gate = false;
+        }
+    } else if (r->present) {
+        s_rfid = *r;
+        s_rfid_ready = true;
+    }
+    /* An empty snapshot with the gate open is deliberately ignored rather than
+     * clearing s_rfid: the STM32 keeps publishing the tag it found, but if it
+     * ever stops, Monitor and Result must not lose the ID they are showing.
+     * ui_mock_start_scan() is the one place a tag is forgotten. */
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -146,6 +166,7 @@ void ui_mock_init(void)
     s_have_vitals = false;
     memset(&s_rfid, 0, sizeof(s_rfid));
     s_rfid_ready = false;
+    s_rfid_gate = false; /* Nothing to clear yet; the first scan need not wait. */
     memset(s_btn_q, 0, sizeof(s_btn_q));
     s_btn_head = 0;
     s_btn_tail = 0;
@@ -183,6 +204,21 @@ void ui_mock_start_scan(void)
     portENTER_CRITICAL(&s_mux);
     s_rfid_ready = false;
     memset(&s_rfid, 0, sizeof(s_rfid));
+    /*
+     * Clearing locally is not enough. The STM32 clears its published tag when it
+     * services START_SCAN, but that is up to a superloop later, so the next one or
+     * two 50 ms polls still return the *previous* patient's card -- and the
+     * scanning screen accepts it instantly. That is the reported "press Restart
+     * and it already has a value with no card present", and it attaches one
+     * patient's vitals to another's ID.
+     *
+     * So stop trusting tags until a snapshot arrives with rfid_len == 0, which
+     * only the STM32 can produce and only after it has processed this command.
+     *
+     * Gated even when the write below fails: a scan that never completes is a
+     * visible fault, where a scan that completes with the wrong identity is not.
+     */
+    s_rfid_gate = true;
     portEXIT_CRITICAL(&s_mux);
 
     if (tb_link_send_cmd(TB_CMD_START_SCAN) != ESP_OK) {

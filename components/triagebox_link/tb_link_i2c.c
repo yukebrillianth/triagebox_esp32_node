@@ -145,6 +145,16 @@ static void poll_once(void)
         memcpy(r.tag, &raw[TB_REG_RFID], n); /* not NUL-terminated on the wire */
         r.present = true;
         tb_ui_source_on_rfid(&r);
+    } else {
+        /*
+         * "No tag" is information, not silence: it is the only evidence that the
+         * STM32 has processed a START_SCAN and dropped the previous patient's
+         * card. Without this push the gate in tb_ui_source_on_rfid() could never
+         * open. See ui_mock_start_scan() for the race it closes.
+         */
+        const rfid_t empty = {0};
+
+        tb_ui_source_on_rfid(&empty);
     }
 }
 
