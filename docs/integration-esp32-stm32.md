@@ -67,15 +67,17 @@ Sekarang UI dijalankan oleh mock deterministik supaya bisa di-demo tanpa STM32. 
 | `ui_mock_measure_done()` | true saat window 60 s habis |
 | `ui_mock_get_vitals(vitals_t*)` | isi dari frame `VITAL` terakhir; `valid=false` bila stale |
 | `ui_mock_get_priority/confidence/reasons()` | hasil SVM, **bukan** hardcode |
-| `ui_mock_push_button(index, pressed)` | dipanggil **RX task** saat frame `BUTTON` masuk |
+| `ui_mock_push_button(index, pressed)` | dipanggil **RX task** saat state tombol berubah |
 | `ui_mock_pop_button(btn_event_t*)` | dipanggil LVGL keypad indev — jangan dipanggil dari tempat lain |
+| `ui_mock_get_link_status(link_status_t*)` | `sensor_mask` + `lora_ok` + umur snapshot terakhir |
+| `ui_mock_power_off()` | kirim POWER_OFF ke STM32, tunggu, lalu cut rail via PMIC |
 
-Frame STM32 → ESP32: `VITAL`, `BUTTON`, `RFID`, `STATUS`. Wire format lengkap sudah diimplementasikan di `components/triagebox_link/tb_frame.h` — pakai file itu apa adanya di kedua sisi, jangan bikin framing sendiri. Ringkasannya di `AGENTS.md` §"Dual-MCU RS485 contract".
+Transport-nya sekarang **I²C, bukan RS485**: ESP32 master, STM32 slave `0x42` di bus display, dan `components/triagebox_link/include/tb_regs.h` adalah register map yang berlaku (salinan verbatim di kedua repo, `TB_PROTO_VER` menjaga dari salinan basi). Ringkasannya di `AGENTS.md` §"Dual-MCU I²C contract", detail di `docs/firmware-architecture.md`. `tb_frame.h` masih ada tapi hanya untuk payload LoRa dan konversi prioritasnya.
 
 Dua hal penting:
 
 - **`UI_MEASURE_MS` default 2000 ms** (untuk QA). Hardware asli 60 s → set `-DUI_MEASURE_MS=60000` di build, atau `#define` sebelum include. Sama untuk `UI_MOCK_SCAN_MS`.
-- **`ui_mock_push_button()` dipanggil dari task RX, bukan dari task LVGL.** Slot buffernya single-slot dan tidak dilindungi lock: kalau tombol bisa datang lebih cepat dari 1 per tick LVGL (50 ms), ganti jadi FreeRTOS queue di implementasi asli. `ponytail:` single-slot cukup untuk 4 tombol manusia; upgrade ke queue kalau frame BUTTON di-burst.
+- **`ui_mock_push_button()` dipanggil dari task RX, bukan dari task LVGL.** Di `ui_mock.c` (sim) slotnya masih single-slot; di device (`tb_ui_source.c`) sudah ring buffer 8 event di dalam critical section, karena satu poll I²C bisa sah menghasilkan 4 edge sekaligus dan single-slot membuang semuanya kecuali yang terakhir — gejalanya "tombol yang kadang tidak ngapa-ngapain".
 
 ## 4. Aturan yang tidak boleh dilanggar
 

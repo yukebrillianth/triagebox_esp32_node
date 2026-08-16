@@ -95,24 +95,22 @@ Reject any snippet using `lv_indev_drv_t`, `lv_disp_drv_t`, or `lv_disp_draw_buf
 
 Physical button model: 4 keys on the **STM32**, context-dependent labels on the ESP32 ButtonBar. Prefer `LV_INDEV_TYPE_KEYPAD` + `lv_group_t` focus for list screens (age/gender); for fixed action bars, map each STM32 button event directly to the screen's action table (do not rely on focus for the bottom bar). The keypad `read_cb` reads the latest STM32 button state from a shared buffer filled by the serial RX task — never `gpio_get_level()` for the four keys.
 
-## Dual-MCU RS485 contract (STM32 ↔ ESP32)
+## Dual-MCU I²C contract (STM32 ↔ ESP32)
 
-**Implemented** in `components/triagebox_link/` — `tb_frame.h` is the authoritative wire format, this table is a summary. Full detail: `docs/firmware-architecture.md`.
+**Implemented** in `components/triagebox_link/` — `tb_regs.h` is the authoritative register map and is a **verbatim copy** of the STM32 project's file; edit one, copy it over. `TB_PROTO_VER` (read first, at reg `0x00`) makes a stale copy fail loudly instead of misreading offsets. Full detail: `docs/firmware-architecture.md`.
 
-UART2 on GPIO44 (TX) / GPIO43 (RX) via the onboard MAX13487EESA+, 115200 8N1. UART2 and not UART0 because those pins are the ESP32-S3 default console pins; the console stays on USB Serial/JTAG so `idf.py monitor` keeps working.
+ESP32-S3 is I²C **master**, STM32F411 is slave at **0x42**, on the display's existing bus (SDA GPIO15 / SCL GPIO7). No extra pins, no transceiver, and the read-only `i2creg` / `i2cdump` / `i2craw` console commands inspect the STM32 like any other chip on that bus.
 
 ```
-0xA5 0x5A | kind:u8 | len:u8 | payload[len] | crc16:u16   (CRC-16/CCITT-FALSE over kind+len+payload)
+read : S 0x42 W [reg] Sr 0x42 R [d0] [d1] ... P     (snapshot, pointer auto-increments)
+write: S 0x42 W [reg] [d0] [d1] ... P
 ```
 
-| Kind | Dir | Payload |
-| --- | --- | --- |
-| `VITAL` 0x01 | STM32→ESP32 | `hr,spo2,rr,bp_sys,bp_dia:u16` + `battery:u8` + `flags:u8` (bit0 = valid) |
-| `BUTTON` 0x02 | STM32→ESP32 | `index:u8` (0..3) + `pressed:u8` (debounce on STM32) |
-| `RFID` 0x03 | STM32→ESP32 | `tag[len]` ASCII, ≤31, not NUL-terminated |
-| `STATUS` 0x04 | STM32→ESP32 | `sensor_ok:u8` bitmask + `battery:u8` |
-| `CMD` 0x10 | ESP32→STM32 | `cmd:u8` — START_SCAN / START_MEASURE / ABORT / POWER_OFF |
-| `RESULT` 0x11 | ESP32→STM32 | `priority:u8` + `confidence:u8` (0..100) + `tag[]` |
+The read block is latched when the master addresses the slave for reading, so one multi-byte read can never mix an old HR with a new SpO2. Little-endian. Layout, per-vital validity bits, the button **state** mask (the ESP32 diffs it into edges — see `tb_i2c_codec.c`) and the command register all live in `tb_regs.h`; do not restate offsets anywhere else.
+
+`RESULT` (priority + confidence + tag) goes back through the command/result registers. Poll cadence is 50 ms from the LVGL timer.
+
+**RS485 is superseded.** `tb_link.c` (UART2, `0xA5 0x5A` framing, CRC-16/CCITT-FALSE) is kept for one release in case the swap has to be reverted; the STM32 never had a USART, so I²C is the only transport that has ever had two ends. `tb_frame.c` stays regardless — the LoRa payload still uses its priority conversion, and it is host-tested.
 
 `priority` on the wire uses the **LoRa numeric alias** (`0=BLACK, 1=RED, 2=YELLOW, 3=GREEN`), which is not `ui_priority_t` order. Always go through `tb_frame_priority_to_wire()` / `_from_wire()`. `tb_frame.c` has no malloc and no ESP-IDF dependency so the STM32 side can compile it verbatim.
 

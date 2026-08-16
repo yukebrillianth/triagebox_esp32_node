@@ -24,6 +24,21 @@ void ui_board_backlight(bool on);
 void ui_board_buzzer(bool on);
 
 /*
+ * Battery state from the SW6106's own fuel gauge. Returns false when the PMIC
+ * could not be read, and then leaves *percent and *charging untouched -- the
+ * caller shows "--%" rather than a fabricated 0%.
+ *
+ * The gauge lives on the ESP32's I2C bus, not on the STM32, so this does not go
+ * through the link: TB_REG_BATTERY is whatever the STM32 measures, and the STM32
+ * is not connected to the pack.
+ *
+ * Read-only by design. The SW6106 is a 4 A charger with a LiPo on it, and its
+ * write-unlock registers (0x01, 0x22) can latch the power path off; the only
+ * write in this tree is ui_board_power_off(). No-op returning false in the sim.
+ */
+bool ui_board_battery(uint8_t *percent, bool *charging);
+
+/*
  * Cut the board's own power via the SW6106 PMIC on the shared I2C bus.
  *
  * This is a real shutdown, not a request: on board V3.0 the battery and the

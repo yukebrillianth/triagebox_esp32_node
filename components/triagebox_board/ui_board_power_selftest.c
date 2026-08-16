@@ -20,6 +20,8 @@
 #define MAX_LOG 8
 
 static uint8_t s_gauge;        /* what REG 0x49 reads back */
+static uint8_t s_soc;          /* REG 0x4F */
+static uint8_t s_stat;         /* REG 0x11 */
 static int s_fail_at;          /* fail the Nth transaction (0 = never) */
 static int s_txn;
 static uint8_t s_reg[MAX_LOG];
@@ -77,8 +79,13 @@ esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t dev, const uint8_t
     if (++s_txn == s_fail_at) {
         return -1;
     }
-    assert(w[0] == 0x49U);      /* the gate register, nothing else */
-    *r = s_gauge;
+    switch (w[0]) {
+    case 0x49U: *r = s_gauge; break; /* power-off gate */
+    case 0x4FU: *r = s_soc;   break; /* fuel gauge     */
+    case 0x11U: *r = s_stat;  break; /* charge state   */
+    /* Anything else means new code is poking a 4 A charger's registers. */
+    default: assert(0); return -1;
+    }
     return ESP_OK;
 }
 
@@ -100,6 +107,8 @@ esp_err_t i2c_master_transmit(i2c_master_dev_handle_t dev, const uint8_t *w,
 static void reset(uint8_t gauge, int fail_at)
 {
     s_gauge = gauge;
+    s_soc = 0;
+    s_stat = 0;
     s_fail_at = fail_at;
     s_txn = 0;
     s_writes = 0;
@@ -112,8 +121,79 @@ static void reset(uint8_t gauge, int fail_at)
     s_wrong_addr = false;
 }
 
+/*
+ * Reads only, and no unlock: 0x01/0x22 are the registers that can latch the
+ * power path off, and the gauge needs neither.
+ *
+ * Failure cases come first on purpose -- ui_board_battery() caches its device
+ * handle on the first success, so once a good read happens the "no bus" branch is
+ * unreachable for the rest of the process.
+ */
+static void test_battery(void)
+{
+    uint8_t pct = 7;
+    bool chg = true;
+
+    reset(0xfaU, 0);
+    s_bus_ok = false;
+    assert(!ui_board_battery(&pct, &chg));
+    /* Outputs untouched on failure, so the caller renders "--%", not 0%. */
+    assert(pct == 7 && chg);
+    reset(0xfaU, 0);
+    s_add_ok = false;
+    assert(!ui_board_battery(&pct, &chg));
+    assert(pct == 7 && chg);
+
+    /* Gauge unreadable: no percentage at all. */
+    reset(0xfaU, 1);
+    s_soc = 55U;
+    s_stat = 0x10U;
+    assert(!ui_board_battery(&pct, &chg));
+    assert(pct == 7);
+
+    /* Charge state unreadable: keep the percentage we did get, lose only the
+     * bolt. Collapsing both would hide a good reading. */
+    reset(0xfaU, 2);
+    s_soc = 55U;
+    s_stat = 0x10U;
+    assert(ui_board_battery(&pct, &chg));
+    assert(pct == 55U && !chg);
+
+    /* 0x4F[7] is not part of the percentage. */
+    reset(0xfaU, 0);
+    s_soc = 0x80U | 42U;
+    assert(ui_board_battery(&pct, &chg));
+    assert(pct == 42U && !chg);
+
+    reset(0xfaU, 0);
+    s_soc = 100U;
+    s_stat = 0x10U;             /* [4] charging */
+    assert(ui_board_battery(&pct, &chg));
+    assert(pct == 100U && chg);
+
+    /* Discharging is not charging, and must not read as one. */
+    reset(0xfaU, 0);
+    s_soc = 60U;
+    s_stat = 0x20U;             /* [5] discharging */
+    assert(ui_board_battery(&pct, &chg));
+    assert(pct == 60U && !chg);
+
+    /* A bad read clamps instead of showing 127%. */
+    reset(0xfaU, 0);
+    s_soc = 0x7FU;
+    assert(ui_board_battery(&pct, &chg));
+    assert(pct == 100U);
+
+    /* Both outputs optional. */
+    reset(0xfaU, 0);
+    s_soc = 30U;
+    assert(ui_board_battery(NULL, NULL));
+}
+
 int main(void)
 {
+    test_battery();
+
     /* Happy path: unlock 1, unlock 2, then the power-off event -- in order. */
     reset(0xfaU, 0);
     ui_board_power_off();
@@ -169,5 +249,6 @@ int main(void)
 
     printf("ui_board_power_off: 0x01<-0x40, 0x01<-0x80, 0x03<-0x10; "
            "every failure path leaves the rail up\n");
+    printf("ui_board_battery: 0x4F[6:0] + 0x11[4], reads only, no unlock\n");
     return 0;
 }

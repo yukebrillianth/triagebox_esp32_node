@@ -23,6 +23,14 @@ const char *esp_err_to_name(esp_err_t err);
 #define pdMS_TO_TICKS(ms) (ms)
 void vTaskDelay(int ticks);
 
+/* Single-threaded on the host, so the critical sections that protect the RX-task
+ * copies in tb_ui_source.c are nothing to enter. Kept as no-ops rather than
+ * #ifdef'd out of that file: the point is to test the shipped code. */
+typedef int portMUX_TYPE;
+#define portMUX_INITIALIZER_UNLOCKED 0
+#define portENTER_CRITICAL(m) ((void)(m))
+#define portEXIT_CRITICAL(m) ((void)(m))
+
 /* --- driver/i2c_master.h --- */
 typedef void *i2c_master_bus_handle_t;
 typedef void *i2c_master_dev_handle_t;
