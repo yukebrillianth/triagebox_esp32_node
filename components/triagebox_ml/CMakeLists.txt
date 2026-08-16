@@ -3,7 +3,7 @@
 # selftest is not listed here.
 idf_component_register(
     SRCS
-        "tb_svm.c"
+       triage_pipeline.c
     INCLUDE_DIRS
         "include"
         # ui_types.h: vitals_t and ui_priority_t are the model's in/out contract.
