@@ -155,6 +155,94 @@ void ui_bindings_sync_status_dots(void)
             ui_status_lora(s.lora_ok, s.lora_reported));
 }
 
+/* ------------------------------------------------------ Status bar -------- */
+
+/*
+ * Replaces the authored "80%" / "Connected" / "--:--" literals that every
+ * *_gen.c passes to status_bar_create(). The bar is on all eight screens, so
+ * unlike the Home dots this must not early-out on the current screen -- it syncs
+ * whichever one is showing.
+ *
+ * Rate-limited on purpose. The clock has minute resolution and the gauge moves
+ * in 1% steps, so 50 ms would be pure I2C contention for no visible change --
+ * and the PMIC shares a bus with the touch controller with no cross-component
+ * lock, which is already a suspect for the random resets.
+ */
+#define STATUS_BAR_TICKS   20U  /* 20 x 50 ms = 1 s: enough for a HH:MM clock */
+#define BATTERY_READ_TICKS 200U /* 10 s: a 1%/step gauge cannot move faster    */
+
+static const void *battery_icon_src(ui_battery_icon_t icon)
+{
+    switch (icon) {
+    case UI_BATTERY_ICON_CHARGING: return battery_charging;
+    case UI_BATTERY_ICON_FULL:     return battery_full;
+    case UI_BATTERY_ICON_MEDIUM:   return battery_medium;
+    default:                       return battery_empty;
+    }
+}
+
+static void sync_status_bar(void)
+{
+    static uint32_t s_ticks;
+    static uint8_t s_percent = UI_BATTERY_UNKNOWN;
+    static bool s_charging;
+    lv_obj_t *root = screen_root(ui_nav_current());
+    lv_obj_t *obj;
+    link_status_t s;
+    bool refresh = (s_ticks % STATUS_BAR_TICKS) == 0U;
+    bool reread = (s_ticks % BATTERY_READ_TICKS) == 0U;
+    char buf[8];
+
+    s_ticks++;
+    if (root == NULL || !refresh) {
+        return;
+    }
+
+    if (reread) {
+        uint8_t pct;
+        bool chg;
+
+        /* A failed read resets to UNKNOWN rather than keeping the last good
+         * value: a frozen 80% while the pack drains is worse than "--%". */
+        if (ui_board_battery(&pct, &chg)) {
+            s_percent = pct;
+            s_charging = chg;
+        } else {
+            s_percent = UI_BATTERY_UNKNOWN;
+            s_charging = false;
+        }
+    }
+
+    obj = lv_obj_find_by_name(root, "sb_battery_text");
+    if (obj != NULL) {
+        ui_status_battery_text(buf, sizeof(buf), s_percent);
+        lv_label_set_text(obj, buf);
+    }
+    obj = lv_obj_find_by_name(root, "sb_battery");
+    if (obj != NULL) {
+        lv_image_set_src(obj, battery_icon_src(
+                                  ui_status_battery_icon(s_percent, s_charging)));
+    }
+
+    ui_mock_get_link_status(&s);
+    obj = lv_obj_find_by_name(root, "sb_link_text");
+    if (obj != NULL) {
+        lv_label_set_text(obj, ui_status_link_text(s.lora_ok, s.lora_reported));
+        /* The signal glyph next to it is unnamed in the generated component, so
+         * colour the text instead -- same information, no XML regeneration. */
+        lv_obj_set_style_text_color(
+            obj, status_color(ui_status_lora(s.lora_ok, s.lora_reported)), 0);
+    }
+
+    obj = lv_obj_find_by_name(root, "sb_clock");
+    if (obj != NULL) {
+        char clock[6];
+
+        ui_status_format_clock(clock, sizeof(clock));
+        lv_label_set_text(obj, clock);
+    }
+}
+
 /* ------------------------------------------------------ Power confirm ----- */
 
 /*
@@ -456,17 +544,34 @@ static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
     }
 }
 
+/*
+ * Writes unconditionally, including when there is no tag.
+ *
+ * The early "no tag -> return" this replaces had two failure modes on one line:
+ * the label kept its authored "-" so a real ID never appeared, and a *previous*
+ * patient's ID was never cleared -- which on a triage screen means attaching the
+ * wrong identity to a set of vitals. Painting "--" is the safe default; it is
+ * also the tell that this code ran at all, which "-" is not.
+ */
 static void set_patient_id(lv_obj_t *root, const char *prefix)
 {
     const rfid_t *tag = ui_session_get_rfid();
     lv_obj_t *label;
 
-    if (root == NULL || tag == NULL || !tag->present) {
+    if (root == NULL) {
         return;
     }
     label = lv_obj_find_by_name(root, "patient_id");
-    if (label != NULL) {
+    if (label == NULL) {
+        /* Renaming a label in the XML would otherwise silently stop the ID from
+         * ever updating again, with no symptom but a stale placeholder. */
+        LV_LOG_WARN("no patient_id label on this screen");
+        return;
+    }
+    if (tag != NULL && tag->present && tag->tag[0] != '\0') {
         lv_label_set_text_fmt(label, "%s%s", prefix, tag->tag);
+    } else {
+        lv_label_set_text_fmt(label, "%s--", prefix);
     }
 }
 
@@ -655,6 +760,35 @@ static void result_beep_tick(void)
 }
 
 /*
+ * Beep once when a scan succeeds. The Berhasil screen otherwise announces itself
+ * only visually, and the operator is looking at the card reader, not the panel.
+ *
+ * Armed by SCANNING rather than by "Berhasil is showing", because Berhasil is
+ * also reachable backwards from Age -- and a chirp on Back would mean "card
+ * read" when nothing was read. Re-arming on SCANNING also means rescanning the
+ * same card still beeps, which comparing tag strings would not.
+ */
+static void scan_beep_tick(void)
+{
+    static bool s_armed;
+    const rfid_t *tag;
+
+    if (ui_nav_current() == UI_SCREEN_SCANNING) {
+        s_armed = true;
+        return;
+    }
+    if (!s_armed || ui_nav_current() != UI_SCREEN_BERHASIL) {
+        return;
+    }
+    tag = ui_session_get_rfid();
+    if (tag == NULL || !tag->present || tag->tag[0] == '\0') {
+        return; /* Stay armed: the ID may land a poll later than the screen. */
+    }
+    s_armed = false;
+    beep_start(1, 3); /* One ~150 ms blip: not a click, not a priority pattern. */
+}
+
+/*
  * Push the latest readings into whichever screen is showing. Must be called
  * unconditionally: this used to live at the tail of result_beep_tick(), which
  * returns early unless the current screen is Result WITH a priority -- so
@@ -679,11 +813,13 @@ static void selection_timer_cb(lv_timer_t *timer)
     (void)timer;
     ui_bindings_sync_selection();
     ui_bindings_sync_status_dots();
+    sync_status_bar();
     poll_power_request();
 
     /* A result announcement outranks a button click: start it first so the
      * click beep cannot truncate the pattern. */
     result_beep_tick();
+    scan_beep_tick();
     /* Vitals keep arriving, so refresh every tick rather than once. Separate
      * from result_beep_tick() because that one returns early off Result. */
     refresh_current_screen();

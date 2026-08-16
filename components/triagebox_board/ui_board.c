@@ -59,6 +59,93 @@ static esp_io_expander_handle_t s_io;
 #define SW6106_POWER_OFF    0x10U /* [4] = 1 */
 #define SW6106_GAUGE_KEY_OFF_EN 0x08U /* [3] */
 
+/*
+ * Fuel gauge, read-only. 0x4F[6:0] is the SW6106's own final SoC estimate in 1%
+ * steps -- preferred over deriving a percentage from 0x14/0x15 Vbat, because a
+ * voltage-to-percent curve for a pack nobody has characterised would just be a
+ * guess with more decimal places.
+ *
+ * No unlock is needed to read: 0x01[7:6] and 0x22[7:6] gate only writes to their
+ * own register. Nothing below writes.
+ */
+#define SW6106_REG_STATUS   0x11U /* [4] charging, [5] discharging */
+#define SW6106_REG_SOC      0x4FU /* [6:0] final SoC, 1%/step */
+#define SW6106_STAT_CHARGING 0x10U /* [4] */
+#define SW6106_SOC_MASK     0x7FU
+
+/*
+ * One handle, created on first use and never removed: the status bar reads the
+ * gauge periodically, and add/remove per read would churn the bus driver's
+ * device list for no benefit.
+ *
+ * ui_board_power_off() deliberately keeps its own short-lived handle instead of
+ * sharing this one -- it runs once and ends the world, and its selftest drives
+ * the "no bus" and "cannot address" paths repeatedly, which a cached handle would
+ * short-circuit.
+ */
+static i2c_master_dev_handle_t pmic_dev(void)
+{
+    static i2c_master_dev_handle_t dev;
+    i2c_master_bus_handle_t bus;
+    i2c_device_config_t cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = SW6106_ADDR,
+        .scl_speed_hz = 100000,
+    };
+
+    if (dev != NULL) {
+        return dev;
+    }
+    bus = bsp_i2c_get_handle();
+    if (bus == NULL) {
+        ESP_LOGE(TAG, "no I2C bus; cannot reach the PMIC");
+        return NULL;
+    }
+    if (i2c_master_bus_add_device(bus, &cfg, &dev) != ESP_OK) {
+        ESP_LOGE(TAG, "could not address the PMIC at 0x%02x", SW6106_ADDR);
+        dev = NULL;
+    }
+    return dev;
+}
+
+/* One addressed read per register: the SW6106's register-pointer auto-increment
+ * is undocumented, so a two-byte burst would be a guess about silicon. */
+static esp_err_t sw6106_read(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t *val)
+{
+    return i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
+}
+
+bool ui_board_battery(uint8_t *percent, bool *charging)
+{
+    i2c_master_dev_handle_t dev = pmic_dev();
+    uint8_t soc = 0;
+    uint8_t status = 0;
+
+    if (dev == NULL) {
+        return false;
+    }
+    if (sw6106_read(dev, SW6106_REG_SOC, &soc) != ESP_OK) {
+        return false;
+    }
+    /* Charge state is a nice-to-have: losing it must not also lose a percentage
+     * we did read. */
+    if (sw6106_read(dev, SW6106_REG_STATUS, &status) != ESP_OK) {
+        status = 0;
+    }
+
+    soc &= SW6106_SOC_MASK;
+    if (soc > 100U) {
+        soc = 100U; /* 0x4F is spec'd 0-100; anything else is a bad read. */
+    }
+    if (percent != NULL) {
+        *percent = soc;
+    }
+    if (charging != NULL) {
+        *charging = (status & SW6106_STAT_CHARGING) != 0U;
+    }
+    return true;
+}
+
 void ui_board_init(void)
 {
     /* bsp_io_expander_init() exists in the BSP but nothing ever called it,
