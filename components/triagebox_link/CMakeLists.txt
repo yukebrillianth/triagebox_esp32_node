@@ -14,4 +14,6 @@ idf_component_register(
         # IDF v6 split the old monolithic "driver" component; UART lives here.
         esp_driver_uart
         triagebox_ml
+        # ui_mock_power_off() cuts the rail via ui_board_power_off().
+        triagebox_board
 )

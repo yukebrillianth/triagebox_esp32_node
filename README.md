@@ -17,7 +17,7 @@ Satu node punya **dua MCU**:
 - **STM32** — filter sensor, baca 4 tombol fisik, baca RFID, **dan transmit LoRa**
 - **ESP32-S3** (repo ini) — UI layar + **inferensi triase (linear SVM)**
 
-Keduanya tersambung **RS485** via transceiver SP3485 onboard di `GPIO44` (TX) / `GPIO43` (RX), UART2 @115200. Vital, event tombol, dan RFID mengalir dari STM32 ke ESP32; hasil inferensi dikirim balik lewat frame `RESULT`, lalu STM32 yang meneruskan ke station via LoRa. Radio tidak di ESP32 karena budget GPIO board ini sudah habis. Wire format lengkap: **`docs/firmware-architecture.md`**.
+Keduanya tersambung **RS485** via transceiver MAX13487EESA+ onboard di `GPIO44` (TX) / `GPIO43` (RX), UART2 @115200. Vital, event tombol, dan RFID mengalir dari STM32 ke ESP32; hasil inferensi dikirim balik lewat frame `RESULT`, lalu STM32 yang meneruskan ke station via LoRa. Radio tidak di ESP32 karena budget GPIO board ini sudah habis. Wire format lengkap: **`docs/firmware-architecture.md`**.
 
 Karena inferensi jalan di ESP32, node inilah yang **menghasilkan** `priority` dan `confidence` — bukan meneruskan dari STM32. Ini yang membuat sistem tetap jalan saat jaringan lumpuh: keputusan triase diambil lokal, bukan di server.
 
@@ -58,12 +58,27 @@ Demo resmi: <https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4>
 
 Board ini punya beberapa revisi dengan chip pembantu berbeda. **Cek silkscreen sebelum menulis kode.**
 
-| Revisi | Chip pembantu | Alamat I²C |
-| --- | --- | --- |
-| V4.0 (jalur resmi saat ini) | CH32V003F4U6 | `0x24` |
-| V1–V3 | TCA9554PWR | — |
+| Revisi | Chip pembantu | Alamat I²C | Power |
+| --- | --- | --- | --- |
+| V4.0 (jalur resmi saat ini) | CH32V003F4U6 | `0x24` | `SYS_EN` (EXIO5) |
+| V1–V3 | TCA9554PWR | `0x20` | SW6106 PMIC `0x3c`, **tanpa `SYS_EN`** |
 
 Pada V4, sinyal berikut **bukan GPIO ESP32** melainkan lewat CH32 via I²C: `LCD_RST` (EXIO3), `TP_RST` (EXIO1), backlight (PWM), buzzer `BEE_EN` (EXIO6), `SYS_EN` (EXIO5), ADC baterai, `RTC_INT` (EXIO7). Layar gelap biasanya berarti init CH32 gagal, bukan panel rusak.
+
+> **Repo ini dipakai di board V3.0**, jadi tabel V4 di atas hanya konteks. Di V3 **tidak ada `SYS_EN`** — EXIO5 adalah `BLC`. Yang memegang rail adalah **SW6106** di `0x3c`; lihat `ui_board_power_off()`.
+
+#### Peta alamat I²C V3.0 (hasil scan hardware, bukan tebakan)
+
+Jalankan `i2c` di debug console untuk mengulang scan ini.
+
+| Alamat | Device |
+| --- | --- |
+| `0x20` | TCA9554PWR I/O expander (A2:A0=000) — backlight + buzzer |
+| `0x3c` | SW6106 PMIC — baterai + power off |
+| `0x51` | PCF85063A RTC |
+| `0x5d` | GT911 touch (bukan fallback `0x14`) |
+
+Catatan: `0x26` ikut meng-ACK tapi menolak semua transaksi — itu **phantom** dari partial address decoding, bukan expander kedua. QMI8658 IMU **NC** (footprint ada, tidak dipasang), jadi `0x6a`/`0x6b` bebas. Header `Interface` 10-pin ikut mengekspos `SDA`/`SCL`, jadi device eksternal bisa nambah alamat di bus yang sama.
 
 ### Link ke STM32 dan tombol fisik
 
@@ -71,8 +86,9 @@ Pada V4, sinyal berikut **bukan GPIO ESP32** melainkan lewat CH32 via I²C: `LCD
 
 | Kandidat link | Pin | Catatan |
 | --- | --- | --- |
-| **RS485** (rencana utama) | `GPIO43` RX / `GPIO44` TX | Transceiver SP3485 onboard, auto TX/RX switching, tahan noise + jarak |
+| **RS485** (rencana utama) | `GPIO43` RX / `GPIO44` TX | Transceiver **MAX13487EESA+** onboard (U7), *AutoDirection* — arah diatur di dalam chip, tanpa pin DE/RE |
 | UART TTL langsung | `GPIO43`/`GPIO44` | Pin sama, tanpa transceiver — cukup bila kedua MCU satu board |
+| I²C | `GPIO15` SDA / `GPIO7` SCL | Bus bersama, keluar di header `Interface`. ESP32 jadi master; STM32 tidak bisa push tanpa diminta |
 | CAN | `GPIO0`/`GPIO6` | Transceiver TJA1051 onboard; `GPIO0` pin strapping, hati-hati |
 
 Karena `GPIO43`/`GPIO44` dipakai untuk link STM32, pin tersebut **bukan lagi kandidat bebas** untuk keperluan lain. Verifikasi dengan skematik revisi board fisik sebelum menyolder. Lihat `AGENTS.md` untuk daftar GPIO terpakai.
@@ -95,18 +111,28 @@ source ~/.espressif/v6.0.2/esp-idf/export.sh
 
 ```bash
 idf.py build                          # target esp32s3 sudah dipin di sdkconfig.defaults
-idf.py -p /dev/cu.usbmodem* flash monitor
+idf.py flash monitor                  # port auto-detect
 ```
+
+Kalau auto-detect gagal (beberapa port serial sekaligus), sebutkan port-nya: `-p /dev/cu.usbmodem*` di macOS, `-p COM7` di Windows. **Lewat extension ESP-IDF di VS Code tidak perlu ini** — port dipilih di status bar bawah dan disimpan sebagai `idf.port` di `.vscode/settings.json` (folder itu sudah di-`.gitignore`, jadi tidak ikut ter-commit).
 
 Tidak perlu `idf.py set-target` maupun `menuconfig`: semua config board (PSRAM octal, flash 16 MB, dan setting LVGL yang wajib) sudah ada di `sdkconfig.defaults`. `sdkconfig` sendiri **tidak** di-commit — kalau kamu mengubah `sdkconfig.defaults`, hapus `sdkconfig` lalu build ulang supaya perubahannya terbaca.
 
 Cek cepat tanpa hardware sama sekali:
 
 ```bash
-sh tools/run_selftests.sh   # codec RS485 + SVM, ASan/UBSan
+sh tools/run_selftests.sh   # codec RS485 + SVM + urutan power-off, ASan/UBSan
 ```
 
 Flash dan log memakai port USB-C yang sama (USB native ESP32-S3). Bila gagal flash: tutup serial monitor, tahan **BOOT** saat menyalakan, flash, lalu power-cycle.
+
+### Debug console
+
+Aktifkan `CONFIG_TB_DEBUG_CONSOLE` untuk dapat REPL di `idf.py monitor`: suntik frame (`rfid`, `vital`, `status`, `btn`), scan bus I²C (`i2c`, `i2creg`, `i2craw`, `i2cdump`), dan `stats`. **Jangan aktif di unit produksi** — siapa pun via USB bisa memalsukan tanda vital. Detail: `docs/firmware-architecture.md` §Debug console.
+
+### Power off
+
+Tombol Power di UI benar-benar mematikan board: `ui_board_power_off()` menulis ke **SW6106 PMIC** di I²C `0x3c` (board V3.0 tidak punya `SYS_EN`). **Ini bekerja bahkan saat USB tersambung**, jadi tidak ada cara mengetesnya tanpa kehilangan board. Sebelum rail turun, `TB_CMD_POWER_OFF` dikirim ke STM32 supaya sensor dan LoRa sempat parkir. Urutan register: `docs/firmware-architecture.md` §Power off.
 
 ## Untuk kontributor baru
 

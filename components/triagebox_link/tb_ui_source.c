@@ -11,6 +11,7 @@
 #include "tb_link.h"
 #include "tb_svm.h"
 #include "tb_ui_source.h"
+#include "ui_board.h"
 #include "ui_mock.h"
 
 static const char *TAG = "tb_ui_src";
@@ -318,19 +319,33 @@ void ui_mock_get_link_status(link_status_t *out)
 void ui_mock_power_off(void)
 {
     /*
-     * The STM32 owns the power rail (EXIO5/SYS_EN is behind the IO expander, and
-     * bsp_io_expander_init() is never called), so the ESP32 cannot cut its own
-     * power. This is a request. With no STM32 attached the bytes go into the
-     * UART FIFO and nothing happens -- log unconditionally so that silence is
-     * diagnosable instead of looking like a dead button.
+     * Two steps, in this order.
+     *
+     * 1. Tell the STM32. It has to stop acquisition, park its sensors and stop
+     *    transmitting before the rail drops -- it does not own the rail, but it
+     *    does own everything hanging off it. Fire-and-forget: a missing or
+     *    unresponsive STM32 must not block the operator's shutdown.
+     * 2. Cut the rail ourselves. On board V3.0 the SW6106 PMIC owns power (no
+     *    SYS_EN exists; the earlier "the STM32 owns the power rail (EXIO5/
+     *    SYS_EN)" comment here was V4.0 reasoning -- on V3 EXIO5 is BLC), and it
+     *    sits on the shared I2C bus at 0x3c. See ui_board_power_off().
+     *
+     * The delay is the STM32's head start. 150 ms is one 750 ms LoRa cycle's
+     * worth of slack without making the button feel broken; the frame is only
+     * ~7 bytes so it has long since left the UART.
+     *
+     * Log unconditionally: silence would look like a dead button.
      */
     esp_err_t err = tb_link_send_cmd(TB_CMD_POWER_OFF);
 
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "POWER_OFF sent to STM32 (frames_ok=%u) -- if nothing "
-                      "happens the STM32 is not attached or ignores it",
+        ESP_LOGI(TAG, "POWER_OFF sent to STM32 (frames_ok=%u)",
                  (unsigned)tb_link_frames_ok());
     } else {
-        ESP_LOGW(TAG, "POWER_OFF not sent: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "POWER_OFF not sent: %s -- cutting power anyway",
+                 esp_err_to_name(err));
     }
+
+    vTaskDelay(pdMS_TO_TICKS(150));
+    ui_board_power_off();
 }

@@ -33,3 +33,6 @@ lvgl_vscode_project/
 # OS
 .DS_Store
 ui/preview-bin/
+
+# clangd local flag tweaks (per-machine, not firmware config)
+.clangd

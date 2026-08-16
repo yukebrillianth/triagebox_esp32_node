@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "bsp/esp32_s3_touch_lcd_4.h"
+#include "driver/i2c_master.h"
 #include "esp_console.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
@@ -87,6 +89,316 @@ static int cmd_btn(int argc, char **argv)
     vTaskDelay(pdMS_TO_TICKS(120));
     tb_ui_source_on_button(idx, false);
     printf("pressed button %u\n", idx);
+    return 0;
+}
+
+/*
+ * Sweep the shared I2C bus (SDA GPIO15 / SCL GPIO7) and name what answers.
+ * The bus is the BSP's -- bsp_i2c_get_handle(), never a second bus -- so this
+ * only works after bsp_display_start(), which is why the REPL starts last.
+ *
+ * Addresses 0x00-0x07 and 0x78-0x7f are reserved by the I2C spec and are not
+ * probed: a general-call write can reconfigure every device on the bus at once.
+ */
+static const char *i2c_known(uint8_t addr)
+{
+    switch (addr) {
+    case 0x14: return "GT911 touch (fallback addr)";
+    case 0x1e: return "SW6106 PMIC (if 0x3C in the datasheet is the write byte)";
+    case 0x20: return "TCA9554 expander (A2:A0=000)";
+    case 0x21: case 0x22: case 0x23:
+    case 0x24: case 0x25: case 0x26: case 0x27: return "TCA9554 expander (strapped)";
+    case 0x3c: return "SW6106 PMIC (datasheet 9.17: slave address 0x3C)";
+    case 0x51: return "PCF85063A RTC";
+    case 0x5d: return "GT911 touch";
+    case 0x6a: case 0x6b: return "QMI8658 IMU -- marked NC on V3.0, so unexpected";
+    default:   return "unknown -- STM32F411? something on the Interface header?";
+    }
+}
+
+static int cmd_i2c(int argc, char **argv)
+{
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    /* 50 ms: a device that clock-stretches (the STM32 will) needs more than the
+     * 10 ms every example uses, and a scan is not latency-sensitive. */
+    const int timeout_ms = (argc > 1) ? atoi(argv[1]) : 50;
+    /* Probe once and remember, rather than sweeping twice for the grid and the
+     * list -- at 50 ms a miss, a second pass costs seconds. */
+    bool present[0x78] = {false};
+    int found = 0;
+
+    if (bus == NULL) {
+        printf("I2C bus not up -- bsp_i2c_init() has not run\n");
+        return 1;
+    }
+
+    printf("scanning 0x08..0x77 on SDA=%d SCL=%d (timeout %d ms)\n",
+           BSP_I2C_SDA, BSP_I2C_SCL, timeout_ms);
+    printf("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+
+    for (uint8_t hi = 0x00; hi <= 0x70; hi = (uint8_t)(hi + 0x10)) {
+        printf("%02x: ", hi);
+        for (uint8_t lo = 0x00; lo <= 0x0f; lo++) {
+            uint8_t addr = (uint8_t)(hi | lo);
+
+            if (addr < 0x08U || addr > 0x77U) {
+                printf("   ");
+                continue;
+            }
+            present[addr] = (i2c_master_probe(bus, addr, timeout_ms) == ESP_OK);
+            if (present[addr]) {
+                printf("%02x ", addr);
+                found++;
+            } else {
+                printf("-- ");
+            }
+        }
+        printf("\n");
+    }
+
+    printf("\n%d device(s):\n", found);
+    for (uint8_t addr = 0x08U; addr < 0x78U; addr++) {
+        if (present[addr]) {
+            printf("  0x%02x  %s\n", addr, i2c_known(addr));
+        }
+    }
+    if (found == 0) {
+        printf("  nothing answered -- check pull-ups, or SDA stuck low after a\n"
+               "  soft reset (AGENTS.md item 20 wants bus recovery for exactly this)\n");
+    }
+    printf("\n");
+    return 0;
+}
+
+/*
+ * Read registers from one device, to identify whatever `i2c` turned up.
+ *
+ * Read-only on purpose: there is no `i2cwrite`. A stray write to the SW6106 at
+ * 0x3c could latch the power path off mid-triage, and the datasheet publishes no
+ * register map to write against.
+ *
+ * Two transaction shapes, because devices disagree about which they accept:
+ *   default -- write pointer, repeated START, read   (the usual convention)
+ *   "split" -- write pointer, STOP, separate read    (SW6106 datasheet 9.17 is
+ *              drawn as "1st/2nd/3rd step", which hints at this)
+ * Note many expanders (TCA9554 included) do not auto-increment the pointer, so
+ * count > 1 re-reads the same register rather than walking upward.
+ */
+static int cmd_i2creg(int argc, char **argv)
+{
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_dev_handle_t dev = NULL;
+    i2c_device_config_t cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .scl_speed_hz = 100000,   /* slowest thing on the bus tolerates it */
+    };
+    uint8_t reg;
+    uint8_t buf[16] = {0};
+    int count;
+    bool split;
+    esp_err_t err;
+
+    if (argc < 3) {
+        printf("usage: i2creg <addr> <reg> [count 1..%d] [split]  (values accept 0x)\n",
+               (int)sizeof(buf));
+        printf("  TCA9554: 0=input 1=output 2=polarity 3=config (0xff = all inputs,\n");
+        printf("           i.e. nobody configured it). Pointer does NOT auto-increment,\n");
+        printf("           so read one register at a time.\n");
+        printf("  SW6106 : 0xb0 is the only register the datasheet names; try `split`\n");
+        printf("           if a plain read returns 00.\n");
+        return 1;
+    }
+    if (bus == NULL) {
+        printf("I2C bus not up -- bsp_i2c_init() has not run\n");
+        return 1;
+    }
+
+    cfg.device_address = (uint16_t)strtoul(argv[1], NULL, 0);
+    reg   = (uint8_t)strtoul(argv[2], NULL, 0);
+    /* "split" is accepted in either trailing position, so `i2creg a r split`
+     * works without having to pass a count you did not care about. */
+    split = false;
+    count = 1;
+    for (int i = 3; i < argc; i++) {
+        if (strcmp(argv[i], "split") == 0) {
+            split = true;
+        } else {
+            count = atoi(argv[i]);
+        }
+    }
+
+    if (cfg.device_address < 0x08U || cfg.device_address > 0x77U) {
+        printf("address must be 0x08..0x77\n");
+        return 1;
+    }
+    if (count < 1 || count > (int)sizeof(buf)) {
+        printf("count must be 1..%d\n", (int)sizeof(buf));
+        return 1;
+    }
+
+    if (i2c_master_bus_add_device(bus, &cfg, &dev) != ESP_OK) {
+        printf("could not add device 0x%02x\n", (unsigned)cfg.device_address);
+        return 1;
+    }
+    if (split) {
+        err = i2c_master_transmit(dev, &reg, 1, 100);
+        if (err == ESP_OK) {
+            err = i2c_master_receive(dev, buf, (size_t)count, 100);
+        }
+    } else {
+        err = i2c_master_transmit_receive(dev, &reg, 1, buf, (size_t)count, 100);
+    }
+    if (err == ESP_OK) {
+        printf("0x%02x reg 0x%02x%s:", (unsigned)cfg.device_address, reg,
+               split ? " (split)" : "");
+        for (int i = 0; i < count; i++) {
+            printf(" %02x", buf[i]);
+        }
+        printf("\n");
+    } else {
+        printf("read failed: %s\n", esp_err_to_name(err));
+        printf("  ACKed the scan but refused this transaction -- try `split`, or\n"
+               "  `i2craw 0x%02x` if it has no register pointer at all\n",
+               (unsigned)cfg.device_address);
+    }
+    (void)i2c_master_bus_rm_device(dev);
+    return (err == ESP_OK) ? 0 : 1;
+}
+
+/*
+ * Plain read with no pointer write, for a device that NAKs the register byte.
+ * Distinguishes "no register-pointer protocol" from "phantom ACK": a phantom
+ * from partial address decoding fails here too.
+ */
+static int cmd_i2craw(int argc, char **argv)
+{
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_dev_handle_t dev = NULL;
+    i2c_device_config_t cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .scl_speed_hz = 100000,
+    };
+    uint8_t buf[16] = {0};
+    int count;
+    esp_err_t err;
+
+    if (argc < 2) {
+        printf("usage: i2craw <addr> [count 1..%d]\n", (int)sizeof(buf));
+        return 1;
+    }
+    if (bus == NULL) {
+        printf("I2C bus not up -- bsp_i2c_init() has not run\n");
+        return 1;
+    }
+
+    cfg.device_address = (uint16_t)strtoul(argv[1], NULL, 0);
+    count = (argc > 2) ? atoi(argv[2]) : 4;
+
+    if (cfg.device_address < 0x08U || cfg.device_address > 0x77U) {
+        printf("address must be 0x08..0x77\n");
+        return 1;
+    }
+    if (count < 1 || count > (int)sizeof(buf)) {
+        printf("count must be 1..%d\n", (int)sizeof(buf));
+        return 1;
+    }
+
+    if (i2c_master_bus_add_device(bus, &cfg, &dev) != ESP_OK) {
+        printf("could not add device 0x%02x\n", (unsigned)cfg.device_address);
+        return 1;
+    }
+    err = i2c_master_receive(dev, buf, (size_t)count, 100);
+    if (err == ESP_OK) {
+        printf("0x%02x raw:", (unsigned)cfg.device_address);
+        for (int i = 0; i < count; i++) {
+            printf(" %02x", buf[i]);
+        }
+        printf("\n");
+    } else {
+        printf("raw read failed: %s\n", esp_err_to_name(err));
+        printf("  ACKs its address but yields no data on either transaction shape --\n"
+               "  likely a partial-address-decode phantom, or write-only\n");
+    }
+    (void)i2c_master_bus_rm_device(dev);
+    return (err == ESP_OK) ? 0 : 1;
+}
+
+/*
+ * Sweep one device's register space, read-only, to recover an undocumented map.
+ * The SW6106 datasheet names exactly one register (0xb0) and publishes no map,
+ * so the only way to find the fuel gauge is to look at which registers hold
+ * something other than 00/ff.
+ *
+ * Reads only. Some devices clear interrupt flags on read, so a dump is not
+ * perfectly side-effect free -- but it cannot reconfigure a battery charger,
+ * which a blind write absolutely can.
+ */
+static int cmd_i2cdump(int argc, char **argv)
+{
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_dev_handle_t dev = NULL;
+    i2c_device_config_t cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .scl_speed_hz = 100000,
+    };
+    unsigned start;
+    unsigned end;
+    int interesting = 0;
+
+    if (argc < 2) {
+        printf("usage: i2cdump <addr> [start] [end]   (default 0x00..0xff)\n");
+        printf("  read-only. '--' = NAK, '..' = reads 00, 'ff' shown as-is.\n");
+        return 1;
+    }
+    if (bus == NULL) {
+        printf("I2C bus not up -- bsp_i2c_init() has not run\n");
+        return 1;
+    }
+
+    cfg.device_address = (uint16_t)strtoul(argv[1], NULL, 0);
+    start = (argc > 2) ? (unsigned)strtoul(argv[2], NULL, 0) : 0x00U;
+    end   = (argc > 3) ? (unsigned)strtoul(argv[3], NULL, 0) : 0xffU;
+
+    if (cfg.device_address < 0x08U || cfg.device_address > 0x77U) {
+        printf("address must be 0x08..0x77\n");
+        return 1;
+    }
+    if (start > 0xffU || end > 0xffU || start > end) {
+        printf("range must be 0x00..0xff and start <= end\n");
+        return 1;
+    }
+    if (i2c_master_bus_add_device(bus, &cfg, &dev) != ESP_OK) {
+        printf("could not add device 0x%02x\n", (unsigned)cfg.device_address);
+        return 1;
+    }
+
+    printf("dump 0x%02x regs 0x%02x..0x%02x\n",
+           (unsigned)cfg.device_address, start, end);
+    printf("      0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+    for (unsigned base = start & 0xf0U; base <= end; base += 0x10U) {
+        printf("%02x:  ", base);
+        for (unsigned lo = 0U; lo < 0x10U; lo++) {
+            unsigned r = base | lo;
+            uint8_t reg = (uint8_t)r;
+            uint8_t val = 0U;
+
+            if (r < start || r > end) {
+                printf("   ");
+                continue;
+            }
+            if (i2c_master_transmit_receive(dev, &reg, 1, &val, 1, 100) != ESP_OK) {
+                printf("-- ");
+            } else if (val == 0U) {
+                printf(".. ");
+            } else {
+                printf("%02x ", val);
+                interesting++;
+            }
+        }
+        printf("\n");
+    }
+    printf("\n%d register(s) read non-zero\n\n", interesting);
+    (void)i2c_master_bus_rm_device(dev);
     return 0;
 }
 
@@ -167,6 +479,10 @@ void tb_debug_console_start(void)
         {.command = "vital",  .help = "Inject VITAL [hr spo2 rr sys dia]",       .func = cmd_vital},
         {.command = "status", .help = "Inject STATUS [sensor_mask] [lora_ok]",   .func = cmd_status},
         {.command = "btn",    .help = "Press button 0..3",                       .func = cmd_btn},
+        {.command = "i2c",    .help = "Scan shared I2C bus [timeout_ms]",        .func = cmd_i2c},
+        {.command = "i2creg", .help = "Read regs: i2creg <addr> <reg> [count] [split]", .func = cmd_i2creg},
+        {.command = "i2craw", .help = "Read with no reg pointer: i2craw <addr> [count]", .func = cmd_i2craw},
+        {.command = "i2cdump", .help = "Dump reg space: i2cdump <addr> [start] [end]", .func = cmd_i2cdump},
         {.command = "stats",  .help = "CPU/heap/stack report",                   .func = cmd_stats},
     };
 
@@ -178,5 +494,5 @@ void tb_debug_console_start(void)
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
     }
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
-    ESP_LOGW(TAG, "debug console ON (rfid/vital/status/btn/stats) -- disable for production");
+    ESP_LOGW(TAG, "debug console ON (rfid/vital/status/btn/i2c*/stats) -- disable for production");
 }

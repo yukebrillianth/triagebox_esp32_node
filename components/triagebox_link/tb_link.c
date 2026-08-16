@@ -10,7 +10,7 @@
 #include "tb_ui_source.h"
 
 /*
- * GPIO43/44 are the SP3485 RS485 pair on this board (AGENTS.md "Hardware
+ * GPIO43/44 are the MAX13487EESA+ RS485 pair on this board (AGENTS.md "Hardware
  * traps" #5). They are also the default UART0 console pins on ESP32-S3, which
  * is why this uses UART2: the console stays on USB Serial/JTAG
  * (CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y) and idf.py monitor keeps
@@ -136,12 +136,12 @@ esp_err_t tb_link_start(void)
         return err;
     }
 
-    /* TODO(hardware): README.md says the onboard SP3485 switches TX/RX
-     * automatically, so plain UART mode is correct and no DE/RE pin is needed.
-     * Verify against the schematic of the physical board revision. If DE turns
-     * out to be manual, switch to uart_set_mode(UART_MODE_RS485_HALF_DUPLEX)
-     * and give RTS a pin — note the GPIO budget in AGENTS.md has no obvious
-     * free candidate, so that would need a peripheral to be dropped. */
+    /* Plain UART mode is correct: the onboard transceiver is a MAX13487EESA+
+     * (U7 on the V3.0 schematic), an *AutoDirection* part that switches TX/RX
+     * internally. There is no DE/RE line to drive, so UART_MODE_RS485_HALF_DUPLEX
+     * and an RTS pin are not needed — which is lucky, because the GPIO budget in
+     * AGENTS.md has no free candidate. Note README.md long said "SP3485"; the
+     * schematic disagrees, and the behaviour (auto-direction) is the same. */
 
     memset(&s_parser, 0, sizeof(s_parser));
 
