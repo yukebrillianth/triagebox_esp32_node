@@ -56,7 +56,7 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
 Prefer the managed BSP `waveshare/esp32_s3_touch_lcd_4` over hand-rolled ST7701/GT911 init — but **pick the version by silkscreen revision, not by "latest"**. The physical board here is **rev 3.0** → BSP `^1.1.0` (TCA9554 expander). BSP `^2`/`3.x` targets HW **V4.0** (CH32V003 @ 0x24, different EXIO numbering). Official demo repo: <https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4>. Wiki: <https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4>.
 
-BSP 1.1.0 does **not** compile on ESP-IDF v6 as shipped: v6 removed `psram_trans_align` and `bits_per_pixel` from `esp_lcd_rgb_panel_config_t`, and the registry manifest claims `idf: >=5.3` with no upper bound so the solver never catches it. Workaround in tree: the component is vendored to `components/esp32_s3_touch_lcd_4/` (overrides the managed copy) with those two fields deleted, plus the 180° panel/touch mirror for the enclosure. Keep both — do not "upgrade" to `^3.0.0`.
+BSP 1.1.0 does **not** compile on ESP-IDF v6 as shipped: v6 removed `psram_trans_align` and `bits_per_pixel` from `esp_lcd_rgb_panel_config_t`, and the registry manifest claims `idf: >=5.3` with no upper bound so the solver never catches it. Workaround in tree: the component is vendored to `components/esp32_s3_touch_lcd_4/` (overrides the managed copy) with those two fields deleted, plus the 180° panel/touch mirror for the enclosure, plus `touch_read_tolerant()` — a touch read callback that replaces the port's, because `esp_lvgl_port` `ESP_ERROR_CHECK`s `esp_lcd_touch_read_data()` and one GT911 timeout on the shared bus therefore `abort()`ed the firmware (that was the "blackscreen, backlight lit" bug; see `docs/firmware-architecture.md`). Keep all three — do not "upgrade" to `^3.0.0`.
 
 Pin LVGL to v9 — the port component accepts `>=8,<10`, so an unpinned resolve can silently give you v8:
 
@@ -194,7 +194,7 @@ This firmware talks to the STM32 over UART with an internal framing of your choo
 | `ui/logic/` | Hand-written C only: types, session, mock, input, nav, action, runtime (+ host selftests) |
 | `sim/` | SDL2 desktop simulator (LVGL v9.5, 480×480) |
 | `main/` | ESP-IDF app (bring-up only: `app_main.c`, `asset_fs.c`) |
-| `components/esp32_s3_touch_lcd_4/` | Vendored BSP: IDF-v6 patch + 180° panel/touch mirror. Overrides the managed copy. |
+| `components/esp32_s3_touch_lcd_4/` | Vendored BSP: IDF-v6 patch + 180° panel/touch mirror + non-fatal touch read. Overrides the managed copy. |
 | `components/triagebox_link/` | RS485 ↔ STM32: `tb_frame.c` codec (platform-neutral), `tb_link.c` UART2, `tb_ui_source.c` |
 | `components/triagebox_board/` | Backlight + buzzer via TCA9554, and `ui_board_power_off()` via the SW6106 PMIC. `test_fakes/` lets the host selftest compile the real file. |
 | `components/triagebox_debug/` | `CONFIG_TB_DEBUG_CONSOLE` REPL: frame injection + I²C scan/read (`i2c`, `i2creg`, `i2craw`, `i2cdump`) + `stats`. Off by default. |

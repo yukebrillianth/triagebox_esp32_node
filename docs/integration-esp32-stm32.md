@@ -144,7 +144,9 @@ dependencies:
   espressif/esp_lvgl_port: "^2.8.0"
 ```
 
-BSP 1.1.0 **tidak compile di ESP-IDF v6** apa adanya: v6 menghapus `psram_trans_align` dan `bits_per_pixel` dari `esp_lcd_rgb_panel_config_t`, sementara manifest-nya klaim `idf: >=5.3` tanpa batas atas sehingga solver tidak menangkapnya. Solusi di repo ini: vendor komponennya ke `components/esp32_s3_touch_lcd_4/` (menimpa yang managed) dengan dua field itu dihapus — salinannya ada di `board/` dalam paket, sudah termasuk patch rotasi 180° dan touch mirror.
+BSP 1.1.0 **tidak compile di ESP-IDF v6** apa adanya: v6 menghapus `psram_trans_align` dan `bits_per_pixel` dari `esp_lcd_rgb_panel_config_t`, sementara manifest-nya klaim `idf: >=5.3` tanpa batas atas sehingga solver tidak menangkapnya. Solusi di repo ini: vendor komponennya ke `components/esp32_s3_touch_lcd_4/` (menimpa yang managed) dengan dua field itu dihapus — salinannya ada di `board/` dalam paket, sudah termasuk patch rotasi 180°, touch mirror, dan `touch_read_tolerant()`.
+
+Patch terakhir itu wajib ikut: `esp_lvgl_port` membungkus `esp_lcd_touch_read_data()` dengan `ESP_ERROR_CHECK` (`esp_lvgl_port_touch.c:127`), jadi **satu** transaksi GT911 yang gagal di bus I²C bersama memanggil `abort()` dan mereboot board. Gejalanya menipu — layar hitam tapi backlight tetap menyala, karena backlight ada di TCA9554 yang tidak ikut reset. BSP di paket ini memasang read callback sendiri yang menahan state terakhir kalau read gagal.
 
 ## 8. Checklist serah-terima
 

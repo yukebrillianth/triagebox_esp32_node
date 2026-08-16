@@ -19,7 +19,7 @@ LoRa **tidak** ada di ESP32: budget GPIO board ini habis (`AGENTS.md` → GPIO b
 | `main/` | bring-up saja: `app_main.c`, `asset_fs.c` |
 | `ui/` | LVGL Pro project (XML + generated C) |
 | `ui/logic/` | logic layer platform-neutral — **tidak** tahu soal I²C maupun SVM |
-| `components/esp32_s3_touch_lcd_4/` | BSP ter-vendor (patch IDF v6 + flip 180°) |
+| `components/esp32_s3_touch_lcd_4/` | BSP ter-vendor (patch IDF v6 + flip 180° + read touch non-fatal) |
 | `components/triagebox_link/` | link I²C ↔ STM32 (+ `tb_frame.c` untuk payload LoRa) |
 | `components/triagebox_ml/` | inference SVM |
 | `sim/` | simulator SDL desktop |
@@ -136,15 +136,34 @@ Board V3.0 **tidak punya `SYS_EN`**. Baterai dan rail 5 V/3V3 dipegang **SW6106 
 
 Urutan write ini dipatok di `components/triagebox_board/ui_board_power_selftest.c`, yang meng-compile `ui_board.c` asli di host lewat `components/triagebox_board/test_fakes/`.
 
-## Instrumen diagnosa (blackscreen)
+## Blackscreen: penyebab sudah dipastikan
 
-Gejala yang dilaporkan: layar tiba-tiba hitam **tapi backlight tetap menyala**, "seperti reset". Penyebabnya belum dipastikan, jadi yang ada di repo sekarang adalah **alat ukur, bukan perbaikan** — tiga kandidatnya butuh perbaikan yang berlawanan, dan menembak salah satu tanpa bukti hanya menukar satu bug dengan bug lain.
+Gejala yang dilaporkan: layar tiba-tiba hitam **tapi backlight tetap menyala**, "seperti reset". Ternyata memang **panic reboot**, dan pemicunya satu transaksi I²C GT911 yang gagal:
 
-Kenapa gejalanya seperti itu: backlight ada di EXIO2 TCA9554 yang **tidak** ikut reset bersama SoC, dan `CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT` + `REBOOT_DELAY_SECONDS=0` + coredump off membuat panic reboot seketika tanpa jejak. Jadi crash terlihat identik dengan panel mati yang lampunya masih hidup.
+```
+E (3376122) i2c.master: I2C transaction timeout detected
+E (3376132) lcd_panel.io.i2c: panel_io_i2c_rx_buffer(145): i2c transaction failed
+E (3376132) GT911: esp_lcd_touch_gt911_read_data(232): I2C read error!
+ESP_ERROR_CHECK failed: esp_err_t 0x108 (ESP_ERR_INVALID_RESPONSE)
+--- lvgl_port_touchpad_read at esp_lvgl_port_touch.c:127
+abort() was called at PC 0x4037dc53 on core 0
+```
 
-Dua kandidat **sudah dieliminasi lewat baca kode**, bukan lewat dugaan: (1) TCA9554 re-init yang membuat `LCD_RST` floating — mustahil, `BSP_LCD_RST` = `GPIO_NUM_NC` (panel ini tidak punya jalur reset yang digerakkan) dan jalur display memakai `.io_expander = NULL`; (2) read SPIFFS runtime untuk font/gambar yang mematikan cache dan membuat bounce buffer RGB underrun — gambar adalah array C yang di-compile, dan `asset_fs.c` sudah menyalin tiap font ke blob PSRAM sekali lalu melayani semua read/seek dari RAM.
+`esp_lvgl_port` membungkus `esp_lcd_touch_read_data()` dengan `ESP_ERROR_CHECK` (`esp_lvgl_port_touch.c:127`), jadi **satu** read touch yang gagal memanggil `abort()` → panic → reboot. Heartbeat 3,5 s sebelumnya masih sehat (`heap=5769512 min=5765812 frames=56262`, uptime ~56 menit), yang menyingkirkan heap, RGB desync, dan task macet.
 
-Dua instrumen di `main/app_main.c`:
+Kenapa gejalanya seperti panel mati: backlight ada di EXIO2 TCA9554 yang **tidak** ikut reset bersama SoC, dan `CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT` + `REBOOT_DELAY_SECONDS=0` + coredump off membuat panic reboot seketika tanpa jejak di layar.
+
+Ini juga menjelaskan timeout GT911 di ~84 s dan ~157 s yang sebelumnya tidak jelas: keduanya kena `panel_io_i2c_tx_buffer(193)`, yaitu write "clear status" di `esp_lcd_touch_gt911.c:236` yang **nilai kembaliannya dibuang**, jadi read tetap `ESP_OK` dan tidak ada yang abort. Fault yang sama, hanya beda transaksi mana yang kena.
+
+**Perbaikan** (`components/esp32_s3_touch_lcd_4/esp32_s3_touch_lcd_4.c`, `touch_read_tolerant()`): BSP memasang read callback sendiri lewat `lv_indev_set_read_cb()` sesudah `lvgl_port_add_touch()`, membaca touch tanpa `ESP_ERROR_CHECK`, dan **menahan state terakhir** kalau read gagal (bukan memaksa RELEASED — release palsu di tengah tekanan asli = klik hantu, dan di layar ini klik memulai/membatalkan pengukuran). Errornya di-log WARN dengan counter supaya glitch bus tetap kelihatan sekarang setelah tidak lagi bikin panic. Scale port-nya 1:1 di board ini, jadi tidak ada yang hilang.
+
+Yang **belum** diperbaiki: penyebab timeout-nya sendiri. Bus itu dipakai bareng TCA9554, SW6106, PCF85063A, GT911, dan STM32 (poll 50 ms) **tanpa lock lintas komponen dan tanpa recovery SDA yang nyangkut**. Sekarang efeknya turun dari reboot jadi satu sample touch hilang, jadi urutannya benar: hilangkan yang fatal dulu, kurangi kontensinya nanti dengan data dari counter itu. Kandidat kalau counternya ternyata tinggi: retry di `touch_read_tolerant()`, perlebar interval poll STM32, atau satu mutex bus di level BSP.
+
+Dua kandidat lain **sudah dieliminasi lewat baca kode**, bukan lewat dugaan, dan tetap dicatat supaya tidak dikejar lagi: (1) TCA9554 re-init yang membuat `LCD_RST` floating — mustahil, `BSP_LCD_RST` = `GPIO_NUM_NC` (panel ini tidak punya jalur reset yang digerakkan) dan jalur display memakai `.io_expander = NULL`; (2) read SPIFFS runtime untuk font/gambar yang mematikan cache dan membuat bounce buffer RGB underrun — gambar adalah array C yang di-compile, dan `asset_fs.c` sudah menyalin tiap font ke blob PSRAM sekali lalu melayani semua read/seek dari RAM.
+
+### Instrumen diagnosa
+
+Dua instrumen di `main/app_main.c`. Keduanya tetap dipakai: yang menangkap kasus di atas adalah heartbeat sehat tepat sebelum panic, dan gejala "layar hitam" berikutnya (kalau ada) harus dibedakan dari yang ini.
 
 | Log | Kapan | Isi |
 | --- | --- | --- |
@@ -157,16 +176,15 @@ Cara membacanya saat kejadian:
 
 | Yang terlihat di log | Artinya | Langkah berikut |
 | --- | --- | --- |
-| uptime mulai lagi dari ~0 | memang reset | baca baris `boot: reset=` di atasnya |
+| uptime mulai lagi dari ~0 | memang reset | baca baris `boot: reset=` di atasnya; kalau PANIC, cari `abort()`/backtrace di atasnya |
 | uptime terus naik saat layar hitam | SoC + UI sehat, stream panel mati | coba `CONFIG_LCD_RGB_RESTART_IN_VSYNC` (1 fb PSRAM + bounce buffer 480×20; **belum diverifikasi ke dokumen IDF v6.0.2**) |
-| log berhenti, tanpa baris boot | task LVGL macet | tersangka utama bus I²C bersama (lihat timeout GT911 di bawah) |
+| log berhenti, tanpa baris boot | task LVGL macet | tersangka utama bus I²C bersama |
 | `lv=` dan `wall=` melebar jaraknya | tick source LVGL kelaparan, SoC sehat | di panel kelihatan sama, perbaikannya beda |
+| `touch read failed (..), errors=N` naik cepat | kontensi bus I²C sering | sebelumnya ini yang bikin reboot; sekarang cuma sample hilang |
 
 Tes tanpa kode yang menyertainya: **saat layar hitam, tekan tombol.** Kalau masih ada bip, SoC hidup — berarti jalur display, bukan reset.
 
-Run 190 s pertama setelah instrumen masuk: heartbeat mulus, heap datar di ~5.68 MB (turun ~85 KB dari boot lalu plateau, jadi bukan kebocoran), `lv` dan `wall` selisih konstan 132 ms (offset boot, bukan starvation), dan tidak ada blackout. **Masih terbuka.**
-
-Yang belum dijelaskan dan ada di bus yang sama: `I2C transaction timeout` + `panel_io_i2c_tx_buffer(193)` dari GT911 pada ~84 s dan ~157 s. Bus itu dipakai bareng TCA9554, SW6106, RTC, GT911, dan STM32 **tanpa lock lintas komponen dan tanpa recovery SDA yang nyangkut**.
+Riwayat: run 190 s pertama sesudah instrumen masuk tidak blackout sama sekali (heartbeat mulus, heap datar ~5,68 MB, `lv`/`wall` selisih konstan 132 ms = offset boot, bukan starvation). Blackout baru tertangkap di run ~56 menit, dan itu yang jadi bukti di atas.
 
 ## Verifikasi
 
