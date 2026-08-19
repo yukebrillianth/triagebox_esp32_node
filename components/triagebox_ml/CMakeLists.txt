@@ -4,6 +4,10 @@
 idf_component_register(
     SRCS
        triage_pipeline.c
+       lgbm_dbp.c
+       lgbm_sbp.c
+       ppg_filter.c
+       ecg_filter.c
     INCLUDE_DIRS
         "include"
         # ui_types.h: vitals_t and ui_priority_t are the model's in/out contract.

@@ -38,13 +38,16 @@ int predict_triage_start_init(const TriageInput* input) {
 
     TriageOutput output = predict_triage(input);
 
-    if (output.predicted_esi == 1 || output.predicted_esi == 2) {
-        return 1; 
-    } else if (output.predicted_esi == 3) {
-        return 2; 
-    } else if (output.predicted_esi == 4 || output.predicted_esi == 5) {
-        return 3; 
-    }
+    // if (output.predicted_esi == 1 || output.predicted_esi == 2) {
+    //     return 1; 
+    // } else if (output.predicted_esi == 3) {
+    //     return 2; 
+    // } else if (output.predicted_esi == 4 || output.predicted_esi == 5) {
+    //     return 3; 
+    // }
+
+    // Pake ESI
+    return output.predicted_esi;
 }
 
 static float triage_probs_buffer[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
@@ -92,13 +95,16 @@ int predict_triage_start_continue(const TriageInput* input, int reset_state) {
         }
     }
 
-    if (current_esi == 1 || current_esi == 2) {
-        return 1; 
-    } else if (current_esi == 3) {
-        return 2; 
-    } else if (current_esi == 4 || current_esi == 5) {
-        return 3; 
-    }
+    // if (current_esi == 1 || current_esi == 2) {
+    //     return 1; 
+    // } else if (current_esi == 3) {
+    //     return 2; 
+    // } else if (current_esi == 4 || current_esi == 5) {
+    //     return 3; 
+    // }
+
+    // Pake ESI
+    return current_esi;
 }
 
 #ifdef __cplusplus

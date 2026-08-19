@@ -1,0 +1,32 @@
+#include "ppg_bandpass_filter.h"
+#include <stdlib.h>
+#include <string.h>
+
+void ppg_filter_stream(const double *in, double *out, int n) {
+    ppg_biquad_cascade_t filter;
+    ppg_filter_reset(&filter);
+    for (int i = 0; i < n; i++) {
+        out[i] = ppg_filter_step(&filter, in[i]);
+    }
+}
+
+void ppg_filtfilt(const double *in, double *out, int n) {
+    double *fwd = (double*)malloc(n * sizeof(double));
+    if (!fwd) return;
+
+    ppg_biquad_cascade_t filter;
+    ppg_filter_reset(&filter);
+
+    // Forward pass
+    for (int i = 0; i < n; i++) {
+        fwd[i] = ppg_filter_step(&filter, in[i]);
+    }
+
+    // Backward pass
+    ppg_filter_reset(&filter);
+    for (int i = n - 1; i >= 0; i--) {
+        out[i] = ppg_filter_step(&filter, fwd[i]);
+    }
+
+    free(fwd);
+}
