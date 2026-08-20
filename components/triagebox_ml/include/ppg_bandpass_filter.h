@@ -45,7 +45,6 @@ static inline double ppg_filter_step(ppg_biquad_cascade_t *f, double input_sampl
     }
     return x;
 }
-
 static inline double ppg_normalize_sample(double sample, double min_val, double max_val) {
     double range = max_val - min_val;
     if (range < 1e-5) range = 1e-5;
@@ -54,5 +53,8 @@ static inline double ppg_normalize_sample(double sample, double min_val, double 
     if (norm > 1.0) norm = 1.0;
     return norm;
 }
+
+void ppg_filter_stream(const double *in, double *out, int n);
+void ppg_filtfilt(const double *in, double *out, int n);
 
 #endif /* PPG_BANDPASS_FILTER_H */

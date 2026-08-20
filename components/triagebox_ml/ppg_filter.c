@@ -11,15 +11,22 @@ void ppg_filter_stream(const double *in, double *out, int n) {
 }
 
 void ppg_filtfilt(const double *in, double *out, int n) {
+    if (n <= 0) return;
     double *fwd = (double*)malloc(n * sizeof(double));
     if (!fwd) return;
+
+    double mean_v = 0.0;
+    for (int i = 0; i < n; i++) {
+        mean_v += in[i];
+    }
+    mean_v /= (double)n;
 
     ppg_biquad_cascade_t filter;
     ppg_filter_reset(&filter);
 
-    // Forward pass
+    // Forward pass (demeaned)
     for (int i = 0; i < n; i++) {
-        fwd[i] = ppg_filter_step(&filter, in[i]);
+        fwd[i] = ppg_filter_step(&filter, in[i] - mean_v);
     }
 
     // Backward pass

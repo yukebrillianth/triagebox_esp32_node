@@ -4,6 +4,7 @@
 idf_component_register(
     SRCS
        triage_pipeline.c
+       bp_pipeline.c
        lgbm_dbp.c
        lgbm_sbp.c
        ppg_filter.c

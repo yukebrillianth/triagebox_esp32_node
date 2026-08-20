@@ -1,14 +1,6 @@
 #ifndef LGBM_DBP_H
 #define LGBM_DBP_H
 
-#ifdef __cplusplus
-extern "C" {
+double score_dbp(double *input);
+
 #endif
-
-double predict_dbp(double *input);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif // LGBM_DBP_H

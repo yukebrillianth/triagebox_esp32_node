@@ -68,4 +68,7 @@ static inline double ecg_pan_tompkins_step(ecg_filter_state_t *f, double filtere
     return f->window_sum / ECG_PAN_TOMPKINS_WINDOW_LEN;
 }
 
+void ecg_filter_stream(const double *in, double *out, int n);
+void ecg_filtfilt(const double *in, double *out, int n);
+
 #endif /* ECG_FILTER_H */
