@@ -21,3 +21,11 @@ void ui_board_buzzer(bool on)
 void ui_board_power_off(void)
 {
 }
+
+/* No PMIC here, so the status bar shows "--%" -- which is the honest answer. */
+bool ui_board_battery(uint8_t *percent, bool *charging)
+{
+    (void)percent;
+    (void)charging;
+    return false;
+}

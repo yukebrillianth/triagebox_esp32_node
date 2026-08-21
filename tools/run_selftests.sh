@@ -7,7 +7,16 @@ cd "$(dirname "$0")/.."
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 CC=${CC:-cc}
-FLAGS="-std=c99 -Wall -Wextra -Werror -g -fsanitize=address,undefined"
+# ASan is skipped under MSYS2/Git Bash: its interceptors cannot hook memcpy on
+# Windows, so every binary dies with "CHECK failed: ... (real_memcpy) != (0)"
+# before reaching main. The asserts are the actual test and run either way.
+# Override with SAN= to force off, or SAN=-fsanitize=undefined for UBSan alone.
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) : "${SAN=}" ;;
+*)                        : "${SAN=-fsanitize=address,undefined}" ;;
+esac
+FLAGS="-std=c99 -Wall -Wextra -Werror -g $SAN"
+[ -n "$SAN" ] || echo "note: sanitizers off, assertions still checked"
 fail=0
 
 run() { # run <selftest.c> <extra .c files...>
@@ -28,6 +37,13 @@ run() { # run <selftest.c> <extra .c files...>
 run components/triagebox_link/tb_frame_selftest.c \
     components/triagebox_link/tb_frame_selftest.c \
     components/triagebox_link/tb_frame.c \
+    ui/logic/ui_types.c
+
+# Snapshot decode + button state-to-edge diff. tb_i2c_codec.c is deliberately
+# ESP-IDF-free so the real file runs here, not a copy.
+run components/triagebox_link/tb_i2c_codec_selftest.c \
+    components/triagebox_link/tb_i2c_codec_selftest.c \
+    components/triagebox_link/tb_i2c_codec.c \
     ui/logic/ui_types.c
 
 run components/triagebox_ml/tb_svm_selftest.c \
@@ -56,6 +72,13 @@ run ui/logic/ui_status_selftest.c \
 run components/triagebox_board/ui_board_power_selftest.c \
     components/triagebox_board/ui_board_power_selftest.c \
     components/triagebox_board/ui_board.c
+
+# The real tb_ui_source.c against test_fakes/ as well: the RFID gate decides
+# which patient's ID a set of vitals is filed under.
+run components/triagebox_link/tb_ui_source_selftest.c \
+    components/triagebox_link/tb_ui_source_selftest.c \
+    components/triagebox_link/tb_ui_source.c \
+    ui/logic/ui_types.c
 
 [ "$fail" -eq 0 ] && echo "all selftests OK"
 exit "$fail"

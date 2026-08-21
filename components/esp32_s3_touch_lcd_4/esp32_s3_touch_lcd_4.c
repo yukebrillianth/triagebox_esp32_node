@@ -462,6 +462,63 @@ static lv_display_t *bsp_display_lcd_init()
 }
 
 
+/*
+ * Fault-tolerant replacement for esp_lvgl_port's touch read.
+ *
+ * The port's own callback wraps esp_lcd_touch_read_data() in ESP_ERROR_CHECK
+ * (esp_lvgl_port_touch.c:127), so ONE failed GT911 transaction calls abort().
+ * That is the confirmed cause of the "screen goes black, backlight stays lit,
+ * kinda reset" reports: with PANIC_PRINT_REBOOT at 0 s the SoC restarts
+ * instantly while the backlight, driven by the TCA9554, does not reset with it.
+ * Captured at ~56 min uptime as
+ *   i2c.master: I2C transaction timeout detected
+ *   panel_io_i2c_rx_buffer(145) -> GT911 read error -> 0x108 -> abort()
+ * on a bus shared by five devices (TCA9554, SW6106, PCF85063A, GT911 and the
+ * STM32 polled every 50 ms) with no cross-component lock, so the occasional
+ * timeout is expected. Dropping one touch sample is the right trade; rebooting
+ * mid-measurement on a triage device is not.
+ *
+ * The last state is held rather than forced to RELEASED: a synthetic release in
+ * the middle of a real press is a phantom click, and on these screens a click
+ * starts or aborts a measurement. Errors are logged (WARN survives the default
+ * level) so the bus glitch stays visible now that it no longer panics.
+ */
+static void touch_read_tolerant(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    static lv_point_t last_point;
+    static lv_indev_state_t last_state = LV_INDEV_STATE_RELEASED;
+    static uint32_t errors;
+
+    uint8_t cnt = 0;
+    esp_lcd_touch_point_data_t pts[CONFIG_ESP_LCD_TOUCH_MAX_POINTS] = {0};
+    esp_err_t err;
+
+    (void)indev;
+
+    err = esp_lcd_touch_read_data(tp);
+    if (err == ESP_OK) {
+        err = esp_lcd_touch_get_data(tp, pts, &cnt, CONFIG_ESP_LCD_TOUCH_MAX_POINTS);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "touch read failed (%s), holding last state, errors=%u",
+                 esp_err_to_name(err), (unsigned)++errors);
+        data->point = last_point;
+        data->state = last_state;
+        return;
+    }
+
+    if (cnt > 0) {
+        data->point.x = pts[0].x;
+        data->point.y = pts[0].y;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+
+    last_point = data->point;
+    last_state = data->state;
+}
+
 static lv_indev_t *bsp_display_indev_init(lv_display_t *disp)
 {
     BSP_ERROR_CHECK_RETURN_NULL(bsp_touch_new(NULL, &tp));
@@ -473,7 +530,14 @@ static lv_indev_t *bsp_display_indev_init(lv_display_t *disp)
         .handle = tp,
     };
 
-    return lvgl_port_add_touch(&touch_cfg);
+    lv_indev_t *indev = lvgl_port_add_touch(&touch_cfg);
+    if (indev) {
+        /* Scale stays 1:1 here, so the port's callback adds nothing we need.
+         * See touch_read_tolerant() for why it must not stay installed. */
+        lv_indev_set_read_cb(indev, touch_read_tolerant);
+    }
+
+    return indev;
 }
 
 

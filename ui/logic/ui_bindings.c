@@ -155,6 +155,94 @@ void ui_bindings_sync_status_dots(void)
             ui_status_lora(s.lora_ok, s.lora_reported));
 }
 
+/* ------------------------------------------------------ Status bar -------- */
+
+/*
+ * Replaces the authored "80%" / "Connected" / "--:--" literals that every
+ * *_gen.c passes to status_bar_create(). The bar is on all eight screens, so
+ * unlike the Home dots this must not early-out on the current screen -- it syncs
+ * whichever one is showing.
+ *
+ * Rate-limited on purpose. The clock has minute resolution and the gauge moves
+ * in 1% steps, so 50 ms would be pure I2C contention for no visible change --
+ * and the PMIC shares a bus with the touch controller with no cross-component
+ * lock, which is already a suspect for the random resets.
+ */
+#define STATUS_BAR_TICKS   20U  /* 20 x 50 ms = 1 s: enough for a HH:MM clock */
+#define BATTERY_READ_TICKS 200U /* 10 s: a 1%/step gauge cannot move faster    */
+
+static const void *battery_icon_src(ui_battery_icon_t icon)
+{
+    switch (icon) {
+    case UI_BATTERY_ICON_CHARGING: return battery_charging;
+    case UI_BATTERY_ICON_FULL:     return battery_full;
+    case UI_BATTERY_ICON_MEDIUM:   return battery_medium;
+    default:                       return battery_empty;
+    }
+}
+
+static void sync_status_bar(void)
+{
+    static uint32_t s_ticks;
+    static uint8_t s_percent = UI_BATTERY_UNKNOWN;
+    static bool s_charging;
+    lv_obj_t *root = screen_root(ui_nav_current());
+    lv_obj_t *obj;
+    link_status_t s;
+    bool refresh = (s_ticks % STATUS_BAR_TICKS) == 0U;
+    bool reread = (s_ticks % BATTERY_READ_TICKS) == 0U;
+    char buf[8];
+
+    s_ticks++;
+    if (root == NULL || !refresh) {
+        return;
+    }
+
+    if (reread) {
+        uint8_t pct;
+        bool chg;
+
+        /* A failed read resets to UNKNOWN rather than keeping the last good
+         * value: a frozen 80% while the pack drains is worse than "--%". */
+        if (ui_board_battery(&pct, &chg)) {
+            s_percent = pct;
+            s_charging = chg;
+        } else {
+            s_percent = UI_BATTERY_UNKNOWN;
+            s_charging = false;
+        }
+    }
+
+    obj = lv_obj_find_by_name(root, "sb_battery_text");
+    if (obj != NULL) {
+        ui_status_battery_text(buf, sizeof(buf), s_percent);
+        lv_label_set_text(obj, buf);
+    }
+    obj = lv_obj_find_by_name(root, "sb_battery");
+    if (obj != NULL) {
+        lv_image_set_src(obj, battery_icon_src(
+                                  ui_status_battery_icon(s_percent, s_charging)));
+    }
+
+    ui_mock_get_link_status(&s);
+    obj = lv_obj_find_by_name(root, "sb_link_text");
+    if (obj != NULL) {
+        lv_label_set_text(obj, ui_status_link_text(s.lora_ok, s.lora_reported));
+        /* The signal glyph next to it is unnamed in the generated component, so
+         * colour the text instead -- same information, no XML regeneration. */
+        lv_obj_set_style_text_color(
+            obj, status_color(ui_status_lora(s.lora_ok, s.lora_reported)), 0);
+    }
+
+    obj = lv_obj_find_by_name(root, "sb_clock");
+    if (obj != NULL) {
+        char clock[6];
+
+        ui_status_format_clock(clock, sizeof(clock));
+        lv_label_set_text(obj, clock);
+    }
+}
+
 /* ------------------------------------------------------ Power confirm ----- */
 
 /*
@@ -425,35 +513,79 @@ static void set_tile(lv_obj_t *root, const char *tile_name, const char *text)
 }
 
 /* Fill the four vital tiles on any screen that has them. Both tile components
- * (result_vital, vital_card) name their readout label "lbl_value". */
+ * (result_vital, vital_card) name their readout label "lbl_value".
+ *
+ * Each tile is gated on its OWN validity bit, not on a whole-snapshot flag: one
+ * unplugged sensor must not blank the three that are working.
+ *
+ * A tile whose bit is clear is REPAINTED to "--", not skipped. Skipping was the
+ * same defect set_patient_id below documents: the authored "--" only survives
+ * until the first good reading, after which a cleared bit left the last number
+ * frozen on screen. So taking a finger off the sensor kept showing that finger's
+ * SpO2, and it kept showing it for the next patient. A stale vital is worse than
+ * no vital, because nothing about it looks stale. */
 static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
 {
     char buf[16];
 
-    if (root == NULL || v == NULL || !v->valid) {
-        return; /* keep the authored "--" rather than invent a reading */
+    if (root == NULL || v == NULL) {
+        return;
     }
-    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->spo2);
-    set_tile(root, "vc_spo2", buf);
-    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->hr);
-    set_tile(root, "vc_hr", buf);
-    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->rr);
-    set_tile(root, "vc_rr", buf);
-    lv_snprintf(buf, sizeof(buf), "%u/%u", (unsigned)v->bp_sys, (unsigned)v->bp_dia);
-    set_tile(root, "vc_bp", buf);
+    if (v->valid_mask & UI_VITAL_SPO2) {
+        lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->spo2);
+        set_tile(root, "vc_spo2", buf);
+    } else {
+        set_tile(root, "vc_spo2", "--");
+    }
+    if (v->valid_mask & UI_VITAL_HR) {
+        lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->hr);
+        set_tile(root, "vc_hr", buf);
+    } else {
+        set_tile(root, "vc_hr", "--");
+    }
+    if (v->valid_mask & UI_VITAL_RR) {
+        lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->rr);
+        set_tile(root, "vc_rr", buf);
+    } else {
+        set_tile(root, "vc_rr", "--");
+    }
+    if (v->valid_mask & UI_VITAL_BP) {
+        lv_snprintf(buf, sizeof(buf), "%u/%u", (unsigned)v->bp_sys,
+                    (unsigned)v->bp_dia);
+        set_tile(root, "vc_bp", buf);
+    } else {
+        set_tile(root, "vc_bp", "--");
+    }
 }
 
+/*
+ * Writes unconditionally, including when there is no tag.
+ *
+ * The early "no tag -> return" this replaces had two failure modes on one line:
+ * the label kept its authored "-" so a real ID never appeared, and a *previous*
+ * patient's ID was never cleared -- which on a triage screen means attaching the
+ * wrong identity to a set of vitals. Painting "--" is the safe default; it is
+ * also the tell that this code ran at all, which "-" is not.
+ */
 static void set_patient_id(lv_obj_t *root, const char *prefix)
 {
     const rfid_t *tag = ui_session_get_rfid();
     lv_obj_t *label;
 
-    if (root == NULL || tag == NULL || !tag->present) {
+    if (root == NULL) {
         return;
     }
     label = lv_obj_find_by_name(root, "patient_id");
-    if (label != NULL) {
+    if (label == NULL) {
+        /* Renaming a label in the XML would otherwise silently stop the ID from
+         * ever updating again, with no symptom but a stale placeholder. */
+        LV_LOG_WARN("no patient_id label on this screen");
+        return;
+    }
+    if (tag != NULL && tag->present && tag->tag[0] != '\0') {
         lv_label_set_text_fmt(label, "%s%s", prefix, tag->tag);
+    } else {
+        lv_label_set_text_fmt(label, "%s--", prefix);
     }
 }
 
@@ -492,24 +624,38 @@ static void apply_mengukur(void)
 static void apply_monitor(void)
 {
     const vitals_t *v = ui_session_get_vitals();
-    static const struct { const char *name; int field; } k_fields[] = {
-        {"spo2_value", 0}, {"hr_value", 1}, {"rr_value", 2},
+    static const struct { const char *name; uint8_t bit; } k_fields[] = {
+        {"spo2_value", UI_VITAL_SPO2},
+        {"hr_value",   UI_VITAL_HR},
+        {"rr_value",   UI_VITAL_RR},
     };
 
     if (monitor == NULL || v == NULL) {
         return;
     }
     set_patient_id(monitor, "ID Pasien: ");
-    if (!v->valid) {
-        return;
-    }
     for (unsigned i = 0; i < sizeof(k_fields) / sizeof(k_fields[0]); i++) {
-        lv_obj_t *label = lv_obj_find_by_name(monitor, k_fields[i].name);
-        unsigned value = (k_fields[i].field == 0) ? v->spo2
-                       : (k_fields[i].field == 1) ? v->hr : v->rr;
-        if (label != NULL) {
-            lv_label_set_text_fmt(label, "%u", value);
+        lv_obj_t *label;
+        unsigned value;
+
+        /* Per-field again: this is the live monitoring screen, so a working
+         * sensor must keep updating while another is unplugged.
+         *
+         * Cleared bits are painted "--" rather than skipped, for the reason in
+         * apply_vital_tiles: on the LIVE screen a skipped field freezes the last
+         * number, so lifting a finger off the sensor leaves its SpO2 on display
+         * as though it were still being measured. */
+        label = lv_obj_find_by_name(monitor, k_fields[i].name);
+        if (label == NULL) {
+            continue;
         }
+        if ((v->valid_mask & k_fields[i].bit) == 0U) {
+            lv_label_set_text(label, "--");
+            continue;
+        }
+        value = (k_fields[i].bit == UI_VITAL_SPO2) ? v->spo2
+              : (k_fields[i].bit == UI_VITAL_HR)   ? v->hr : v->rr;
+        lv_label_set_text_fmt(label, "%u", value);
     }
     apply_vital_tiles(monitor, v);
 }
@@ -632,8 +778,48 @@ static void result_beep_tick(void)
         apply_priority(ui_session_get_priority());
         beep_for_priority(ui_session_get_priority());
     }
-    /* Vitals keep arriving, so refresh every tick rather than once. Only the
-     * current screen is touched; the others are skipped inside each helper. */
+}
+
+/*
+ * Beep once when a scan succeeds. The Berhasil screen otherwise announces itself
+ * only visually, and the operator is looking at the card reader, not the panel.
+ *
+ * Armed by SCANNING rather than by "Berhasil is showing", because Berhasil is
+ * also reachable backwards from Age -- and a chirp on Back would mean "card
+ * read" when nothing was read. Re-arming on SCANNING also means rescanning the
+ * same card still beeps, which comparing tag strings would not.
+ */
+static void scan_beep_tick(void)
+{
+    static bool s_armed;
+    const rfid_t *tag;
+
+    if (ui_nav_current() == UI_SCREEN_SCANNING) {
+        s_armed = true;
+        return;
+    }
+    if (!s_armed || ui_nav_current() != UI_SCREEN_BERHASIL) {
+        return;
+    }
+    tag = ui_session_get_rfid();
+    if (tag == NULL || !tag->present || tag->tag[0] == '\0') {
+        return; /* Stay armed: the ID may land a poll later than the screen. */
+    }
+    s_armed = false;
+    beep_start(1, 3); /* One ~150 ms blip: not a click, not a priority pattern. */
+}
+
+/*
+ * Push the latest readings into whichever screen is showing. Must be called
+ * unconditionally: this used to live at the tail of result_beep_tick(), which
+ * returns early unless the current screen is Result WITH a priority -- so
+ * Monitor and Mengukur were never refreshed and sat at their authored "--"
+ * while Result, reached later in the flow, worked fine.
+ *
+ * Only the current screen is touched; each helper skips a NULL root.
+ */
+static void refresh_current_screen(void)
+{
     switch (ui_nav_current()) {
     case UI_SCREEN_RESULT:   apply_result_vitals(); break;
     case UI_SCREEN_MENGUKUR: apply_mengukur(); break;
@@ -648,11 +834,16 @@ static void selection_timer_cb(lv_timer_t *timer)
     (void)timer;
     ui_bindings_sync_selection();
     ui_bindings_sync_status_dots();
+    sync_status_bar();
     poll_power_request();
 
     /* A result announcement outranks a button click: start it first so the
      * click beep cannot truncate the pattern. */
     result_beep_tick();
+    scan_beep_tick();
+    /* Vitals keep arriving, so refresh every tick rather than once. Separate
+     * from result_beep_tick() because that one returns early off Result. */
+    refresh_current_screen();
     if (ui_action_take_beep_request() && s_beep_pulses == 0 && !s_beep_is_on) {
         beep_start(1, 1);
     }
