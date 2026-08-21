@@ -28,84 +28,23 @@ typedef struct {
 TriageOutput predict_triage(const TriageInput* input);
 
 /*
-    brief: Setelah 1 menit pertama setelah tekan tombol 'START', yang dipake buat prediksi triase yang ini, buat sementara ESI 4 5 kumasukkan hijau, ESI 3 kuning, ESI 2 1 merah
-    ret: 0 = hitam, 1 = merah, 2 = kuning, 3 = hijau
+    brief: Setelah 1 menit pertama setelah tekan tombol 'START', yang dipake buat
+    prediksi triase yang ini.
+    ret: ESI 1..5, atau 0 kalau ada sensor yang tidak melapor (min < 1).
+
+    CATATAN: nilai balik = ESI mentah, BUKAN ui_priority_t. Konversinya wajib
+    lewat tb_triage_esi_to_priority() di tb_triage.h -- cast langsung memetakan
+    ESI 1 (paling kritis) ke YELLOW.
 */
-int predict_triage_start_init(const TriageInput* input) {
-    if (input->pulse_min < 1 || input->resp_min < 1 || input->spo2_min < 1 || input->sbp_min < 1) {
-        return 0; 
-    }
-
-    TriageOutput output = predict_triage(input);
-
-    // if (output.predicted_esi == 1 || output.predicted_esi == 2) {
-    //     return 1; 
-    // } else if (output.predicted_esi == 3) {
-    //     return 2; 
-    // } else if (output.predicted_esi == 4 || output.predicted_esi == 5) {
-    //     return 3; 
-    // }
-
-    // Pake ESI
-    return output.predicted_esi;
-}
-
-static float triage_probs_buffer[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+int predict_triage_start_init(const TriageInput* input);
 
 /*
-    brief: Setelah eksekusi predict_triage_start_init(), ini yang dipake buat update kondisi pasien selama interval tertentu (15 detik?)
-    ret: 0 = hitam, 1 = merah, 2 = kuning, 3 = hijau
+    brief: Setelah eksekusi predict_triage_start_init(), ini yang dipake buat
+    update kondisi pasien selama interval tertentu (15 detik?). Menyimpan state
+    smoothing internal, jadi urutan pemanggilan berarti.
+    ret: ESI 1..5, atau 0. Lihat catatan konversi di atas.
 */
-int predict_triage_start_continue(const TriageInput* input, int reset_state) {
-    if (input->pulse_min < 1 || input->resp_min < 1 || input->spo2_min < 1 || input->sbp_min < 1) {
-        triage_probs_buffer[0] = 0.0;
-        triage_probs_buffer[1] = 0.0;
-        triage_probs_buffer[2] = 0.0;
-        triage_probs_buffer[3] = 0.0;
-        triage_probs_buffer[4] = 0.0;
-        return 0; 
-    }
-
-    TriageOutput output = predict_triage(input);
-
-    if (reset_state) {
-        for (int i = 0; i < 5; i++) {
-            triage_probs_buffer[i] = output.probs[i];
-        }
-    } else {
-        const float alpha = 0.7;
-        float probs_sum = 0.0;
-
-        for (int i = 0; i < 5; i++) {
-            triage_probs_buffer[i] = (1 - alpha) * triage_probs_buffer[i] + alpha * output.probs[i];
-            probs_sum += triage_probs_buffer[i];
-        }
-
-        for (int i = 0; i < 5; i++) {
-            triage_probs_buffer[i] /= probs_sum;
-        }
-    }
-
-    int current_esi = 1;
-    float max_prob = triage_probs_buffer[0];
-    for (int i = 1; i < 5; i++) {
-        if (triage_probs_buffer[i] > max_prob) {
-            max_prob = triage_probs_buffer[i];
-            current_esi = i + 1;
-        }
-    }
-
-    // if (current_esi == 1 || current_esi == 2) {
-    //     return 1; 
-    // } else if (current_esi == 3) {
-    //     return 2; 
-    // } else if (current_esi == 4 || current_esi == 5) {
-    //     return 3; 
-    // }
-
-    // Pake ESI
-    return current_esi;
-}
+int predict_triage_start_continue(const TriageInput* input, int reset_state);
 
 #ifdef __cplusplus
 }
