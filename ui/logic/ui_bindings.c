@@ -516,8 +516,14 @@ static void set_tile(lv_obj_t *root, const char *tile_name, const char *text)
  * (result_vital, vital_card) name their readout label "lbl_value".
  *
  * Each tile is gated on its OWN validity bit, not on a whole-snapshot flag: one
- * unplugged sensor must not blank the three that are working. A tile whose bit
- * is clear is left at its authored "--". */
+ * unplugged sensor must not blank the three that are working.
+ *
+ * A tile whose bit is clear is REPAINTED to "--", not skipped. Skipping was the
+ * same defect set_patient_id below documents: the authored "--" only survives
+ * until the first good reading, after which a cleared bit left the last number
+ * frozen on screen. So taking a finger off the sensor kept showing that finger's
+ * SpO2, and it kept showing it for the next patient. A stale vital is worse than
+ * no vital, because nothing about it looks stale. */
 static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
 {
     char buf[16];
@@ -528,19 +534,27 @@ static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
     if (v->valid_mask & UI_VITAL_SPO2) {
         lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->spo2);
         set_tile(root, "vc_spo2", buf);
+    } else {
+        set_tile(root, "vc_spo2", "--");
     }
     if (v->valid_mask & UI_VITAL_HR) {
         lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->hr);
         set_tile(root, "vc_hr", buf);
+    } else {
+        set_tile(root, "vc_hr", "--");
     }
     if (v->valid_mask & UI_VITAL_RR) {
         lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->rr);
         set_tile(root, "vc_rr", buf);
+    } else {
+        set_tile(root, "vc_rr", "--");
     }
     if (v->valid_mask & UI_VITAL_BP) {
         lv_snprintf(buf, sizeof(buf), "%u/%u", (unsigned)v->bp_sys,
                     (unsigned)v->bp_dia);
         set_tile(root, "vc_bp", buf);
+    } else {
+        set_tile(root, "vc_bp", "--");
     }
 }
 
@@ -625,16 +639,23 @@ static void apply_monitor(void)
         unsigned value;
 
         /* Per-field again: this is the live monitoring screen, so a working
-         * sensor must keep updating while another is unplugged. */
-        if ((v->valid_mask & k_fields[i].bit) == 0U) {
+         * sensor must keep updating while another is unplugged.
+         *
+         * Cleared bits are painted "--" rather than skipped, for the reason in
+         * apply_vital_tiles: on the LIVE screen a skipped field freezes the last
+         * number, so lifting a finger off the sensor leaves its SpO2 on display
+         * as though it were still being measured. */
+        label = lv_obj_find_by_name(monitor, k_fields[i].name);
+        if (label == NULL) {
             continue;
         }
-        label = lv_obj_find_by_name(monitor, k_fields[i].name);
+        if ((v->valid_mask & k_fields[i].bit) == 0U) {
+            lv_label_set_text(label, "--");
+            continue;
+        }
         value = (k_fields[i].bit == UI_VITAL_SPO2) ? v->spo2
               : (k_fields[i].bit == UI_VITAL_HR)   ? v->hr : v->rr;
-        if (label != NULL) {
-            lv_label_set_text_fmt(label, "%u", value);
-        }
+        lv_label_set_text_fmt(label, "%u", value);
     }
     apply_vital_tiles(monitor, v);
 }

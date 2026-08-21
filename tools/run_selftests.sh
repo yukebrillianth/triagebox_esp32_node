@@ -7,7 +7,16 @@ cd "$(dirname "$0")/.."
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 CC=${CC:-cc}
-FLAGS="-std=c99 -Wall -Wextra -Werror -g -fsanitize=address,undefined"
+# ASan is skipped under MSYS2/Git Bash: its interceptors cannot hook memcpy on
+# Windows, so every binary dies with "CHECK failed: ... (real_memcpy) != (0)"
+# before reaching main. The asserts are the actual test and run either way.
+# Override with SAN= to force off, or SAN=-fsanitize=undefined for UBSan alone.
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) : "${SAN=}" ;;
+*)                        : "${SAN=-fsanitize=address,undefined}" ;;
+esac
+FLAGS="-std=c99 -Wall -Wextra -Werror -g $SAN"
+[ -n "$SAN" ] || echo "note: sanitizers off, assertions still checked"
 fail=0
 
 run() { # run <selftest.c> <extra .c files...>

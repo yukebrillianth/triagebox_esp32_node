@@ -1,6 +1,7 @@
 #ifndef TB_REGS_H
 #define TB_REGS_H
 
+#include <stddef.h> /* NULL, for tb_ppg_take's optional out-parameter */
 #include <stdint.h>
 
 /*
@@ -48,9 +49,18 @@
 #define TB_I2C_SLAVE_ADDR      0x42U
 #define TB_I2C_SLAVE_ADDR_HAL  (TB_I2C_SLAVE_ADDR << 1)
 
+/* Every struct here is the wire image itself, so none of them may gain padding.
+ * Defined up here because both block definitions below need it. */
+#if defined(__GNUC__)
+#define TB_PACKED __attribute__((packed))
+#else
+#define TB_PACKED
+#endif
+
 /* Bump on ANY layout change. The ESP32 reads this first and refuses to parse
- * a block it does not recognise, rather than trusting shifted offsets. */
-#define TB_PROTO_VER 0x01U
+ * a block it does not recognise, rather than trusting shifted offsets.
+ * 0x02 added the PPG waveform block at TB_REG_PPG_BASE. */
+#define TB_PROTO_VER 0x02U
 
 /* ---- Read block (STM32 -> ESP32) ---------------------------------------- */
 
@@ -77,6 +87,164 @@
  * several polls means the superloop stalled. Wrapping at 256 is fine -- the
  * ESP32 only compares for inequality, never for ordering.
  */
+
+/* ---- PPG waveform block (STM32 -> ESP32) -------------------------------- */
+
+/*
+ * The smoothed MAX30102 waveform, so the ESP32 can run its own PPG processing.
+ * The STM32 does not analyse it beyond SpO2; it low-passes it (31-tap
+ * linear-phase FIR, 10Hz at 100Hz -- see DSP_PPG_LP_TAPS) and hands it over.
+ *
+ * WHY A SEPARATE BASE ADDRESS AND NOT AN EXTENSION OF tb_snapshot_t: I2C2 runs
+ * at 100kHz, so a byte costs ~90us. Appending 128 bytes of waveform to the
+ * vitals snapshot would turn a 4ms poll into a 16ms one, on a bus the ESP32
+ * also shares with the GT911 touch controller and the TCA9554. Two base
+ * addresses means the ESP32 polls vitals as often as it likes and pulls the
+ * waveform only when something wants it.
+ *
+ * WHY A RING WITH A TOTAL AND NO POP: a slave cannot tell how many bytes the
+ * master actually took -- a read ends when the master NACKs, which the F4 HAL
+ * surfaces as an error, not a count. So nothing is consumed here. The ESP32
+ * diffs `total` against the value it saw last time and reads that many samples
+ * backwards from the head; tb_ppg_take() below does exactly that, so neither
+ * side has to re-derive the wrap. Same reasoning as the button bitmask: state,
+ * not events, so a missed poll costs nothing and there is no queue to overflow.
+ *
+ * The overrun is detectable rather than silent, which is the point: at
+ * TB_PPG_FS_HZ the ring holds TB_PPG_RING/TB_PPG_FS_HZ = 320ms, so the ESP32
+ * must read at better than ~3Hz. Slower than that is not corruption, it is a
+ * gap tb_ppg_take() reports.
+ */
+
+/* 0x50 and not 0x80: the register pointer is ONE byte, and this block is 132
+ * bytes, so a base of 0x80 would run off the end of the address space at 0x104
+ * and the tail would be unreachable. 0x50 sits clear of both the read block
+ * (ends 0x30) and the write block (0x40..0x43) and ends at 0xD4. */
+#define TB_REG_PPG_BASE 0x50U
+/* Power of two so the index wrap is a mask, not a divide. 32 samples = 320ms
+ * at 100Hz, and 128 bytes = ~12ms of a 100kHz bus per read. Raising it buys
+ * slack for a slower poller at the cost of a longer transaction. */
+#define TB_PPG_RING     32U
+/* Sample rate of what is in the ring, from DSP_PPG_FS_HZ. A constant, not a
+ * wire field: the ESP32 needs it to interpret the waveform, but it never
+ * changes at runtime, so putting it on the bus 100 times a second would be
+ * paying for a value that cannot vary. */
+#define TB_PPG_FS_HZ    100U
+
+/*
+ * Samples are counts >> TB_PPG_SHIFT. The MAX30102 FIFO is 18-bit, so >>2 maps
+ * its full 0..262143 range onto a uint16_t exactly (0x3FFFF >> 2 == 0xFFFF) and
+ * halves the bus time against a float32. The 4-count quantisation step is well
+ * under the ~10 counts of noise left after the smoothing FIR, on a pulse of
+ * ~200 counts, so it costs nothing the filter had won.
+ */
+#define TB_PPG_SHIFT      2U
+#define TB_PPG_MAX_COUNTS 0x3FFFFU /* 18-bit MAX30102 FIFO word */
+
+typedef struct TB_PACKED {
+    uint16_t ir;  /**< tb_ppg_unpack() -> raw counts */
+    uint16_t red;
+} tb_ppg_sample_t;
+
+/*
+ * `total` deliberately carries the head position too: head == total %
+ * TB_PPG_RING. One field cannot disagree with itself, whereas a separate head
+ * index could be latched out of step with the counter it describes.
+ *
+ * u32 at offset 0 keeps every uint16_t below it naturally aligned, so both
+ * sides can cast this over the received bytes instead of unpacking by hand.
+ * It wraps after 497 days at 100Hz; the ESP32 subtracts, so the wrap is
+ * harmless as long as it uses uint32_t arithmetic.
+ */
+typedef struct TB_PACKED {
+    uint32_t total;                     /**< samples ever pushed, never reset */
+    tb_ppg_sample_t s[TB_PPG_RING];
+} tb_ppg_block_t;
+
+#define TB_REG_PPG_END (TB_REG_PPG_BASE + 0x84U) /* one past end */
+
+/**
+ * Pack one smoothed channel for the wire. Only the STM32 calls this; it lives
+ * here so the shift, the clamp and tb_ppg_unpack() cannot drift apart.
+ *
+ * The `!(counts > 0)` test rather than `counts < 0` is deliberate: it also
+ * catches NaN, and the FIR legitimately undershoots below zero for a few
+ * samples after a step (its stopband taps are negative), which would otherwise
+ * convert to a huge uint32_t.
+ */
+static inline uint16_t tb_ppg_pack(float counts)
+{
+    if (!(counts > 0.0f)) {
+        return 0U;
+    }
+    if (counts >= (float)TB_PPG_MAX_COUNTS) {
+        return (uint16_t)(TB_PPG_MAX_COUNTS >> TB_PPG_SHIFT);
+    }
+    return (uint16_t)((uint32_t)(counts + 0.5f) >> TB_PPG_SHIFT);
+}
+
+/** Wire value back to MAX30102 counts. This is the ESP32's half. */
+static inline uint32_t tb_ppg_unpack(uint16_t v)
+{
+    return (uint32_t)v << TB_PPG_SHIFT;
+}
+
+/**
+ * Append one sample, in raw counts. STM32 side; wrapped by
+ * tb_slave_ppg_push(). @p blk is volatile because the I2C ISR reads it
+ * concurrently, and that is load-bearing:
+ *
+ * total is stored LAST, and that is the whole synchronisation scheme -- there
+ * is no lock and none is needed. The reader treats total as "samples you may
+ * trust", so publishing it after the sample it describes means an interrupt
+ * landing mid-push sees either the old count, and picks this sample up next
+ * time, or the new count with the sample already in place. Never a count that
+ * promises a slot not yet written. The volatile qualifier is what stops the
+ * compiler hoisting that store above the two below; on Cortex-M4 that is
+ * sufficient, since the core sees its own stores in program order.
+ */
+static inline void tb_ppg_push(volatile tb_ppg_block_t *blk, float ir, float red)
+{
+    uint32_t t = blk->total;
+    uint32_t i = t & (TB_PPG_RING - 1U); /* power of two, so a mask */
+
+    blk->s[i].ir = tb_ppg_pack(ir);
+    blk->s[i].red = tb_ppg_pack(red);
+    blk->total = t + 1U; /* last, deliberately */
+}
+
+/**
+ * ESP32 side: pull everything new out of a block just read over I2C.
+ *
+ * @param blk         the 132 bytes read from TB_REG_PPG_BASE
+ * @param last_total  in/out; keep it between calls, start it at 0
+ * @param out         receives up to TB_PPG_RING samples, OLDEST FIRST
+ * @param dropped     may be NULL; else set to the count lost to the ring
+ *                    turning over, i.e. this read came too late
+ * @return            how many samples were written to @p out
+ *
+ * Samples still hold wire values -- run tb_ppg_unpack() for counts.
+ */
+static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
+                                   uint32_t *last_total,
+                                   tb_ppg_sample_t *out, uint32_t *dropped)
+{
+    uint32_t total = blk->total;
+    uint32_t n = total - *last_total; /* u32 subtraction, so the wrap is fine */
+    uint32_t i;
+
+    if (dropped != NULL) {
+        *dropped = (n > TB_PPG_RING) ? (n - TB_PPG_RING) : 0U;
+    }
+    if (n > TB_PPG_RING) {
+        n = TB_PPG_RING; /* the rest are already overwritten */
+    }
+    for (i = 0U; i < n; ++i) {
+        out[i] = blk->s[(total - n + i) & (TB_PPG_RING - 1U)];
+    }
+    *last_total = total;
+    return n;
+}
 
 /* ---- Write block (ESP32 -> STM32) --------------------------------------- */
 
@@ -136,6 +304,29 @@
  */
 #define TB_FLAG_BP_VALID   0x08U
 #define TB_FLAG_MEASURING  0x10U /* a measure window is running */
+/*
+ * A finger is on the MAX30102: the smoothed RED channel is at or above
+ * DSP_PPG_MIN_DC. This is about the WAVEFORM at TB_REG_PPG_BASE, not about the
+ * vitals -- TB_FLAG_SPO2_VALID already covers the number.
+ *
+ * Needed because the ring keeps advancing with nothing on the sensor: the STM32
+ * pushes every sample unconditionally, so `total` climbing proves the sample
+ * path is alive and says nothing about whether a finger is there. With nothing
+ * on it the MAX30102 still reads ~2000 counts of ambient light and detector
+ * noise, and PPG processing on the ESP32 side would find a heart rate in it.
+ *
+ * Clear means: draw the trace as no-contact, or draw nothing. It does NOT mean
+ * the sensor is broken -- that is TB_SENSOR_MAX30102, which stays set for an
+ * idle-but-answering sensor.
+ *
+ * Deliberately in this byte rather than in the PPG block: the snapshot is polled
+ * far more often than the 132-byte waveform, so contact loss is visible without
+ * paying for a waveform read that is going to be discarded.
+ *
+ * NOT part of the UI_VITAL_* mapping in tb_i2c_codec.c -- it gates the waveform,
+ * not any displayed number.
+ */
+#define TB_FLAG_PPG_CONTACT 0x20U
 
 /* Per-sensor health, for the ESP32's Home status dots. */
 #define TB_SENSOR_ECG      0x01U
@@ -148,14 +339,8 @@
  * The read block, laid out to match the offsets above exactly. Packed because
  * it IS the wire image: the slave hands a pointer into this straight to the
  * I2C peripheral, with no per-field serialisation step to get wrong.
- * tb_regs_selftest.c pins every offset with offsetof().
+ * tb_link_selftest.c pins every offset with offsetof().
  */
-#if defined(__GNUC__)
-#define TB_PACKED __attribute__((packed))
-#else
-#define TB_PACKED
-#endif
-
 typedef struct TB_PACKED {
     uint8_t  proto_ver;
     uint8_t  seq;

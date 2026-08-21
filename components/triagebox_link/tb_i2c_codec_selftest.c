@@ -154,6 +154,23 @@ static void test_decode_valid_mask_is_per_field(void)
     assert(tb_i2c_decode_vitals(raw, &v));
     assert(v.valid_mask == 0U);
     assert(!v.valid);
+
+    /*
+     * TB_FLAG_PPG_CONTACT must NOT reach valid_mask. It says a finger is on the
+     * MAX30102, which is a statement about the waveform ring, not about any
+     * displayed number -- a finger touching the sensor does not mean an SpO2
+     * block has been computed yet. Folding it in would put a stale or unset
+     * percentage on the screen the moment someone touched the sensor.
+     */
+    raw[TB_REG_FLAGS] = TB_FLAG_PPG_CONTACT;
+    assert(tb_i2c_decode_vitals(raw, &v));
+    assert(v.valid_mask == 0U);
+    assert(!v.valid);
+
+    /* And it does not disturb the bits that are set alongside it. */
+    raw[TB_REG_FLAGS] = TB_FLAG_PPG_CONTACT | TB_FLAG_SPO2_VALID;
+    assert(tb_i2c_decode_vitals(raw, &v));
+    assert(v.valid_mask == UI_VITAL_SPO2);
 }
 
 static void test_decode_null_safe(void)
