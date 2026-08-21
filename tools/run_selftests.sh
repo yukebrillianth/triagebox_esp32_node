@@ -46,9 +46,12 @@ run components/triagebox_link/tb_i2c_codec_selftest.c \
     components/triagebox_link/tb_i2c_codec.c \
     ui/logic/ui_types.c
 
-run components/triagebox_ml/tb_svm_selftest.c \
-    components/triagebox_ml/tb_svm_selftest.c \
-    components/triagebox_ml/tb_svm.c
+# tb_triage.c only: tb_triage_model.c pulls in the 49k-line GBM pipeline, and
+# the parts worth pinning (ESI mapping, window aggregates) are not in it.
+run components/triagebox_ml/tb_triage_selftest.c \
+    components/triagebox_ml/tb_triage_selftest.c \
+    components/triagebox_ml/tb_triage.c \
+    ui/logic/ui_types.c
 
 # Pre-existing UI logic selftests. ui_bindings/ui_input need LVGL, so the ones
 # listed here are the LVGL-free modules only.

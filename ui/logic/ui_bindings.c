@@ -724,18 +724,22 @@ static void blink_tick(void)
 
 /*
  * Backlight + RGB DMA are the two dominant loads, so blanking on idle is the
- * single biggest battery win available (roughly 2.5 W -> 0.7 W). No dimming:
- * BL_EN is a digital expander pin, not PWM.
+ * single biggest battery win available. No dimming: BL_EN is a digital expander
+ * pin, not PWM (EXIO5 could dim, but it is behind the same I2C expander as the
+ * GT911 touch, so bit-banging PWM there would fight the touch controller).
  *
- * DISABLED BY DEFAULT: on this board the saving is large enough to trip the
- * SW6106 power-bank IC's light-load auto-off, which switches the whole device
- * off a few seconds after the screen goes dark (the USB port disappears too).
- * That is a documented board quirk, not a firmware bug -- see
- * docs/firmware-architecture.md. Re-enable once the SW6106 path is settled
- * (test on battery, or keep a residual load).
+ * History: this was disabled for a while because the board powered itself off a
+ * few seconds after the screen went dark. The cause was never established -- the
+ * SW6106 light-load theory does not survive the arithmetic, since blanking only
+ * removes the backlight (~200-300 mA of ~500 mA) and the panel DMA keeps
+ * running. Re-enabled now that the STM32 and the sensors draw from this board
+ * too: the baseline load is much higher, so blanking moves the total far less.
+ *
+ * If the device starts switching itself off again, set this back to 0 -- that is
+ * the whole revert.
  */
 #ifndef IDLE_BLANK_MS
-#define IDLE_BLANK_MS 0U /* 0 = never blank; 30000 = 30 s */
+#define IDLE_BLANK_MS 30000U /* 0 = never blank */
 #endif
 
 static bool s_screen_on = true;
@@ -760,6 +764,24 @@ static void idle_tick(void)
     if (idle == s_screen_on) {
         s_screen_on = !idle;
         ui_board_backlight(s_screen_on);
+
+        if (s_screen_on) {
+            /*
+             * Swallow the press that did the waking, so tapping a dark screen
+             * turns the light on instead of pressing whatever happens to sit
+             * under the finger -- Power and Abort are both on the ButtonBar.
+             *
+             * ponytail: this timer runs every 50 ms, so a tap shorter than that
+             * can still land its click before we get here. Fine for a finger on
+             * a 480x480 panel; if it ever matters, hook the indev directly
+             * instead of polling inactivity.
+             */
+            lv_indev_t *indev = NULL;
+
+            while ((indev = lv_indev_get_next(indev)) != NULL) {
+                lv_indev_wait_release(indev);
+            }
+        }
     }
 }
 

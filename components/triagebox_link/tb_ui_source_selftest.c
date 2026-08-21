@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "fakes.h"
+#include "tb_triage.h"
 #include "tb_ui_source.h"
 #include "ui_mock.h"
 
@@ -24,14 +25,32 @@ void ui_board_power_off(void) {}
 uint32_t tb_link_frames_ok(void) { return 0; }
 esp_err_t tb_link_send_cmd(uint8_t cmd) { (void)cmd; return ESP_OK; }
 
-ui_priority_t tb_svm_classify(const vitals_t *v, float *confidence)
+/* Stand in for the whole ML component: this selftest is about tb_ui_source's
+ * plumbing, not the model. */
+void tb_vitals_window_reset(tb_vitals_window_t *w) { (void)w; }
+void tb_vitals_window_add(tb_vitals_window_t *w, const vitals_t *v)
 {
     (void)v;
+    if (w != NULL) {
+        w->samples++;
+    }
+}
+
+ui_priority_t tb_triage_classify(const tb_vitals_window_t *w, ui_age_band_t age,
+                                 ui_gender_t gender, float *confidence)
+{
+    (void)w;
+    (void)age;
+    (void)gender;
     if (confidence != NULL) {
         *confidence = 0.5f;
     }
     return UI_PRIORITY_GREEN;
 }
+
+/* tb_ui_source.c reads the committed age/gender to build the feature vector. */
+ui_age_band_t ui_session_get_age(void) { return UI_AGE_BAND_18_45; }
+ui_gender_t ui_session_get_gender(void) { return UI_GENDER_M; }
 
 /* The one window onto s_rfid after ui_mock_rfid_ready() has consumed the
  * one-shot flag: infer_once() hands the tag to the station through here. */

@@ -24,7 +24,7 @@
 
 #include "tb_i2c_codec.h"
 #include "tb_link_i2c.h"
-#include "tb_svm.h"
+#include "tb_triage.h"
 #include "tb_ui_source.h"
 #include "ui_mock.h"
 #include "ui_status.h"
@@ -408,15 +408,17 @@ static int cmd_i2cdump(int argc, char **argv)
 
 static int cmd_stats(int argc, char **argv)
 {
-    /* Time the SVM over many runs: one call is far below esp_timer's
-     * resolution, so a single measurement would just read 0 or 1 us. */
-    const int iterations = 1000;
+    /* Time inference over many runs: the old SVM was well under esp_timer's
+     * resolution, so a single measurement read 0 or 1 us. The GBM pipeline is
+     * far heavier -- this is now the number that actually matters. */
+    const int iterations = 100;
     vitals_t v = {
         .hr = 112, .spo2 = 93, .rr = 24, .bp_sys = 100, .bp_dia = 65,
         .battery = 80,
         .valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP,
         .valid = true,
     };
+    tb_vitals_window_t window;
     float conf = 0.0f;
     int64_t t0;
     int64_t elapsed_us;
@@ -426,17 +428,25 @@ static int cmd_stats(int argc, char **argv)
     (void)argc;
     (void)argv;
 
+    /* One sample is enough to exercise the model; min==max just means a flat
+     * window, which is a legal input. */
+    tb_vitals_window_reset(&window);
+    tb_vitals_window_add(&window, &v);
+
     t0 = esp_timer_get_time();
     for (int i = 0; i < iterations; i++) {
-        (void)tb_svm_classify(&v, &conf);
+        (void)tb_triage_classify(&window, UI_AGE_BAND_18_45, UI_GENDER_M, &conf);
     }
     elapsed_us = esp_timer_get_time() - t0;
 
     printf("\n--- inference ---\n");
-    printf("tb_svm_classify: %.2f us/call (%d calls in %lld us)\n",
+    printf("tb_triage_classify: %.1f us/call (%d calls in %lld us)\n",
            (double)elapsed_us / iterations, iterations, elapsed_us);
     printf("called once per patient, so ~%.4f%% of one 60 s measure window\n",
            100.0 * ((double)elapsed_us / iterations) / 60e6);
+    printf("result now: priority=%d confidence=%.2f\n",
+           (int)tb_triage_classify(&window, UI_AGE_BAND_18_45, UI_GENDER_M, &conf),
+           (double)conf);
 
     printf("\n--- heap ---\n");
     printf("internal free  : %u bytes (min ever %u)\n",
@@ -550,9 +560,9 @@ static int cmd_i2clink(int argc, char **argv)
         printf("decoded   : hr=%u spo2=%u rr=%u bp=%u/%u\n",
                v.hr, v.spo2, v.rr, v.bp_sys, v.bp_dia);
         /* valid_mask is what the screens render from; `valid` only gates the
-         * SVM. Printing both makes "the number is there but the tile is blank"
+         * model. Printing both makes "the number is there but the tile is blank"
          * a one-line diagnosis. */
-        printf("shown     : hr=%d spo2=%d rr=%d bp=%d   svm_valid=%d\n",
+        printf("shown     : hr=%d spo2=%d rr=%d bp=%d   model_valid=%d\n",
                (v.valid_mask & UI_VITAL_HR) ? 1 : 0,
                (v.valid_mask & UI_VITAL_SPO2) ? 1 : 0,
                (v.valid_mask & UI_VITAL_RR) ? 1 : 0,
