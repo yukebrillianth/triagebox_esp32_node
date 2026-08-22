@@ -327,6 +327,33 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
  * not any displayed number.
  */
 #define TB_FLAG_PPG_CONTACT 0x20U
+/*
+ * TB_REG_HR carried a PULSE rate from the PPG, not a heart rate from the ECG.
+ * Set whenever the ECG produced nothing and the MAX30102 did, which for a
+ * patient with a working finger sensor and no chest electrodes is the normal
+ * case, not an error.
+ *
+ * WHY THE FIELD IS NOT RENAMED: TB_REG_HR keeps its name, offset and meaning
+ * ("the patient's rate in bpm"), and the ESP32's UI_VITAL_HR mapping and the
+ * station's MQTT "hr" key keep working untouched. A second rate register would
+ * mean every consumer needs a fallback rule, and three copies of that rule
+ * eventually disagree. So the fallback lives on the STM32 -- see mon_rate_bpm
+ * in main.c -- and this bit reports which sensor won.
+ *
+ * WHY THIS DID NOT BUMP TB_PROTO_VER: nothing moved. A new bit in an existing
+ * byte is layout-compatible, so an ESP32 built before this bit existed masks it
+ * off and behaves exactly as it did. Bumping would have forced both boards to
+ * be reflashed together to fix a label.
+ *
+ * What a consumer SHOULD do with it: label the number "PR" rather than "HR".
+ * What it must not do is treat the reading as a heart rate for anything
+ * rhythm-related. PR counts pulses that reached the finger, HR counts
+ * depolarisations at the chest; a beat too weak to open the aortic valve is in
+ * one and not the other, so PR <= HR always. For rate-based triage scoring the
+ * two are interchangeable within a beat or two on a perfusing patient, which is
+ * why this is a label bit and not a validity bit.
+ */
+#define TB_FLAG_HR_FROM_PPG 0x40U
 
 /* Per-sensor health, for the ESP32's Home status dots. */
 #define TB_SENSOR_ECG      0x01U

@@ -208,8 +208,9 @@ static int cmd_i2creg(int argc, char **argv)
         printf("  TCA9554: 0=input 1=output 2=polarity 3=config (0xff = all inputs,\n");
         printf("           i.e. nobody configured it). Pointer does NOT auto-increment,\n");
         printf("           so read one register at a time.\n");
-        printf("  SW6106 : 0xb0 is the only register the datasheet names; try `split`\n");
-        printf("           if a plain read returns 00.\n");
+        printf("  SW6106 : `pmic` decodes the ADC block (0x14-0x1B, 0x4F) for you.\n");
+        printf("           0xb0 is named in the datasheet; try `split` if a plain\n");
+        printf("           read returns 00.\n");
         return 1;
     }
     if (bus == NULL) {
@@ -540,6 +541,17 @@ static int cmd_i2clink(int argc, char **argv)
            (raw[TB_REG_FLAGS] & TB_FLAG_RR_VALID) ? 1 : 0,
            (raw[TB_REG_FLAGS] & TB_FLAG_BP_VALID) ? 1 : 0,
            (raw[TB_REG_FLAGS] & TB_FLAG_MEASURING) ? 1 : 0);
+    /* The two label bits, on their own line because they answer different
+     * questions from the validity bits above: ppg_contact says the waveform at
+     * TB_REG_PPG_BASE is trustworthy, and hr_from_ppg says the rate in
+     * TB_REG_HR came from the MAX30102 rather than the ECG. A blank HR tile
+     * with hr=0 and hr_from_ppg=0 means neither sensor produced a rate, which
+     * is a STM32-side diagnosis, not an ESP32 one. */
+    printf("          : ppg_contact=%d hr_from_ppg=%d%s\n",
+           (raw[TB_REG_FLAGS] & TB_FLAG_PPG_CONTACT) ? 1 : 0,
+           (raw[TB_REG_FLAGS] & TB_FLAG_HR_FROM_PPG) ? 1 : 0,
+           (raw[TB_REG_FLAGS] & TB_FLAG_HR_FROM_PPG) ? "  (label it PR, not HR)"
+                                                     : "");
     printf("buttons   : 0x%02x  [%c%c%c%c]  (1=pressed, left to right)\n",
            raw[TB_REG_BUTTONS],
            (raw[TB_REG_BUTTONS] & TB_BTN_1) ? '1' : '.',
@@ -586,6 +598,155 @@ static int cmd_i2clink(int argc, char **argv)
     return 0;
 }
 
+/*
+ * SW6106 power telemetry: how much current the board is actually drawing.
+ *
+ * The registers come from "SW6106 I2C Register List RG006_1_v1.2" §2.15-2.22,
+ * which DOES publish an ADC block -- the older comment in this file saying 0xb0
+ * was the only named register was wrong, and `i2creg`'s help text still says so.
+ * Every value below is a 12-bit ADC split across two registers, high nibble in
+ * the shared byte:
+ *
+ *   Vbat   = ((0x15[3:0]<<8) | 0x14) * 1.2 mV
+ *   Vout   = ((0x15[7:4]<<8) | 0x16) * 4   mV
+ *   Ichg   = ((0x18[3:0]<<8) | 0x17) * 25/7 mA
+ *   Idischg= ((0x18[7:4]<<8) | 0x19) * 25/7 mA
+ *   Tdie   = (((0x1B[3:0]<<8) | 0x1A) - 1851) / 6.82  degC
+ *
+ * IDISCHG IS THE ANSWER TO "what is the board drawing": it is the battery-side
+ * current out of the gauge, so it covers the ESP32, the LCD, the STM32 and
+ * everything else downstream of the boost, measured on the one path they share.
+ * Note it is battery-side, not 5V-side: at ~3.8V battery into a 5V boost, 5V
+ * load current is roughly Idischg * 3.8/5 minus boost losses, so do not compare
+ * it directly against a 5V rail measurement.
+ *
+ * Charging and discharging are mutually exclusive on this part, so exactly one
+ * of the two currents is meaningful at a time -- 0x11 says which, and the
+ * printout marks it rather than leaving you to guess which zero is real.
+ *
+ * Read-only, and no unlock: REG 0x01[7:6] and 0x22[7:6] gate WRITES to their own
+ * registers only. This deliberately stays out of ui_board.c -- that file's
+ * contract is "the only write in this tree is ui_board_power_off()" and its
+ * selftest fake asserts on any register outside 0x49/0x4F/0x11, so putting
+ * debug telemetry there would either weaken that assert or force a fake update
+ * for something no production path reads.
+ *
+ * One transaction per register: the SW6106's pointer does not auto-increment,
+ * so a burst re-reads the same byte (the same trap `i2creg` documents).
+ */
+#define PMIC_ADDR 0x3cU
+
+static esp_err_t pmic_reg(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t *val)
+{
+    /* One retry, because this bus is shared with the GT911, the TCA9554 and the
+     * STM32 poll and loses transactions under contention -- the same fault
+     * touch_read_tolerant() absorbs on the touch side. Ten registers per sample
+     * means a per-read failure rate that is invisible elsewhere still makes the
+     * whole command fail most of the time. A retry is right HERE and would be
+     * wrong in ui_board_battery(): this is an idempotent debug read that the
+     * operator is waiting on, not a 10s periodic poll that can skip a turn.
+     *
+     * Deliberately not a fix for the contention itself, which needs a bus-level
+     * mutex in the BSP (see docs/firmware-architecture.md). */
+    esp_err_t err = i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
+
+    if (err != ESP_OK) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+        err = i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
+    }
+    return err;
+}
+
+static int cmd_pmic(int argc, char **argv)
+{
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_dev_handle_t dev = NULL;
+    i2c_device_config_t cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = PMIC_ADDR,
+        .scl_speed_hz = 100000,
+    };
+    /* Sampled repeatedly because a single reading is nearly useless here: the
+     * LCD backlight, LoRa TX and the boost's own ripple move this by hundreds of
+     * mA, so what you want is a series to watch while you toggle a load. */
+    int samples = (argc > 1) ? atoi(argv[1]) : 1;
+    int period_ms = (argc > 2) ? atoi(argv[2]) : 1000;
+
+    if (samples < 1 || samples > 600) {
+        printf("usage: pmic [samples 1..600] [period_ms 100..10000]\n");
+        return 1;
+    }
+    if (period_ms < 100 || period_ms > 10000) {
+        printf("period_ms must be 100..10000\n");
+        return 1;
+    }
+    if (bus == NULL) {
+        printf("I2C bus not up -- bsp_i2c_init() has not run\n");
+        return 1;
+    }
+    if (i2c_master_bus_add_device(bus, &cfg, &dev) != ESP_OK) {
+        printf("could not add the PMIC at 0x%02x\n", (unsigned)PMIC_ADDR);
+        return 1;
+    }
+
+    printf("  soc   Vbat    Vout    Ichg  Idischg   Tdie  state\n");
+    for (int n = 0; n < samples; n++) {
+        /* Order matters: the decode below indexes this array. One transaction
+         * each, and the failing register is named rather than just the errno --
+         * this bus is shared with the GT911, the TCA9554 and the STM32, and a
+         * failure on the FIRST register (bus wedged, and `I2C hardware timeout
+         * detected` in the log) is a different problem from a failure on the
+         * last one (this part unhappy with one address). */
+        static const uint8_t regs[] = {0x11U, 0x14U, 0x15U, 0x16U, 0x17U,
+                                       0x18U, 0x19U, 0x1AU, 0x1BU, 0x4FU};
+        uint8_t v[sizeof(regs)] = {0};
+        esp_err_t err = ESP_OK;
+        unsigned bad = 0;
+
+        for (unsigned i = 0; i < sizeof(regs) && err == ESP_OK; i++) {
+            err = pmic_reg(dev, regs[i], &v[i]);
+            bad = i;
+        }
+        if (err != ESP_OK) {
+            printf("read failed at reg 0x%02x: %s\n", (unsigned)regs[bad],
+                   esp_err_to_name(err));
+            (void)i2c_master_bus_rm_device(dev);
+            return 1;
+        }
+
+        const uint8_t st = v[0], vb_l = v[1], vhi = v[2], vo_l = v[3];
+        const uint8_t ic_l = v[4], ihi = v[5], id_l = v[6], t_l = v[7];
+        const uint8_t thi = v[8], soc = v[9];
+
+        /* Integer arithmetic throughout: *25/7 in that order keeps the ratio
+         * exact to the nearest mA without dragging in floats, and the 12-bit
+         * input cannot overflow int on the way (4095*25 = 102375). */
+        unsigned vbat_mv = (((unsigned)(vhi & 0x0FU) << 8) | vb_l) * 12U / 10U;
+        unsigned vout_mv = (((unsigned)(vhi >> 4) << 8) | vo_l) * 4U;
+        unsigned ichg_ma = (((unsigned)(ihi & 0x0FU) << 8) | ic_l) * 25U / 7U;
+        unsigned idis_ma = (((unsigned)(ihi >> 4) << 8) | id_l) * 25U / 7U;
+        int tdie_raw = (int)(((unsigned)(thi & 0x0FU) << 8) | t_l);
+        /* x100 then /682 rather than /6.82, same reason. Below the 1851 offset
+         * the part is reading nonsense (or has not converted yet), and a large
+         * negative temperature is a clearer signal of that than a clamp. */
+        int tdie_c = (tdie_raw - 1851) * 100 / 682;
+
+        printf("  %3u%%  %u.%03uV  %u.%03uV  %5umA  %5umA  %4dC  %s%s%s\n",
+               (unsigned)(soc & 0x7FU), vbat_mv / 1000U, vbat_mv % 1000U,
+               vout_mv / 1000U, vout_mv % 1000U, ichg_ma, idis_ma, tdie_c,
+               (st & 0x10U) ? "chg " : "", (st & 0x20U) ? "boost " : "",
+               ((st & 0x30U) == 0U) ? "idle" : "");
+        if (n + 1 < samples) {
+            vTaskDelay(pdMS_TO_TICKS(period_ms));
+        }
+    }
+    printf("  Idischg is battery-side draw (ESP32 + LCD + STM32 together).\n");
+    printf("  Ichg and Idischg are exclusive: read the one the state column names.\n");
+
+    (void)i2c_master_bus_rm_device(dev);
+    return 0;
+}
+
 void tb_debug_console_start(void)
 {
     esp_console_repl_t *repl = NULL;
@@ -606,6 +767,7 @@ void tb_debug_console_start(void)
         {.command = "i2craw", .help = "Read with no reg pointer: i2craw <addr> [count]", .func = cmd_i2craw},
         {.command = "i2cdump", .help = "Dump reg space: i2cdump <addr> [start] [end]", .func = cmd_i2cdump},
         {.command = "i2clink", .help = "Read + decode the STM32 snapshot at 0x42", .func = cmd_i2clink},
+        {.command = "pmic",   .help = "Power telemetry: pmic [samples] [period_ms]", .func = cmd_pmic},
         {.command = "stats",  .help = "CPU/heap/stack report",                   .func = cmd_stats},
     };
 
@@ -617,5 +779,5 @@ void tb_debug_console_start(void)
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
     }
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
-    ESP_LOGW(TAG, "debug console ON (rfid/vital/status/btn/i2c*/stats) -- disable for production");
+    ESP_LOGW(TAG, "debug console ON (rfid/vital/status/btn/i2c*/pmic/stats) -- disable for production");
 }

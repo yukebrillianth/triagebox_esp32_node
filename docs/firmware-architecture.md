@@ -214,7 +214,10 @@ Kalau STM32 menjawab tapi `seq` tidak berubah, link mencetak `seq frozen` — it
 | `i2craw <addr> [count]` | Baca tanpa write pointer register |
 | `i2cdump <addr> [start] [end]` | Dump ruang register, hanya yang non-zero yang ditandai |
 | `i2clink` | Baca + decode snapshot STM32 di `0x42` (proto ver, seq, vital, tombol, RFID) |
+| `pmic [samples] [period_ms]` | Telemetri daya SW6106: SoC, Vbat, Vout, Ichg, **Idischg**, Tdie |
 | `stats` | CPU/heap/stack + `frames_ok`/`crc_errors` |
+
+`pmic` menjawab "berapa arus yang dipakai sekarang": **`Idischg` adalah arus sisi baterai**, jadi mencakup ESP32 + LCD + STM32 sekaligus karena semuanya lewat satu jalur itu. Sumbernya blok ADC di *SW6106 I2C Register List* RG006_1_v1.2 §2.15–2.22 — `Vbat = ((0x15[3:0]<<8)|0x14) * 1.2 mV`, `Vout = ((0x15[7:4]<<8)|0x16) * 4 mV`, `Ichg = ((0x18[3:0]<<8)|0x17) * 25/7 mA`, `Idischg = ((0x18[7:4]<<8)|0x19) * 25/7 mA`, `Tdie = (((0x1B[3:0]<<8)|0x1A) − 1851)/6.82 °C`. Charge dan discharge **saling eksklusif**, kolom state (dari `0x11`) menunjukkan mana yang berlaku. Karena ini sisi baterai, arus di rail 5 V kira-kira `Idischg × Vbat/5 V` dikurangi rugi boost — jangan dibandingkan langsung dengan pengukuran di 5 V. Beri `samples`/`period_ms` untuk melihat serinya sambil menyalakan beban (backlight, LoRa TX).
 
 Semua perintah I²C **read-only** — tidak ada `i2cwrite`. Alamat `0x3c` adalah charger 4 A dengan LiPo menempel; write yang salah bisa mengubah tegangan cut-off atau mematikan power path. Satu-satunya write ke PMIC ada di `ui_board_power_off()`, urutannya dari datasheet dan dipatok selftest.
 
