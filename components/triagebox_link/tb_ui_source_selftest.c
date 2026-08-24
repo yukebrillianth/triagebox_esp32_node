@@ -15,7 +15,9 @@
 #include "fakes.h"
 #include "tb_triage.h"
 #include "tb_ui_source.h"
+#include "ui_demo.h"
 #include "ui_mock.h"
+#include "ui_status.h"
 
 /* --- stubs for everything tb_ui_source.c calls but does not own -------------- */
 
@@ -87,9 +89,76 @@ static void push_empty(void)
     tb_ui_source_on_rfid(&empty);
 }
 
+/* --- demo mode --------------------------------------------------------------- */
+
+/*
+ * Demo mode substitutes the feed, and the substitution happens in this file --
+ * ui_demo.c only supplies the numbers. What is pinned here is the wiring: that
+ * the model is not consulted, that the RFID tag is NOT faked, and that turning
+ * it off returns to live data with nothing left over.
+ *
+ * The fake tb_triage_classify() above returns GREEN, which is what makes this
+ * checkable: if demo mode ever fell through to the model, the result would be
+ * GREEN instead of RED and the assert would catch it.
+ */
+static void test_demo_mode(void)
+{
+    vitals_t v;
+    link_status_t st;
+    const vitals_t real = {
+        .hr = 72, .spo2 = 99, .rr = 14, .bp_sys = 120, .bp_dia = 78,
+        .battery = 64,
+        .valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP,
+        .valid = true,
+    };
+
+    ui_mock_init();
+    ui_demo_set(false);
+    tb_ui_source_on_vital(&real);
+    tb_ui_source_on_status(UI_SENSOR_ECG, 64, 1);
+
+    /* Baseline: live data, and the model's GREEN. */
+    ui_mock_get_vitals(&v);
+    assert(v.hr == 72 && v.spo2 == 99);
+    assert(ui_mock_get_priority() == UI_PRIORITY_GREEN);
+
+    /* Demo on. Same snapshot underneath, different numbers out. */
+    ui_demo_set(true);
+    ui_mock_get_vitals(&v);
+    assert(v.hr != 72 && v.spo2 != 99);
+    assert(v.valid_mask == (UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR |
+                            UI_VITAL_BP));
+    /* The gauge is not part of the act: a real 64% must survive. */
+    assert(v.battery == 64);
+
+    /* Fresh measurement, or infer_once() would hand back the cached GREEN. */
+    push_tag("F00DF00D");
+    ui_mock_start_measure();
+    assert(ui_mock_get_priority() == UI_DEMO_PRIORITY);
+    assert(ui_mock_get_confidence() == UI_DEMO_CONFIDENCE);
+    /* The station still gets the patient, tag and all -- the dashboard is part
+     * of what gets filmed, and the tag is the one thing demo mode never fakes. */
+    assert(strcmp(s_sent_tag, "F00DF00D") == 0);
+
+    /* Only the Sensor dot is faked; Sistem and LoRa keep reporting the link. */
+    ui_mock_get_link_status(&st);
+    assert(st.sensor_mask == UI_SENSOR_ALL);
+
+    /* Off again: live data returns, with no demo residue. */
+    ui_demo_set(false);
+    ui_mock_get_vitals(&v);
+    assert(v.hr == 72 && v.spo2 == 99);
+    ui_mock_get_link_status(&st);
+    assert(st.sensor_mask == UI_SENSOR_ECG);
+    ui_mock_start_measure();
+    assert(ui_mock_get_priority() == UI_PRIORITY_GREEN);
+}
+
 int main(void)
 {
     rfid_t out;
+
+    test_demo_mode();
 
     ui_mock_init();
 
@@ -145,6 +214,7 @@ int main(void)
     assert(!ui_mock_rfid_ready(&out));
 
     printf("tb_ui_source: tags ignored until an rfid_len==0 snapshot confirms "
-           "START_SCAN; a good tag survives later empty snapshots\n");
+           "START_SCAN; a good tag survives later empty snapshots; demo mode "
+           "swaps the vitals and the verdict but never the tag\n");
     return 0;
 }

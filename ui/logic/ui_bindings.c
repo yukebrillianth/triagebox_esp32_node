@@ -8,6 +8,7 @@
 #include "../ui.h"
 #include "ui_action.h"
 #include "ui_board.h"
+#include "ui_demo.h"
 #include "ui_mock.h"
 #include "ui_nav.h"
 #include "ui_session.h"
@@ -243,31 +244,104 @@ static void sync_status_bar(void)
     }
 }
 
-/* ------------------------------------------------------ Power confirm ----- */
+/* ------------------------------------------------------ Dialogs ----------- */
 
 /*
  * Hand-built instead of lv_msgbox: the stock msgbox brings LVGL's own theme
  * (light grey, its own radius and fonts) and looks nothing like the dark Figma
  * screens. Tokens below come from ui/globals.xml via ui_gen.h — no raw hex.
+ *
+ * One at a time, deliberately: s_dialog is both the handle and the "something is
+ * already asking" guard, so Menu cannot open on top of the power confirm (or the
+ * other way round) and leave a scrim nobody can dismiss.
  */
-static lv_obj_t *s_power_dialog;
+static lv_obj_t *s_dialog;
 
-static void power_confirm_cb(lv_event_t *e)
+static void dialog_close(void)
 {
-    bool confirmed = (bool)(uintptr_t)lv_event_get_user_data(e);
+    if (s_dialog != NULL) {
+        lv_obj_delete(s_dialog);
+        s_dialog = NULL;
+    }
+}
 
-    if (s_power_dialog != NULL) {
-        lv_obj_delete(s_power_dialog);
-        s_power_dialog = NULL;
+/* Scrim + card. Returns the card, laid out as a column: title, body, button row. */
+static lv_obj_t *dialog_card(void)
+{
+    lv_obj_t *card;
+
+    /* Full-screen scrim: dims the screen behind and swallows stray touches so
+     * the ButtonBar underneath cannot be pressed while the dialog is up. */
+    s_dialog = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_dialog);
+    lv_obj_set_size(s_dialog, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(s_dialog, COLOR_DARK_BG, 0);
+    lv_obj_set_style_bg_opa(s_dialog, LV_OPA_70, 0);
+    lv_obj_remove_flag(s_dialog, LV_OBJ_FLAG_SCROLLABLE);
+
+    card = lv_obj_create(s_dialog);
+    lv_obj_set_size(card, 400, 240);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, COLOR_DARK_PANEL, 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    /* Square with a 1px hard border, same treatment as the bottom ButtonBar. */
+    lv_obj_set_style_radius(card, 0, 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, COLOR_DARK_PANEL, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_side(card, LV_BORDER_SIDE_FULL, 0);
+    lv_obj_set_style_shadow_width(card, 0, 0);
+    lv_obj_set_style_pad_all(card, SPACE_XL, 0);
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    return card;
+}
+
+static void dialog_title(lv_obj_t *card, const char *text)
+{
+    lv_obj_t *title = lv_label_create(card);
+
+    lv_label_set_text(title, text);
+    lv_obj_set_style_text_color(title, COLOR_DARK_TEXT, 0);
+    if (font_inter_bold_24 != NULL) {
+        lv_obj_set_style_text_font(title, font_inter_bold_24, 0);
     }
-    if (confirmed) {
-        ui_mock_power_off();
+}
+
+/* warn = amber instead of grey, for a body that says something will be lost. */
+static void dialog_body(lv_obj_t *card, const char *text, bool warn)
+{
+    lv_obj_t *body = lv_label_create(card);
+
+    lv_label_set_text(body, text);
+    lv_obj_set_width(body, LV_PCT(100));
+    lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(body, warn ? COLOR_STATUS_WARN
+                                           : COLOR_TEXT_ON_CARD, 0);
+    if (font_inter_regular_16 != NULL) {
+        lv_obj_set_style_text_font(body, font_inter_regular_16, 0);
     }
+}
+
+static lv_obj_t *dialog_row(lv_obj_t *card)
+{
+    lv_obj_t *row = lv_obj_create(card);
+
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, SPACE_LG, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    return row;
 }
 
 /* One dialog button: 130x48, square, ButtonBar-style gradient + 1px border. */
 static lv_obj_t *dialog_button(lv_obj_t *parent, const char *text, bool danger,
-                               bool confirmed)
+                               lv_event_cb_t cb, void *user_data)
 {
     lv_obj_t *btn = lv_button_create(parent);
     lv_obj_t *label;
@@ -298,86 +372,97 @@ static lv_obj_t *dialog_button(lv_obj_t *parent, const char *text, bool danger,
     }
     lv_obj_center(label);
 
-    lv_obj_add_event_cb(btn, power_confirm_cb, LV_EVENT_CLICKED,
-                        (void *)(uintptr_t)(confirmed ? 1 : 0));
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
     return btn;
+}
+
+/* ------------------------------------------------------ Power confirm ----- */
+
+static void power_confirm_cb(lv_event_t *e)
+{
+    bool confirmed = (bool)(uintptr_t)lv_event_get_user_data(e);
+
+    dialog_close();
+    if (confirmed) {
+        ui_mock_power_off();
+    }
 }
 
 static void poll_power_request(void)
 {
     lv_obj_t *card;
-    lv_obj_t *title;
-    lv_obj_t *body;
     lv_obj_t *row;
     bool measuring;
 
     if (!ui_action_take_power_request()) {
         return;
     }
-    if (s_power_dialog != NULL) {
+    if (s_dialog != NULL) {
         return; /* already asking */
     }
     measuring = (ui_nav_current() == UI_SCREEN_MENGUKUR);
 
-    /* Full-screen scrim: dims the screen behind and swallows stray touches so
-     * the ButtonBar underneath cannot be pressed while the dialog is up. */
-    s_power_dialog = lv_obj_create(lv_layer_top());
-    lv_obj_remove_style_all(s_power_dialog);
-    lv_obj_set_size(s_power_dialog, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(s_power_dialog, COLOR_DARK_BG, 0);
-    lv_obj_set_style_bg_opa(s_power_dialog, LV_OPA_70, 0);
-    lv_obj_remove_flag(s_power_dialog, LV_OBJ_FLAG_SCROLLABLE);
-
-    card = lv_obj_create(s_power_dialog);
-    lv_obj_set_size(card, 400, 240);
-    lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, COLOR_DARK_PANEL, 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    /* Square with a 1px hard border, same treatment as the bottom ButtonBar. */
-    lv_obj_set_style_radius(card, 0, 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_color(card, COLOR_DARK_PANEL, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_side(card, LV_BORDER_SIDE_FULL, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
-    lv_obj_set_style_pad_all(card, SPACE_XL, 0);
-    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    title = lv_label_create(card);
-    lv_label_set_text(title, "Matikan alat?");
-    lv_obj_set_style_text_color(title, COLOR_DARK_TEXT, 0);
-    if (font_inter_bold_24 != NULL) {
-        lv_obj_set_style_text_font(title, font_inter_bold_24, 0);
-    }
-
-    body = lv_label_create(card);
-    lv_label_set_text(body, measuring
-                      ? "Pengukuran sedang berjalan.\nData pasien akan hilang."
-                      : "Alat akan dimatikan.");
-    lv_obj_set_width(body, LV_PCT(100));
-    lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
+    card = dialog_card();
+    dialog_title(card, "Matikan alat?");
     /* Amber, not plain grey, when confirming actually destroys something. */
-    lv_obj_set_style_text_color(body, measuring ? COLOR_STATUS_WARN
-                                                : COLOR_TEXT_ON_CARD, 0);
-    if (font_inter_regular_16 != NULL) {
-        lv_obj_set_style_text_font(body, font_inter_regular_16, 0);
-    }
-
-    row = lv_obj_create(card);
-    lv_obj_remove_style_all(row);
-    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(row, SPACE_LG, 0);
-    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    dialog_body(card, measuring
+                ? "Pengukuran sedang berjalan.\nData pasien akan hilang."
+                : "Alat akan dimatikan.", measuring);
+    row = dialog_row(card);
 
     /* Cancel first so the leftmost, easiest target is the safe one. */
-    dialog_button(row, "Batal", false, false);
-    dialog_button(row, "Matikan", true, true);
+    dialog_button(row, "Batal", false, power_confirm_cb, (void *)(uintptr_t)0);
+    dialog_button(row, "Matikan", true, power_confirm_cb, (void *)(uintptr_t)1);
+}
+
+/* ------------------------------------------------------ Menu -------------- */
+
+/*
+ * Menu (btn 3), which the Figma flow left undefined. One entry so far: the demo
+ * mode toggle. Rebuilt from scratch on each open rather than kept hidden, so the
+ * button label and the status line cannot drift out of step with the flag.
+ */
+static void menu_close_cb(lv_event_t *e)
+{
+    (void)e;
+    dialog_close();
+}
+
+static void menu_demo_cb(lv_event_t *e)
+{
+    (void)e;
+    ui_demo_toggle();
+    dialog_close();
+    /* No repaint here: the 50 ms tick already refreshes the visible screen, and
+     * one frame of the old numbers is not something a camera can catch. */
+}
+
+static void poll_menu_request(void)
+{
+    lv_obj_t *card;
+    lv_obj_t *row;
+    bool on;
+
+    if (!ui_action_take_menu_request()) {
+        return;
+    }
+    if (s_dialog != NULL) {
+        return;
+    }
+    on = ui_demo_enabled();
+
+    card = dialog_card();
+    dialog_title(card, "Menu");
+    dialog_body(card, on ? "Mode demo: AKTIF\nVital & hasil triase palsu."
+                        : "Mode demo: MATI\nVital dari sensor.", on);
+    row = dialog_row(card);
+
+    dialog_button(row, "Tutup", false, menu_close_cb, NULL);
+    /* Danger colour on the enabling direction only: switching demo ON is what
+     * makes the box lie about a patient. Switching it off restores the sensors,
+     * which is never the risky move. */
+    dialog_button(row, on ? "Demo: Matikan" : "Demo: Aktifkan", !on,
+                  menu_demo_cb, NULL);
 }
 
 /* ------------------------------------------------------ Buzzer patterns --- */
@@ -858,6 +943,7 @@ static void selection_timer_cb(lv_timer_t *timer)
     ui_bindings_sync_status_dots();
     sync_status_bar();
     poll_power_request();
+    poll_menu_request();
 
     /* A result announcement outranks a button click: start it first so the
      * click beep cannot truncate the pattern. */
