@@ -161,6 +161,36 @@ Yang **belum** diperbaiki: penyebab timeout-nya sendiri. Bus itu dipakai bareng 
 
 Dua kandidat lain **sudah dieliminasi lewat baca kode**, bukan lewat dugaan, dan tetap dicatat supaya tidak dikejar lagi: (1) TCA9554 re-init yang membuat `LCD_RST` floating — mustahil, `BSP_LCD_RST` = `GPIO_NUM_NC` (panel ini tidak punya jalur reset yang digerakkan) dan jalur display memakai `.io_expander = NULL`; (2) read SPIFFS runtime untuk font/gambar yang mematikan cache dan membuat bounce buffer RGB underrun — gambar adalah array C yang di-compile, dan `asset_fs.c` sudah menyalin tiap font ke blob PSRAM sekali lalu melayani semua read/seek dari RAM.
 
+### Boot hang setelah soft reset: STM32 menahan SCL (terukur)
+
+Gejala: log boot berhenti **tepat** di antara dua baris ini dan tidak ada apa pun setelahnya — tidak ada panic, tidak ada watchdog, tidak ada heartbeat (heartbeat tiap 10 s, jadi diamkan ≥25 s sebelum menyimpulkan):
+
+```
+I (1280) GT911: I2C address initialization procedure skipped - using default GT9xx setup
+                        <-- berhenti di sini
+I (1281) GT911: TouchPad_ID:0x39,0x31,0x31
+```
+
+**Penyebab, sudah diukur bukan dikira-kira.** Sebelum `i2c_new_master_bus()` mengambil pin, `bsp_i2c_bus_recover()` membaca level kedua jalur sebagai GPIO. Hasilnya konsisten **4/4 percobaan reset: SCL LOW, SDA high**.
+
+- **SCL** ditahan low = ada slave yang **clock stretching**. Master tidak bisa mengangkat jalur yang ditahan device lain, jadi ini **tidak bisa dipulihkan dari sisi ESP32** — 9 pulsa recovery pun tidak bisa, karena yang harus dipulsakan itu justru jalur yang ditahan.
+- Yang bisa stretch di bus ini hanya STM32 (`0x42`). GT911/TCA9554/SW6106/PCF85063A tidak. Konfirmasi satu langkah: **cabut STM32, reset lagi — kalau boot normal, terbukti.**
+- Mekanismenya: ESP32 reset di tengah transfer (setiap `idf.py flash`, setiap pulsa RTS, setiap panic — dan ESP32 jauh lebih sering reset daripada STM32). Slave STM32 tertinggal di tengah transfer, menahan SCL menunggu clock dari master yang sudah tidak ada. Ditahan **selamanya**.
+
+**Kenapa hang, bukan error:** `esp_lcd_panel_io_i2c` mengirim timeout `-1` ke `i2c_master_transmit_receive()` (`esp_lcd/i2c/esp_lcd_panel_io_i2c.c:145`, IDF v6.0.2), artinya tunggu tanpa batas. Jadi read config GT911 yang pertama memblokir permanen tanpa error, tanpa log, tanpa watchdog.
+
+**Workaround sekarang:** power cycle (cabut-pasang daya / tombol power). Reflash **tidak** menolong — sudah diuji, langsung balik ke baris GT911 yang sama.
+
+**Perbaikan sebenarnya ada di sisi STM32**, dan hanya ada di situ:
+
+1. Jangan stretch tanpa batas — beri timeout pada transfer slave, dan reset blok I²C (`I2C_CR1_SWRST` di F4) kalau transfer mandek.
+2. Handler slave jangan mengerjakan apa pun yang lama. Siapkan buffer snapshot di luar ISR supaya ISR hanya menyalin byte; stretching yang panjang itulah yang membesarkan jendela kena reset.
+3. Paling bersih: DMA untuk transfer slave, sehingga tidak perlu stretch sama sekali.
+
+Alternatif hardware kalau (1)–(3) tidak jalan: sambungkan `NRST` STM32 ke satu GPIO ESP32 yang bebas, supaya ESP32 bisa mereset STM32 saat mendeteksi SCL low. Belum dilakukan — butuh satu pin dan satu kabel.
+
+Sisi ESP32 sekarang **hanya melaporkan**, tidak memperbaiki: `bsp_i2c_bus_recover()` mencetak `I2C SCL held LOW -- a slave is clock-stretching ...` lalu boot tetap hang di GT911. Itu perbaikan dari hang yang benar-benar bisu. Recovery 9-pulsa untuk kasus **SDA** nyangkut (AGENTS.md item 20) tetap ada di fungsi yang sama, cuma ternyata bukan itu bug-nya.
+
 ### Instrumen diagnosa
 
 Dua instrumen di `main/app_main.c`. Keduanya tetap dipakai: yang menangkap kasus di atas adalah heartbeat sehat tepat sebelum panic, dan gejala "layar hitam" berikutnya (kalau ada) harus dibedakan dari yang ini.
@@ -186,6 +216,24 @@ Tes tanpa kode yang menyertainya: **saat layar hitam, tekan tombol.** Kalau masi
 
 Riwayat: run 190 s pertama sesudah instrumen masuk tidak blackout sama sekali (heartbeat mulus, heap datar ~5,68 MB, `lv`/`wall` selisih konstan 132 ms = offset boot, bukan starvation). Blackout baru tertangkap di run ~56 menit, dan itu yang jadi bukti di atas.
 
+## Mode demo (untuk video)
+
+Tombol **Menu** (cell 3 di ButtonBar) membuka dialog kecil dengan satu isi: toggle mode demo. Dipakai untuk merekam video ketika sensor belum siap.
+
+| | Demo ON | Demo OFF |
+| --- | --- | --- |
+| 4 tanda vital | **palsu** — HR ~128, SpO₂ ~88, RR ~32, TD ~86/54, bergoyang tiap ~0,8 s | dari sensor |
+| Hasil triase | **MERAH**, confidence 0,93 — model **tidak** dijalankan | model GBM |
+| Dot Sensor di Home | **hijau semua** | apa adanya |
+| RFID, tombol fisik, baterai, dot Sistem/LoRa | **asli** | asli |
+| Frame `RESULT` ke STM32 | **dikirim** (station + dashboard ikut lihat pasien demo) | dikirim |
+
+Angka palsunya sengaja dibuat **konsisten dengan MERAH** — HR 72 / SpO₂ 99 di sebelah label MERAH justru terlihat seperti alat rusak. Digoyang sedikit supaya tidak seperti screenshot, tapi deterministik (tabel, bukan random) sehingga bisa dipatok selftest.
+
+Yang **tidak** dipalsukan: RFID. Jadi STM32 harus tetap tersambung untuk merekam — layar Scanning menunggu tag betulan.
+
+**Mati sendiri setiap boot**, tidak disimpan ke NVS. Ini disengaja: kalau lupa dimatikan sesudah rekaman, satu power cycle sudah cukup untuk mengembalikan alat ke normal, bukan alat yang menyebut semua pasien MERAH. Tidak ada badge "DEMO" di layar karena itu justru merusak videonya — gantinya reset-saat-boot di atas plus `ESP_LOGW DEMO MODE: reporting priority=0, model not run` di setiap hasil.
+
 ## Verifikasi
 
 ```sh
@@ -209,6 +257,7 @@ Kalau STM32 menjawab tapi `seq` tidak berubah, link mencetak `seq frozen` — it
 | `vital [hr spo2 rr sys dia]` | Suntik VITAL |
 | `status [mask] [lora_ok]` | Suntik STATUS |
 | `btn 0..3` | Tekan tombol fisik |
+| `demo [0\|1]` | Mode demo on/off (toggle kalau argumen dikosongkan) — sama dengan dialog Menu, tapi tanpa tangan masuk frame |
 | `i2c [timeout_ms]` | Scan bus `0x08..0x77` + nama device yang dikenal |
 | `i2creg <addr> <reg> [count] [split]` | Baca register |
 | `i2craw <addr> [count]` | Baca tanpa write pointer register |
