@@ -26,6 +26,7 @@
 #include "tb_link_i2c.h"
 #include "tb_triage.h"
 #include "tb_ui_source.h"
+#include "ui_demo.h"
 #include "ui_mock.h"
 #include "ui_status.h"
 
@@ -76,6 +77,27 @@ static int cmd_status(int argc, char **argv)
     tb_ui_source_mark_frame();
     tb_ui_source_on_status(mask, 80, lora);
     printf("injected STATUS sensors=0x%02x lora=%d\n", mask, lora);
+    return 0;
+}
+
+/*
+ * Same toggle as the Menu dialog, from the serial console.
+ *
+ * Two reasons it exists rather than leaving the dialog as the only entry point:
+ * a finger reaching for the screen is in shot, and the dialog cannot be driven
+ * by `btn 3` alone (its buttons are touch targets), so this is also the only way
+ * to exercise the demo path without hands on the panel.
+ */
+static int cmd_demo(int argc, char **argv)
+{
+    if (argc > 1) {
+        ui_demo_set(atoi(argv[1]) != 0);
+    } else {
+        ui_demo_toggle();
+    }
+    printf("demo mode %s -- vitals and triage are %s\n",
+           ui_demo_enabled() ? "ON" : "OFF",
+           ui_demo_enabled() ? "FAKE (always MERAH)" : "from the sensors");
     return 0;
 }
 
@@ -762,6 +784,7 @@ void tb_debug_console_start(void)
         {.command = "vital",  .help = "Inject VITAL [hr spo2 rr sys dia]",       .func = cmd_vital},
         {.command = "status", .help = "Inject STATUS [sensor_mask] [lora_ok]",   .func = cmd_status},
         {.command = "btn",    .help = "Press button 0..3",                       .func = cmd_btn},
+        {.command = "demo",   .help = "Demo mode for filming: demo [0|1] (toggles if omitted)", .func = cmd_demo},
         {.command = "i2c",    .help = "Scan shared I2C bus [timeout_ms]",        .func = cmd_i2c},
         {.command = "i2creg", .help = "Read regs: i2creg <addr> <reg> [count] [split]", .func = cmd_i2creg},
         {.command = "i2craw", .help = "Read with no reg pointer: i2craw <addr> [count]", .func = cmd_i2craw},
@@ -779,5 +802,5 @@ void tb_debug_console_start(void)
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
     }
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
-    ESP_LOGW(TAG, "debug console ON (rfid/vital/status/btn/i2c*/pmic/stats) -- disable for production");
+    ESP_LOGW(TAG, "debug console ON (rfid/vital/status/btn/demo/i2c*/pmic/stats) -- disable for production");
 }

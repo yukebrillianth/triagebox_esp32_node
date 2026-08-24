@@ -23,6 +23,7 @@ static void action_noop(void)
 
 static bool s_power_requested;
 static bool s_beep_requested;
+static bool s_menu_requested;
 
 /* Only commit-type presses beep. In a disaster zone a click on every Up/Down
  * is noise the operator would learn to ignore. */
@@ -55,10 +56,21 @@ bool ui_action_take_power_request(void)
     return req;
 }
 
-static void action_menu_noop(uint8_t btn_id)
+static void action_menu(uint8_t btn_id)
 {
-    /* Menu (3) — undefined in the Figma flow. */
+    /* Menu (3) had no meaning in the Figma flow; it now opens the settings
+     * dialog ui_bindings owns. Request-only, same as power, so this file stays
+     * LVGL-free -- and so the dialog can refuse to stack on top of itself. */
     (void)btn_id;
+    s_menu_requested = true;
+}
+
+bool ui_action_take_menu_request(void)
+{
+    bool req = s_menu_requested;
+
+    s_menu_requested = false;
+    return req;
 }
 
 static void home_action(uint8_t btn_id)
@@ -72,7 +84,7 @@ static void home_action(uint8_t btn_id)
         action_power(btn_id);
         break;
     case 3: /* Menu */
-        action_menu_noop(btn_id);
+        action_menu(btn_id);
         break;
     default: /* 0 empty */
         action_noop();
@@ -90,7 +102,7 @@ static void scanning_action(uint8_t btn_id)
         action_power(btn_id);
         break;
     case 3: /* Menu */
-        action_menu_noop(btn_id);
+        action_menu(btn_id);
         break;
     default: /* 1 empty */
         action_noop();
@@ -113,7 +125,7 @@ static void berhasil_action(uint8_t btn_id)
         action_power(btn_id);
         break;
     case 3: /* Menu */
-        action_menu_noop(btn_id);
+        action_menu(btn_id);
         break;
     default:
         action_noop();
@@ -177,7 +189,7 @@ static void mengukur_action(uint8_t btn_id)
         action_power(btn_id);
         break;
     case 3: /* Menu */
-        action_menu_noop(btn_id);
+        action_menu(btn_id);
         break;
     default: /* 1 empty */
         action_noop();
@@ -199,7 +211,7 @@ static void result_action(uint8_t btn_id)
         action_power(btn_id);
         break;
     case 3: /* Menu */
-        action_menu_noop(btn_id);
+        action_menu(btn_id);
         break;
     default:
         action_noop();
@@ -221,7 +233,7 @@ static void monitor_action(uint8_t btn_id)
         action_power(btn_id);
         break;
     case 3: /* Menu */
-        action_menu_noop(btn_id);
+        action_menu(btn_id);
         break;
     default:
         action_noop();

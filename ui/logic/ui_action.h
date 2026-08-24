@@ -32,6 +32,13 @@ void ui_action_on_key(uint32_t lv_key);
 bool ui_action_take_power_request(void);
 
 /*
+ * Menu (btn 3) on every screen that does not already use that slot for Select.
+ * Same request-only shape as power, for the same two reasons: this file stays
+ * LVGL-free, and ui_bindings can decline to open a second dialog over the first.
+ */
+bool ui_action_take_menu_request(void);
+
+/*
  * True once if the last action was a commit-type press worth a beep (Scan,
  * Start, Select, Stop, Reset) rather than list navigation. Raised here, not in
  * the touch callback, so physical buttons and touch beep identically — same

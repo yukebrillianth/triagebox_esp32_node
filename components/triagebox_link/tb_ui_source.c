@@ -10,6 +10,7 @@
 
 #include "tb_link_i2c.h"
 #include "tb_triage.h"
+#include "ui_demo.h"
 #include "ui_session.h"
 #include "tb_ui_source.h"
 #include "ui_board.h"
@@ -309,6 +310,13 @@ void ui_mock_get_vitals(vitals_t *out)
         out->valid = false;
     }
     portEXIT_CRITICAL(&s_mux);
+
+    /* Last, and outside the lock: the real snapshot is copied first so the demo
+     * patient inherits the true battery reading, and so switching demo off
+     * returns to live data with nothing to undo. */
+    if (ui_demo_enabled()) {
+        ui_demo_vitals(s_now_ms, out);
+    }
 }
 
 /* Runs the SVM once per measurement and reports the result to the STM32,
@@ -330,8 +338,25 @@ static void infer_once(void)
     window = s_window;
     portEXIT_CRITICAL(&s_mux);
 
-    s_priority = tb_triage_classify(&window, ui_session_get_age(),
-                                    ui_session_get_gender(), &s_confidence);
+    if (ui_demo_enabled()) {
+        /*
+         * Substituted rather than fed through the model: the demo vitals would
+         * score somewhere plausible, but "somewhere plausible" is not a fixed
+         * colour, and a take that comes out YELLOW is a wasted take. Logged at
+         * WARN on every result because this is the one code path that reports a
+         * triage nobody measured.
+         */
+        s_priority = UI_DEMO_PRIORITY;
+        s_confidence = UI_DEMO_CONFIDENCE;
+        ESP_LOGW(TAG, "DEMO MODE: reporting priority=%d, model not run",
+                 (int)s_priority);
+    } else {
+        s_priority = tb_triage_classify(&window, ui_session_get_age(),
+                                        ui_session_get_gender(), &s_confidence);
+        ESP_LOGI(TAG, "triage: priority=%d confidence=%.2f samples=%u valid=%d",
+                 (int)s_priority, (double)s_confidence,
+                 (unsigned)window.samples, (int)v.valid);
+    }
     s_have_priority = true;
 
     portENTER_CRITICAL(&s_mux);
@@ -339,10 +364,8 @@ static void infer_once(void)
     portEXIT_CRITICAL(&s_mux);
     tag[RFID_TAG_CAPACITY - 1U] = '\0';
 
-    ESP_LOGI(TAG, "triage: priority=%d confidence=%.2f samples=%u valid=%d",
-             (int)s_priority, (double)s_confidence, (unsigned)window.samples,
-             (int)v.valid);
-
+    /* Sent in demo mode too, deliberately: the station and the dashboard are
+     * part of what is being filmed, so they have to see the same patient. */
     if (tb_link_send_result(s_priority, s_confidence, tag[0] ? tag : NULL) != ESP_OK) {
         ESP_LOGW(TAG, "RESULT not sent — station will miss this triage");
     }
@@ -406,6 +429,13 @@ void ui_mock_get_link_status(link_status_t *out)
     out->link_age_ms = s_frame_seen ? (s_now_ms - s_last_frame_ms) : 0U;
     out->link_never_seen = !s_frame_seen;
     portEXIT_CRITICAL(&s_mux);
+
+    /* Only the sensor dot is faked. The Sistem and LoRa dots stay honest because
+     * they report the STM32 link, which demo mode does not replace -- the RFID
+     * tag still comes over it, so a dead link is still a dead demo. */
+    if (ui_demo_enabled()) {
+        out->sensor_mask = ui_demo_sensor_mask();
+    }
 }
 
 void ui_mock_power_off(void)
