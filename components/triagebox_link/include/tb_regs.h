@@ -79,7 +79,71 @@
 #define TB_REG_RFID       0x11U /* char[TB_RFID_MAX], NOT NUL-terminated */
 
 #define TB_RFID_MAX       31U   /* matches RFID_TAG_CAPACITY-1 on the ESP32 */
-#define TB_REG_READ_END   (TB_REG_RFID + TB_RFID_MAX) /* 0x30, one past end */
+#define TB_REG_READ_END   (TB_REG_RFID + TB_RFID_MAX) /* 0x30, one past the vitals */
+
+/*
+ * Downlink RSSI: how strongly THIS node heard the station's last poll, in dBm.
+ *
+ * This is the only link-quality number the node can possibly know. The node
+ * never transmits unpolled (see lora_poll.h), so its radio sits in RX continuous
+ * and hears every poll -- and RegPktRssiValue after RxDone is a real measurement
+ * taken at this node's position. It is the STATION->NODE direction, not the
+ * reverse, but path loss is reciprocal, so for walking the box away from the
+ * station to find the range it is exactly the right number.
+ *
+ * The uplink RSSI (what the station heard) is measured by the station's own radio
+ * and published in its node status JSON. That one cannot reach this screen
+ * without a second downlink field, and it would tell you the same thing.
+ *
+ * int8_t dBm, so -128..-20 covers everything a real LoRa receiver reports:
+ * SF7/125k sensitivity is about -123 dBm, and closer than a metre saturates
+ * around -20. tb_rssi_valid() below is what a consumer must use rather than
+ * testing for a sentinel, because there are two different "no reading" values in
+ * play (see it for why).
+ *
+ * DELIBERATELY OUTSIDE TB_REG_READ_END. The 50 ms vitals poll still reads
+ * exactly 0x30 bytes, so an STM32 built before this field existed answers that
+ * poll unchanged -- no version bump, no lockstep reflash. The ESP32 picks this
+ * byte up in its own 1-byte read once a second, and an old slave answers that
+ * read with its 0xFF out-of-range pad, which tb_rssi_valid() rejects. Appending
+ * it INSIDE the block instead would have made the master ask for one byte more
+ * than an old slave's buffer holds, which is a failed vitals poll -- i.e. a link
+ * that looks dead -- in exchange for saving one byte a second.
+ */
+#define TB_REG_LORA_RSSI  0x30U /* i8   dBm; see tb_rssi_valid() */
+
+/*
+ * The whole readable image, which is one byte longer than the vitals block.
+ * The STM32's slave sizes its staging buffer from sizeof(tb_snapshot_t), so this
+ * is what makes 0x30 readable at all.
+ */
+#define TB_REG_SNAPSHOT_END (TB_REG_LORA_RSSI + 1U) /* 0x31 */
+
+/*
+ * Two values mean "no reading", from two different places, which is why this is
+ * a range test and not `!= SENTINEL`:
+ *
+ *   0x00  a new STM32 that has not received a poll yet (the field is zeroed at
+ *         boot, and 0 dBm is not a level any receiver reports)
+ *   0xFF  an old STM32, or any address it does not decode: its AddrCallback
+ *         feeds 0xFF rather than leaking adjacent memory
+ *
+ * Both are ABOVE the strongest real signal, so the upper bound alone rejects
+ * both and no special case is needed.
+ *
+ * Only the upper bound is tested. TB_RSSI_MIN_DBM is exactly INT8_MIN, so an
+ * int8_t cannot carry anything below it -- the type is the lower bound, and
+ * writing the comparison anyway is what -Werror=type-limits rejects. It stays
+ * defined because it documents the field's range and because tb_rssi_valid()
+ * would need to grow that test back if the field ever widened.
+ */
+#define TB_RSSI_MIN_DBM (-128) /* == INT8_MIN: structural, not checked below */
+#define TB_RSSI_MAX_DBM (-20)  /* closer than ~1 m saturates around here */
+
+static inline int tb_rssi_valid(int8_t rssi)
+{
+    return rssi <= TB_RSSI_MAX_DBM;
+}
 
 /*
  * SEQ is how the ESP32 tells "sensors quiet" from "STM32 dead": it increments
@@ -396,6 +460,11 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
  * it IS the wire image: the slave hands a pointer into this straight to the
  * I2C peripheral, with no per-field serialisation step to get wrong.
  * tb_link_selftest.c pins every offset with offsetof().
+ *
+ * sizeof() is TB_REG_SNAPSHOT_END (0x31), one more than TB_REG_READ_END (0x30):
+ * the slave sizes its staging buffer from this struct, so lora_rssi being a
+ * member is exactly what makes register 0x30 readable. The vitals poll still
+ * asks for 0x30 bytes and is unaffected -- see TB_REG_LORA_RSSI.
  */
 typedef struct TB_PACKED {
     uint8_t  proto_ver;
@@ -411,6 +480,7 @@ typedef struct TB_PACKED {
     uint8_t  sensor_ok;
     uint8_t  rfid_len;
     char     rfid[TB_RFID_MAX];
+    int8_t   lora_rssi;
 } tb_snapshot_t;
 
 #endif /* TB_REGS_H */

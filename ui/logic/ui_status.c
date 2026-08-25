@@ -3,15 +3,34 @@
 #include <stdio.h>
 #include <time.h>
 
-const char *ui_status_link_text(bool lora_ok, bool reported)
+void ui_status_link_text(char *buf, unsigned buf_sz, bool lora_ok, bool reported,
+                         int8_t rssi_dbm, bool rssi_valid)
 {
-	/* "--" for unknown matches the rest of the bar (battery "--%", clock
-	 * "--:--", ui_status_label's ERROR suffix) rather than inventing a third
-	 * vocabulary for the same idea. */
-	if (!reported) {
-		return "Link --";
+	if (buf == NULL || buf_sz < UI_LINK_TEXT_MIN) {
+		return;
 	}
-	return lora_ok ? "LoRa siap" : "LoRa mati";
+	/* Most actionable first. See the header for why the number wins over the
+	 * words once there is one, and why "LoRa mati" still outranks it. */
+	if (!reported) {
+		/* "--" for unknown matches the rest of the bar (battery "--%", clock
+		 * "--:--", ui_status_label's ERROR suffix) rather than inventing a
+		 * third vocabulary for the same idea. */
+		(void)snprintf(buf, buf_sz, "Link --");
+	} else if (!lora_ok) {
+		(void)snprintf(buf, buf_sz, "LoRa mati");
+	} else if (rssi_valid) {
+		(void)snprintf(buf, buf_sz, "%ddBm", (int)rssi_dbm);
+	} else {
+		(void)snprintf(buf, buf_sz, "LoRa siap");
+	}
+}
+
+ui_status_state_t ui_status_rssi_state(int8_t dbm)
+{
+	if (dbm >= UI_RSSI_OK_DBM) {
+		return UI_STATUS_OK;
+	}
+	return (dbm >= UI_RSSI_WARN_DBM) ? UI_STATUS_WARN : UI_STATUS_ERROR;
 }
 
 void ui_status_battery_text(char *buf, unsigned buf_sz, uint8_t percent)

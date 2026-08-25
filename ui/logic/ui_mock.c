@@ -235,6 +235,11 @@ void ui_mock_get_link_status(link_status_t *out)
     out->lora_reported = true;
     out->link_age_ms = 0;
     out->link_never_seen = false;
+    /* A plausible mid-range value so the status bar renders a real number in the
+     * simulator. -97 is in the amber band deliberately: the interesting case to
+     * look at on the desktop is the one that is not green. */
+    out->lora_rssi_dbm = -97;
+    out->lora_rssi_valid = true;
 }
 
 void ui_mock_power_off(void)

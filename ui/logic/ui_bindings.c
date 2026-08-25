@@ -228,11 +228,26 @@ static void sync_status_bar(void)
     ui_mock_get_link_status(&s);
     obj = lv_obj_find_by_name(root, "sb_link_text");
     if (obj != NULL) {
-        lv_label_set_text(obj, ui_status_link_text(s.lora_ok, s.lora_reported));
-        /* The signal glyph next to it is unnamed in the generated component, so
-         * colour the text instead -- same information, no XML regeneration. */
-        lv_obj_set_style_text_color(
-            obj, status_color(ui_status_lora(s.lora_ok, s.lora_reported)), 0);
+        char link[UI_LINK_TEXT_MIN];
+        ui_status_state_t state;
+
+        ui_status_link_text(link, sizeof(link), s.lora_ok, s.lora_reported,
+                            s.lora_rssi_dbm, s.lora_rssi_valid);
+        lv_label_set_text(obj, link);
+        /*
+         * When there is a measured dBm the colour tracks the LINK MARGIN, not
+         * merely "the radio initialised" -- that is the whole point of showing
+         * the number while walking the box away from the station: it goes amber
+         * before the link dies, which a boolean never does. Falls back to the
+         * radio's own state before the first poll is heard.
+         *
+         * The signal glyph next to it is unnamed in the generated component, so
+         * colour the text instead -- same information, no XML regeneration.
+         */
+        state = (s.lora_reported && s.lora_ok && s.lora_rssi_valid)
+                    ? ui_status_rssi_state(s.lora_rssi_dbm)
+                    : ui_status_lora(s.lora_ok, s.lora_reported);
+        lv_obj_set_style_text_color(obj, status_color(state), 0);
     }
 
     obj = lv_obj_find_by_name(root, "sb_clock");
@@ -256,17 +271,22 @@ static void sync_status_bar(void)
  * other way round) and leave a scrim nobody can dismiss.
  */
 static lv_obj_t *s_dialog;
+/* Which dialog is up, so Menu can close its own instead of being swallowed --
+ * the dialogs are touch-only, and without this someone driving the box from the
+ * four physical buttons could open the menu and have no way to dismiss it. */
+static bool s_dialog_is_menu;
 
 static void dialog_close(void)
 {
     if (s_dialog != NULL) {
         lv_obj_delete(s_dialog);
         s_dialog = NULL;
+        s_dialog_is_menu = false;
     }
 }
 
-/* Scrim + card. Returns the card, laid out as a column: title, body, button row. */
-static lv_obj_t *dialog_card(void)
+/* Scrim + card. Returns the card, laid out as a column: title, body, footer. */
+static lv_obj_t *dialog_card(int32_t w, int32_t h)
 {
     lv_obj_t *card;
 
@@ -280,7 +300,7 @@ static lv_obj_t *dialog_card(void)
     lv_obj_remove_flag(s_dialog, LV_OBJ_FLAG_SCROLLABLE);
 
     card = lv_obj_create(s_dialog);
-    lv_obj_set_size(card, 400, 240);
+    lv_obj_set_size(card, w, h);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, COLOR_DARK_PANEL, 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
@@ -402,7 +422,7 @@ static void poll_power_request(void)
     }
     measuring = (ui_nav_current() == UI_SCREEN_MENGUKUR);
 
-    card = dialog_card();
+    card = dialog_card(400, 240);
     dialog_title(card, "Matikan alat?");
     /* Amber, not plain grey, when confirming actually destroys something. */
     dialog_body(card, measuring
@@ -418,9 +438,22 @@ static void poll_power_request(void)
 /* ------------------------------------------------------ Menu -------------- */
 
 /*
- * Menu (btn 3), which the Figma flow left undefined. One entry so far: the demo
- * mode toggle. Rebuilt from scratch on each open rather than kept hidden, so the
- * button label and the status line cannot drift out of step with the flag.
+ * Menu (btn 3), which the Figma flow left undefined.
+ *
+ * A settings LIST, not a pair of buttons. The first version was two buttons
+ * ("Tutup" / "Demo: Aktifkan") and that shape does not survive a second entry:
+ * the light/dark toggle coming next would make a row of three buttons where two
+ * of them are settings and one is navigation, and the button label would have to
+ * carry the current state ("Demo: Matikan" means demo is ON, which is backwards
+ * from how a label usually reads).
+ *
+ * So: one row per setting, each with its own switch showing state directly, and
+ * a single "Tutup" in the footer. Toggling does NOT close the dialog -- with more
+ * than one setting, closing after each flip would mean reopening the menu to
+ * change the second one.
+ *
+ * The card grows with its content (LV_SIZE_CONTENT), so adding a row needs no
+ * size arithmetic.
  */
 static void menu_close_cb(lv_event_t *e)
 {
@@ -428,13 +461,93 @@ static void menu_close_cb(lv_event_t *e)
     dialog_close();
 }
 
+/* The row's own sublabel says what the setting currently means. Found by name
+ * rather than cached in a static: the label dies with the dialog, and a stale
+ * pointer to a deleted object is a crash rather than a wrong string. */
+static void menu_set_sub(const char *name, const char *text)
+{
+    lv_obj_t *label = (s_dialog != NULL) ? lv_obj_find_by_name(s_dialog, name)
+                                         : NULL;
+
+    if (label != NULL) {
+        lv_label_set_text(label, text);
+    }
+}
+
 static void menu_demo_cb(lv_event_t *e)
 {
-    (void)e;
-    ui_demo_toggle();
-    dialog_close();
-    /* No repaint here: the 50 ms tick already refreshes the visible screen, and
-     * one frame of the old numbers is not something a camera can catch. */
+    lv_obj_t *sw = lv_event_get_target(e);
+
+    ui_demo_set(lv_obj_has_state(sw, LV_STATE_CHECKED));
+    menu_set_sub("menu_demo_sub", ui_demo_enabled()
+                 ? "Vital & hasil triase palsu"
+                 : "Vital dari sensor");
+}
+
+/*
+ * One settings row: title + sublabel on the left, a switch on the right.
+ *
+ * A row helper with one caller is deliberate rather than premature. The
+ * light/dark toggle is the next entry and the stated reason this screen was
+ * redesigned, so the second call is what the shape is for. What was NOT done is
+ * putting a dead "Tema" row on screen now: a switch that does nothing teaches
+ * the operator the menu is broken, and the theme work is explicitly later.
+ *
+ * on_color is per row because the switches do not all mean the same kind of
+ * thing -- see the demo row's amber below.
+ */
+static void menu_row(lv_obj_t *card, const char *sub_name, const char *title,
+                     const char *sub, bool on, lv_color_t on_color,
+                     lv_event_cb_t cb)
+{
+    lv_obj_t *row = lv_obj_create(card);
+    lv_obj_t *texts;
+    lv_obj_t *label;
+    lv_obj_t *sw;
+
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_ver(row, SPACE_MD, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    texts = lv_obj_create(row);
+    lv_obj_remove_style_all(texts);
+    lv_obj_set_size(texts, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(texts, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(texts, SPACE_XS, 0);
+    lv_obj_remove_flag(texts, LV_OBJ_FLAG_SCROLLABLE);
+
+    label = lv_label_create(texts);
+    lv_label_set_text(label, title);
+    lv_obj_set_style_text_color(label, COLOR_DARK_TEXT, 0);
+    if (font_inter_semi_bold_16 != NULL) {
+        lv_obj_set_style_text_font(label, font_inter_semi_bold_16, 0);
+    }
+
+    label = lv_label_create(texts);
+    lv_obj_set_name(label, sub_name);
+    lv_label_set_text(label, sub);
+    lv_obj_set_style_text_color(label, COLOR_TEXT_SECONDARY, 0);
+    if (font_inter_regular_13 != NULL) {
+        lv_obj_set_style_text_font(label, font_inter_regular_13, 0);
+    }
+
+    sw = lv_switch_create(row);
+    /* 60x32 rather than LVGL's default 40x20: this is a gloved finger on a
+     * 480x480 panel, not a mouse. */
+    lv_obj_set_size(sw, 60, 32);
+    lv_obj_set_style_bg_color(sw, COLOR_TRACK, 0);
+    lv_obj_set_style_bg_color(sw, on_color, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(sw, COLOR_DARK_TEXT, LV_PART_KNOB);
+    if (on) {
+        lv_obj_add_state(sw, LV_STATE_CHECKED);
+    }
+    /* Handler added AFTER the initial state, or setting it would fire the
+     * callback and toggle the very flag this row is reflecting. */
+    lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
 static void poll_menu_request(void)
@@ -447,22 +560,41 @@ static void poll_menu_request(void)
         return;
     }
     if (s_dialog != NULL) {
+        /* Menu closes its own dialog, so the button that opened it can also
+         * dismiss it. Without this the menu is unreachable-by-keypad: the rows
+         * and "Tutup" are touch targets, so someone working the four physical
+         * buttons would be stuck behind the scrim. A power confirm is left alone
+         * -- it must be answered, not dismissed by a stray press. */
+        if (s_dialog_is_menu) {
+            dialog_close();
+        }
         return;
     }
     on = ui_demo_enabled();
 
-    card = dialog_card();
-    dialog_title(card, "Menu");
-    dialog_body(card, on ? "Mode demo: AKTIF\nVital & hasil triase palsu."
-                        : "Mode demo: MATI\nVital dari sensor.", on);
-    row = dialog_row(card);
+    card = dialog_card(420, LV_SIZE_CONTENT);
+    s_dialog_is_menu = true;
+    /* Content height, so the card is as tall as its rows: SPACE_BETWEEN has
+     * nothing to distribute once the height is the content's. */
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(card, SPACE_LG, 0);
 
+    dialog_title(card, "Menu");
+
+    /*
+     * Amber, not the accent green, when demo mode is on. Every other switch in
+     * this menu will be an ordinary preference; this one makes the box report a
+     * triage nobody measured, so it should not look like a preference. The
+     * accent is also triage GREEN in this palette, which is the last colour a
+     * "results are fake" control should borrow.
+     */
+    menu_row(card, "menu_demo_sub", "Mode demo",
+             on ? "Vital & hasil triase palsu" : "Vital dari sensor",
+             on, COLOR_STATUS_WARN, menu_demo_cb);
+
+    row = dialog_row(card);
     dialog_button(row, "Tutup", false, menu_close_cb, NULL);
-    /* Danger colour on the enabling direction only: switching demo ON is what
-     * makes the box lie about a patient. Switching it off restores the sensors,
-     * which is never the risky move. */
-    dialog_button(row, on ? "Demo: Matikan" : "Demo: Aktifkan", !on,
-                  menu_demo_cb, NULL);
 }
 
 /* ------------------------------------------------------ Buzzer patterns --- */

@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 
 #include "tb_link_i2c.h"
+#include "tb_regs.h" /* tb_rssi_valid() */
 #include "tb_triage.h"
 #include "ui_demo.h"
 #include "ui_session.h"
@@ -54,6 +55,8 @@ static uint32_t s_btn_dropped;
 static uint8_t s_sensor_mask;
 static bool s_lora_ok;
 static bool s_lora_reported;
+static int8_t s_rssi_dbm;
+static bool s_rssi_valid;
 static uint32_t s_last_frame_ms;
 static bool s_frame_seen;
 
@@ -157,6 +160,24 @@ void tb_ui_source_on_status(uint8_t sensor_ok_mask, uint8_t battery, int lora_ok
     portEXIT_CRITICAL(&s_mux);
 }
 
+void tb_ui_source_on_rssi(int8_t dbm)
+{
+    /*
+     * An out-of-range byte does NOT clear a previously good reading, it is simply
+     * not adopted. That distinction matters while range-testing: the STM32 zeroes
+     * this field until the next poll arrives, and polls are 15 s apart, so
+     * treating "not yet" as "no signal" would blank the number for most of every
+     * cycle and make it unreadable exactly when someone is walking with it.
+     */
+    if (!tb_rssi_valid(dbm)) {
+        return;
+    }
+    portENTER_CRITICAL(&s_mux);
+    s_rssi_dbm = dbm;
+    s_rssi_valid = true;
+    portEXIT_CRITICAL(&s_mux);
+}
+
 void tb_ui_source_mark_frame(void)
 {
     portENTER_CRITICAL(&s_mux);
@@ -187,6 +208,8 @@ void ui_mock_init(void)
     s_sensor_mask = 0;
     s_lora_ok = false;
     s_lora_reported = false;
+    s_rssi_dbm = 0;
+    s_rssi_valid = false;
     s_last_frame_ms = 0;
     s_frame_seen = false;
     portEXIT_CRITICAL(&s_mux);
@@ -428,11 +451,15 @@ void ui_mock_get_link_status(link_status_t *out)
     out->lora_reported = s_lora_reported;
     out->link_age_ms = s_frame_seen ? (s_now_ms - s_last_frame_ms) : 0U;
     out->link_never_seen = !s_frame_seen;
+    out->lora_rssi_dbm = s_rssi_dbm;
+    out->lora_rssi_valid = s_rssi_valid;
     portEXIT_CRITICAL(&s_mux);
 
     /* Only the sensor dot is faked. The Sistem and LoRa dots stay honest because
      * they report the STM32 link, which demo mode does not replace -- the RFID
-     * tag still comes over it, so a dead link is still a dead demo. */
+     * tag still comes over it, so a dead link is still a dead demo. RSSI is left
+     * alone for the same reason and one more: the point of putting it on screen
+     * is measuring real range, so a fake number there would defeat the feature. */
     if (ui_demo_enabled()) {
         out->sensor_mask = ui_demo_sensor_mask();
     }

@@ -58,6 +58,19 @@ typedef struct {
     bool lora_reported;     /* false until the first STATUS frame arrives */
     uint32_t link_age_ms;   /* since the last frame of any kind */
     bool link_never_seen;   /* no frame has ever arrived */
+    /*
+     * How strongly this node heard the station's last poll, in dBm, and whether
+     * that number means anything yet. Downlink direction, measured by the node's
+     * own radio -- the only link figure this board can know, and the one the
+     * status bar shows while walking the box away to find the range.
+     *
+     * Kept as a separate flag rather than a magic value because there is no dBm
+     * reading that could serve as one: 0 is "no poll heard yet" on a new STM32
+     * and -1 is the pad byte an old one returns, and neither is distinguishable
+     * from data by looking at it.
+     */
+    int8_t lora_rssi_dbm;
+    bool lora_rssi_valid;
 } link_status_t;
 
 typedef enum {

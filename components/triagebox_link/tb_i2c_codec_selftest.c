@@ -308,6 +308,53 @@ static void test_diff_null_cb(void)
     assert(tb_i2c_diff_buttons(0, TB_BTN_2, NULL, NULL) == TB_BTN_2);
 }
 
+/*
+ * RSSI lives OUTSIDE the vitals block, and that separation is the whole reason
+ * an old STM32 keeps working. Pinned here because the failure mode is silent in
+ * both directions: fold it inside and every vitals poll asks an old slave for
+ * one byte more than it has (a link that looks dead); get the validity window
+ * wrong and the pad byte an old slave returns renders as a signal strength.
+ */
+static void test_rssi_is_outside_the_vitals_block(void)
+{
+    /* The vitals poll length must not have moved -- an STM32 built before this
+     * register existed answers exactly TB_REG_READ_END bytes. */
+    assert(TB_REG_READ_END == 0x30U);
+    assert(TB_REG_LORA_RSSI == TB_REG_READ_END);
+    assert(TB_REG_SNAPSHOT_END == TB_REG_READ_END + 1U);
+    /* The struct is what sizes the slave's staging buffer, so 0x30 is only
+     * readable if the member is in it. */
+    assert(sizeof(tb_snapshot_t) == TB_REG_SNAPSHOT_END);
+    assert(offsetof(tb_snapshot_t, lora_rssi) == TB_REG_LORA_RSSI);
+    /* Clear of the PPG block and the write block, both of which the slave
+     * decodes by address range. */
+    assert(TB_REG_SNAPSHOT_END <= TB_REG_CMD);
+    assert(TB_REG_SNAPSHOT_END <= TB_REG_PPG_BASE);
+}
+
+static void test_rssi_validity_window(void)
+{
+    /* Both "no reading" bytes must be rejected, and they are different values
+     * from different places: 0 is a fresh STM32 that has heard no poll yet,
+     * 0xFF (-1) is the pad an old slave feeds for an address it cannot decode.
+     * A single-sentinel test would let one of them through as a real level. */
+    assert(!tb_rssi_valid(0));
+    assert(!tb_rssi_valid((int8_t)0xFFU));
+
+    /* Real receiver range: SF7/125k sensitivity is about -123 dBm, and closer
+     * than a metre saturates near -20. */
+    assert(tb_rssi_valid(-123));
+    assert(tb_rssi_valid(TB_RSSI_MIN_DBM));
+    assert(tb_rssi_valid(TB_RSSI_MAX_DBM));
+    assert(!tb_rssi_valid(TB_RSSI_MAX_DBM + 1));
+
+    /* The lower bound is the TYPE, not a comparison: int8_t cannot represent
+     * anything below -128, which is why tb_rssi_valid() only tests the top end.
+     * Pinned so widening the field notices that the check has to grow back. */
+    assert(TB_RSSI_MIN_DBM == -128);
+    assert(sizeof(((tb_snapshot_t *)0)->lora_rssi) == 1U);
+}
+
 int main(void)
 {
     test_decode_basic();
@@ -316,6 +363,8 @@ int main(void)
     test_decode_validity_rules();
     test_decode_valid_mask_is_per_field();
     test_decode_null_safe();
+    test_rssi_is_outside_the_vitals_block();
+    test_rssi_validity_window();
     test_buttons_masked();
     test_diff_single();
     test_diff_simultaneous();

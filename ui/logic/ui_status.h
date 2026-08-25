@@ -53,7 +53,6 @@ ui_status_state_t ui_status_system(uint32_t age_ms, bool never_seen);
  * arrives we know nothing, which is ERROR, not OK.
  */
 ui_status_state_t ui_status_lora(bool link_ok, bool reported);
-
 /* Label text next to each dot, e.g. "Sensor OK" / "Sensor 3/5" / "Sensor --". */
 void ui_status_label(char *buf, unsigned buf_sz, const char *prefix,
                      ui_status_state_t state);
@@ -105,7 +104,52 @@ ui_battery_icon_t ui_status_battery_icon(uint8_t percent, bool charging);
  * reported is false until the first snapshot arrives; that is "no link to the
  * STM32 at all", which is a different fault from "STM32 present, radio down".
  */
-const char *ui_status_link_text(bool lora_ok, bool reported);
+/*
+ * Status-bar link label, e.g. "-97dBm", "LoRa siap", "LoRa mati", "Link --".
+ *
+ * Deliberately never says "Connected": the radio hangs off the STM32, so all
+ * the ESP32 knows is what TB_REG_SENSOR_OK's LoRa bit claims -- that the SX1278
+ * initialised. Nothing here can know a station heard us. Saying "Connected"
+ * would be a promise the hardware cannot keep, on a screen someone triages
+ * from.
+ *
+ * reported is false until the first snapshot arrives; that is "no link to the
+ * STM32 at all", which is a different fault from "STM32 present, radio down".
+ *
+ * WHY RSSI GOES IN THIS LABEL rather than a new one: it is the number beside the
+ * signal icon, and there is exactly one label there. A second one would need the
+ * status_bar.xml component re-exported from the Editor before it existed at all,
+ * so the feature would silently do nothing until someone pressed Ctrl+B.
+ *
+ * Precedence, most actionable first: no STM32 -> radio down -> a measured dBm ->
+ * radio up but nothing heard yet. A valid dBm implies a working radio, so the
+ * words add nothing once there is a number; and "LoRa mati" outranks a dBm from
+ * seconds ago because that is the state worth acting on.
+ *
+ * No signal-bars mapping anywhere. The number is the point -- this exists so
+ * someone can walk the box away from the station and read the actual dBm, and
+ * bucketing it into 4 bars throws away exactly the resolution that needs.
+ *
+ * Needs 12 bytes: the longest output is "-128dBm" plus NUL, with slack.
+ */
+#define UI_LINK_TEXT_MIN 12U
+void ui_status_link_text(char *buf, unsigned buf_sz, bool lora_ok, bool reported,
+                         int8_t rssi_dbm, bool rssi_valid);
+
+/*
+ * Colour for that label: how much margin is left before the link drops.
+ *
+ * Thresholds are the receiver's, not a preference. At the shared SF7 / 125 kHz
+ * the SX1278 datasheet gives about -123 dBm sensitivity, so:
+ *   >= -100  OK     comfortable, tens of dB of margin
+ *   >= -115  WARN   under 10 dB left; this is where range testing gets useful
+ *   <  -115  ERROR  within a few dB of not decoding at all
+ * An unknown RSSI is not an error -- it falls back to the radio's own state,
+ * which is what the caller passes in.
+ */
+#define UI_RSSI_OK_DBM   (-100)
+#define UI_RSSI_WARN_DBM (-115)
+ui_status_state_t ui_status_rssi_state(int8_t dbm);
 
 /*
  * Clock HH:MM, or "--:--" when the system clock has never been set.
