@@ -18,6 +18,14 @@ void tb_ui_source_on_rfid(const rfid_t *r);
 /* lora_ok < 0 means the STM32 did not include the (optional) 3rd payload byte. */
 void tb_ui_source_on_status(uint8_t sensor_ok_mask, uint8_t battery, int lora_ok);
 
+/*
+ * Downlink RSSI in dBm, from TB_REG_LORA_RSSI: how strongly the node heard the
+ * station's last poll. Validity is decided here with tb_rssi_valid() rather than
+ * by the caller, so the two "no reading" bytes (0 from a fresh STM32, 0xFF from
+ * an old one's pad) collapse to one answer in one place.
+ */
+void tb_ui_source_on_rssi(int8_t dbm);
+
 /* Latest sensor-OK bitmask from TB_FRAME_STATUS (0 until the first frame). */
 uint8_t tb_ui_source_sensor_mask(void);
 

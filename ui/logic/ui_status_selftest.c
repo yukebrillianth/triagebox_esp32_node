@@ -90,15 +90,76 @@ static void test_battery(void)
 	ui_status_battery_text(buf, 0, 50);
 }
 
+static void link(char *buf, unsigned sz, bool ok, bool reported, int dbm,
+                 bool valid)
+{
+	ui_status_link_text(buf, sz, ok, reported, (int8_t)dbm, valid);
+}
+
 static void test_link_text(void)
 {
+	char a[UI_LINK_TEXT_MIN];
+	char b[UI_LINK_TEXT_MIN];
+
 	/* Nothing here may ever claim "Connected": the ESP32 cannot know a station
 	 * heard us, only that the STM32 says its radio came up. */
-	assert(strstr(ui_status_link_text(true, true), "Connected") == NULL);
+	link(a, sizeof(a), true, true, 0, false);
+	assert(strstr(a, "Connected") == NULL);
+
 	/* No STM32 at all and STM32-present-radio-down are different faults. */
-	assert(strcmp(ui_status_link_text(true, false), ui_status_link_text(false, true)) != 0);
-	assert(strcmp(ui_status_link_text(true, false), ui_status_link_text(true, true)) != 0);
-	assert(strcmp(ui_status_link_text(false, true), ui_status_link_text(true, true)) != 0);
+	link(a, sizeof(a), true, false, 0, false);
+	link(b, sizeof(b), false, true, 0, false);
+	assert(strcmp(a, b) != 0);
+	link(b, sizeof(b), true, true, 0, false);
+	assert(strcmp(a, b) != 0);
+	link(a, sizeof(a), false, true, 0, false);
+	assert(strcmp(a, b) != 0);
+
+	/* A measured RSSI replaces the words: once there is a number, "LoRa siap"
+	 * adds nothing, and the number is what someone range-testing reads. */
+	link(a, sizeof(a), true, true, -97, true);
+	assert(strcmp(a, "-97dBm") == 0);
+
+	/* But a radio the STM32 reports DOWN still outranks a dBm from seconds ago:
+	 * that is the state worth acting on. This is the ordering bug to catch. */
+	link(a, sizeof(a), false, true, -97, true);
+	assert(strcmp(a, "LoRa mati") == 0);
+	/* And no STM32 at all outranks everything, since the RSSI came over it. */
+	link(a, sizeof(a), true, false, -97, true);
+	assert(strcmp(a, "Link --") == 0);
+
+	/* The extremes must fit the buffer the header promises, NUL included. */
+	link(a, sizeof(a), true, true, -128, true);
+	assert(strcmp(a, "-128dBm") == 0);
+	link(a, sizeof(a), true, true, -20, true);
+	assert(strcmp(a, "-20dBm") == 0);
+
+	/* Undersized buffer and NULL are ignored, not truncated into a half-number
+	 * that reads as a different signal strength. */
+	a[0] = 'x';
+	ui_status_link_text(a, UI_LINK_TEXT_MIN - 1U, true, true, -97, true);
+	assert(a[0] == 'x');
+	ui_status_link_text(NULL, sizeof(a), true, true, -97, true);
+}
+
+static void test_rssi_state(void)
+{
+	/* Thresholds are the SX1278's, not a preference: ~-123 dBm sensitivity at
+	 * SF7/125k, so -115 is a few dB from not decoding and -100 is comfortable. */
+	assert(ui_status_rssi_state(-40) == UI_STATUS_OK);
+	assert(ui_status_rssi_state(UI_RSSI_OK_DBM) == UI_STATUS_OK);
+	assert(ui_status_rssi_state(UI_RSSI_OK_DBM - 1) == UI_STATUS_WARN);
+	assert(ui_status_rssi_state(UI_RSSI_WARN_DBM) == UI_STATUS_WARN);
+	assert(ui_status_rssi_state(UI_RSSI_WARN_DBM - 1) == UI_STATUS_ERROR);
+	assert(ui_status_rssi_state(-128) == UI_STATUS_ERROR);
+
+	/* Monotonic: a weaker signal is never reported as healthier than a stronger
+	 * one. Stated as a property because the three-way compare above is exactly
+	 * the shape that gets an inequality flipped in review. */
+	for (int strong = -20; strong >= -127; strong--) {
+		assert(ui_status_rssi_state((int8_t)strong) <=
+		       ui_status_rssi_state((int8_t)(strong - 1)));
+	}
 }
 
 static void test_clock(void)
@@ -133,6 +194,7 @@ int main(void)
 {
 	test_battery();
 	test_link_text();
+	test_rssi_state();
 	test_clock();
 	test_sensors();
 	test_system();

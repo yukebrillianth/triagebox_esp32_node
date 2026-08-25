@@ -58,6 +58,64 @@ Dua hal yang tidak terlihat dari file header:
 - **`TB_REG_BUTTONS` adalah state mask, bukan event.** `tb_i2c_codec.c` yang men-diff jadi edge press/release. Satu poll bisa sah menghasilkan sampai 4 edge sekaligus (dua jari, atau satu poll terlewat saat task LVGL sibuk), jadi antrian tombol di `tb_ui_source.c` panjangnya 8 — bukan satu slot.
 - **`rfid_len == 0` adalah informasi, bukan diam.** Itu satu-satunya bukti STM32 sudah memproses `START_SCAN` dan melepas kartu pasien sebelumnya. Lihat §"Gate RFID".
 
+### RSSI: satu register di luar blok vital
+
+`TB_REG_LORA_RSSI` (`0x30`) berisi **seberapa kuat node ini mendengar poll terakhir dari station**, dalam dBm. Ini satu-satunya angka kualitas link yang bisa diketahui node: node tidak pernah transmit tanpa dipoll, jadi radionya duduk di RX continuous dan `RegPktRssiValue` sesudah RxDone adalah pengukuran nyata **di posisi node**. Arahnya station→node, tapi path loss itu resiprokal, jadi untuk mengukur jarak dengan cara menjauhkan alat dari station inilah angka yang tepat.
+
+RSSI arah sebaliknya (yang station dengar) diukur radio station sendiri dan masuk ke node status JSON-nya — tidak bisa sampai ke layar ini tanpa menambah field downlink, dan isinya akan mengatakan hal yang sama.
+
+**Sengaja di luar `TB_REG_READ_END`, dan itu yang membuat `TB_PROTO_VER` tidak perlu naik.** Poll vital 50 ms tetap membaca tepat `0x30` byte, jadi STM32 yang dibangun sebelum register ini ada menjawab poll itu **tanpa perubahan apa pun** — dua board bisa di-flash terpisah, urutan bebas. ESP32 mengambil byte ini di transaksi 1-byte sendiri, 1 Hz (station poll tiap 15 s, jadi 20 Hz cuma membaca ulang byte yang tidak mungkin berubah, di bus yang dipakai bareng GT911). STM32 lama menjawab read itu dengan pad `0xFF`-nya, dan `tb_rssi_valid()` menolaknya.
+
+Kalau ditaruh **di dalam** blok: master akan meminta satu byte lebih banyak daripada isi buffer STM32 lama → poll vital gagal → link terlihat mati. Itu harga yang jauh lebih besar daripada satu byte per detik.
+
+Dua nilai berarti "belum ada bacaan", dari dua tempat berbeda — karena itu validasinya rentang, bukan `!= SENTINEL`: `0x00` = STM32 baru yang belum mendengar poll (0 dBm bukan level yang dilaporkan receiver mana pun), `0xFF` = STM32 lama atau alamat yang tidak dikenalinya. Keduanya di atas sinyal terkuat yang nyata, jadi batas atas saja sudah menolak keduanya. Batas bawah `-128` adalah `INT8_MIN` — tipenya sendiri yang jadi batas, dan menuliskan perbandingannya justru ditolak `-Werror=type-limits`.
+
+Di layar: label sebelah ikon sinyal. Presedensi, paling actionable dulu — tidak ada STM32 (`Link --`) → radio mati (`LoRa mati`) → dBm terukur (`-97dBm`) → radio siap tapi belum dengar apa pun (`LoRa siap`). Warnanya mengikuti **margin link** begitu ada angka (`≥ -100` hijau, `≥ -115` kuning, di bawahnya merah; sensitivitas SX1278 di SF7/125k sekitar -123 dBm), bukan cuma "radio nyala" — jadi warnanya berubah **sebelum** link mati, yang tidak pernah dilakukan boolean. Tidak ada pemetaan ke bar sinyal: angkanya justru intinya, dan membaginya jadi 4 bar membuang resolusi yang dibutuhkan pengukuran jarak.
+
+Read yang gagal **tidak** menghapus angka terakhir, berbeda dari baterai. Baterai adalah angka keselamatan yang tidak boleh terlihat lebih baik dari kenyataan; RSSI dibaca orang yang sedang berjalan sambil melihat layar, dan mengosongkannya karena satu transaksi hilang membuat angkanya tidak terbaca justru saat dipakai. Link yang benar-benar mati tetap mengosongkannya lewat jalur dot status.
+
+#### Yang perlu dikerjakan di sisi STM32 🙏
+
+Sisi ESP32 sudah lengkap dan aman dijalankan sekarang — tanpa perubahan di bawah, layar menampilkan `LoRa siap` dan `i2clink` mencetak `lora_rssi : -- (raw 0xff: STM32 predates this register...)`. Tiga langkah:
+
+**1. Copy `tb_regs.h`** dari repo ini (yang berubah: `int8_t lora_rssi` di akhir `tb_snapshot_t`, plus `TB_REG_LORA_RSSI` / `TB_REG_SNAPSHOT_END` / `tb_rssi_valid()`). `TB_PROTO_VER` **tidak** naik, jadi urutan flash bebas dan tidak perlu serentak. `s_tx[sizeof(tb_snapshot_t)]` di `tb_slave.c` otomatis jadi 0x31 byte, dan itulah yang membuat register `0x30` bisa dibaca — `AddrCallback` sudah menangani `start < sizeof(s_tx)` tanpa perubahan.
+
+`tools/tb_link_selftest.c` di repo STM32 **akan gagal** begitu header-nya di-copy, dan itu memang benar — dua assert-nya menyatakan struct berakhir tepat di `TB_REG_READ_END`:
+
+```c
+assert(sizeof(tb_snapshot_t) == TB_REG_READ_END);   /* jadi TB_REG_SNAPSHOT_END */
+assert(sizeof(tb_snapshot_t) == 0x30U);             /* jadi 0x31U              */
+```
+
+Ganti keduanya ke `TB_REG_SNAPSHOT_END` / `0x31U` dan tambahkan `assert(offsetof(tb_snapshot_t, lora_rssi) == TB_REG_LORA_RSSI);`. Sisi ESP32 sudah memasang assert yang setara di `tb_i2c_codec_selftest.c`.
+
+**2. Setter kecil di `tb_slave.c`**, bukan parameter baru di `tb_slave_publish()`: RSSI datang tiap poll (15 s) sedangkan publish jauh lebih sering, jadi parameter akan memaksa pemanggil menyimpan nilai terakhirnya sendiri.
+
+```c
+void tb_slave_set_rssi(int8_t dbm)
+{
+    s_stage.lora_rssi = dbm; /* publish berikutnya yang menyalinnya ke s_live */
+}
+```
+
+**3. Di `main.c`, sesudah `lora_poll_for_me()` lolos** (paket itu memang dari station, jadi RSSI-nya berarti):
+
+```c
+int rssi = LoRa_getRSSI(&hlora);
+
+/* WAJIB di-clamp. LoRa_getRSSI() mengembalikan -164 + RegPktRssiValue, jadi
+ * rentangnya -164..+91 -- dan -164 sebagai int8_t membungkus jadi +92, yang
+ * lolos setiap uji "masuk akal" dan tampil sebagai sinyal kuat. */
+if (rssi < -128) { rssi = -128; }
+if (rssi > 127)  { rssi = 127; }
+mon_lora_rssi = (int16_t)rssi;      /* untuk CubeMonitor, tanpa clamp kalau mau */
+tb_slave_set_rssi((int8_t)rssi);
+```
+
+Letaknya sesudah `++mon_lora_polls` dan **sebelum** `LoRa_transmit()`: `RegPktRssiValue` itu per-paket, dan transmit lalu kembali ke RX bisa menimpanya dengan paket node lain di kanal yang sama.
+
+Tidak perlu mengirim RSSI lewat LoRa ke station — station mengukur arahnya sendiri. Ini murni untuk layar node.
+
 ### RS485 sudah disuperseded
 
 `tb_link.c` (UART2 GPIO44/43, framing `0xA5 0x5A` + CRC-16/CCITT-FALSE) disimpan satu rilis kalau swap-nya harus di-revert. STM32 project tidak pernah punya USART, jadi I²C adalah satu-satunya transport yang pernah punya dua ujung. `tb_frame.c` tetap tinggal: payload LoRa masih memakai konversi prioritasnya, dan file itu host-tested.
@@ -216,21 +274,31 @@ Tes tanpa kode yang menyertainya: **saat layar hitam, tekan tombol.** Kalau masi
 
 Riwayat: run 190 s pertama sesudah instrumen masuk tidak blackout sama sekali (heartbeat mulus, heap datar ~5,68 MB, `lv`/`wall` selisih konstan 132 ms = offset boot, bukan starvation). Blackout baru tertangkap di run ~56 menit, dan itu yang jadi bukti di atas.
 
-## Mode demo (untuk video)
+## Menu (tombol 3) dan mode demo
 
-Tombol **Menu** (cell 3 di ButtonBar) membuka dialog kecil dengan satu isi: toggle mode demo. Dipakai untuk merekam video ketika sensor belum siap.
+Tombol **Menu** (cell 3 di ButtonBar) — yang di flow Figma tidak punya arti — membuka **daftar setting**, satu baris per setting: judul + sublabel penjelas di kiri, switch di kanan. Isinya sekarang satu: mode demo. Berikutnya toggle tema terang/gelap.
+
+Bentuknya daftar, bukan sepasang tombol, karena versi pertama (dua tombol: `Tutup` / `Demo: Aktifkan`) tidak bertahan begitu ada entri kedua — jadinya tiga tombol berjejer yang dua di antaranya setting dan satu navigasi, dan label tombol harus membawa state (`Demo: Matikan` berarti demo sedang **nyala**, terbalik dari cara label biasa dibaca). Switch menunjukkan state langsung. Menoggle **tidak** menutup dialog: dengan lebih dari satu setting, menutup tiap kali berarti membuka menu lagi untuk mengubah yang kedua. Kartunya `LV_SIZE_CONTENT`, jadi menambah baris tidak perlu hitung-hitungan ukuran.
+
+Tombol Menu juga **menutup** dialognya sendiri kalau ditekan lagi. Ini bukan kemewahan: baris dan tombol `Tutup` adalah target sentuh, jadi tanpa ini orang yang mengoperasikan alat dari 4 tombol fisik bisa membuka menu dan terkurung di belakang scrim. Konfirmasi Power sengaja **tidak** begitu — itu harus dijawab, bukan dibubarkan tekanan nyasar.
+
+Switch demo berwarna **kuning**, bukan hijau accent. Setiap switch lain di menu ini akan berupa preferensi biasa; yang ini membuat alat melaporkan triase yang tidak diukur siapa pun, jadi tidak boleh terlihat seperti preferensi. Hijau accent di palet ini juga **sama dengan triage GREEN** — warna terakhir yang boleh dipinjam kontrol bertuliskan "hasil palsu".
+
+Baris `Tema` **belum dibuat**, sengaja: switch yang tidak melakukan apa-apa mengajari operator bahwa menunya rusak, dan desain mode terang memang dijadwalkan nanti.
+
+### Mode demo (untuk video)
 
 | | Demo ON | Demo OFF |
 | --- | --- | --- |
 | 4 tanda vital | **palsu** — HR ~128, SpO₂ ~88, RR ~32, TD ~86/54, bergoyang tiap ~0,8 s | dari sensor |
 | Hasil triase | **MERAH**, confidence 0,93 — model **tidak** dijalankan | model GBM |
 | Dot Sensor di Home | **hijau semua** | apa adanya |
-| RFID, tombol fisik, baterai, dot Sistem/LoRa | **asli** | asli |
+| RFID, tombol fisik, baterai, dot Sistem/LoRa, **RSSI** | **asli** | asli |
 | Frame `RESULT` ke STM32 | **dikirim** (station + dashboard ikut lihat pasien demo) | dikirim |
 
 Angka palsunya sengaja dibuat **konsisten dengan MERAH** — HR 72 / SpO₂ 99 di sebelah label MERAH justru terlihat seperti alat rusak. Digoyang sedikit supaya tidak seperti screenshot, tapi deterministik (tabel, bukan random) sehingga bisa dipatok selftest.
 
-Yang **tidak** dipalsukan: RFID. Jadi STM32 harus tetap tersambung untuk merekam — layar Scanning menunggu tag betulan.
+Yang **tidak** dipalsukan: RFID. Jadi STM32 harus tetap tersambung untuk merekam — layar Scanning menunggu tag betulan. RSSI juga tidak dipalsukan: gunanya justru mengukur jarak nyata, jadi angka palsu di situ mematikan fiturnya.
 
 **Mati sendiri setiap boot**, tidak disimpan ke NVS. Ini disengaja: kalau lupa dimatikan sesudah rekaman, satu power cycle sudah cukup untuk mengembalikan alat ke normal, bukan alat yang menyebut semua pasien MERAH. Tidak ada badge "DEMO" di layar karena itu justru merusak videonya — gantinya reset-saat-boot di atas plus `ESP_LOGW DEMO MODE: reporting priority=0, model not run` di setiap hasil.
 

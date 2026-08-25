@@ -209,11 +209,56 @@ static void push_battery_if_due(void)
     xSemaphoreGive(s_lock);
 }
 
+/*
+ * Downlink RSSI, read separately from the vitals block. See TB_REG_LORA_RSSI for
+ * why it sits at 0x30 rather than inside the block: the 50 ms poll stays exactly
+ * 0x30 bytes, so an STM32 built before this register existed keeps answering it
+ * unchanged and only this extra read comes back as its 0xFF pad.
+ *
+ * 1 Hz because the station polls each node once per LORA_POLL_PERIOD_MS (15 s),
+ * so the value can only change every 15 s -- reading it at 20 Hz would be 19
+ * transactions out of 20 spent re-reading a byte that cannot have moved, on a bus
+ * shared with the touch controller. 1 Hz is still 15 reads per possible change,
+ * which is enough to catch it promptly while walking the box around.
+ */
+#define TB_RSSI_EVERY (1000U / TB_POLL_MS)
+
+static void poll_rssi_if_due(void)
+{
+    static uint32_t s_ticks;
+    uint8_t raw;
+
+    if ((s_ticks++ % TB_RSSI_EVERY) != 0U) {
+        return; /* first pass runs, so the bar has a value within a poll of boot */
+    }
+
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(TB_I2C_TIMEOUT)) != pdTRUE) {
+        return;
+    }
+    /*
+     * A failed read leaves the last good value on screen rather than blanking
+     * it, which is the opposite of what the battery does -- and deliberately so.
+     * The battery is a safety number that must never look better than reality;
+     * RSSI is a measurement someone is reading off the screen while walking, and
+     * blanking it on one lost transaction would make the number unreadable
+     * exactly when it is being used. A dead link blanks it anyway, via the
+     * link_never_seen path in the status dots.
+     */
+    if (read_block(TB_REG_LORA_RSSI, &raw, 1U) == ESP_OK) {
+        xSemaphoreGive(s_lock);
+        tb_ui_source_on_rssi((int8_t)raw);
+        return;
+    }
+    xSemaphoreGive(s_lock);
+    ESP_LOGD(TAG, "rssi read failed");
+}
+
 static void poll_task(void *arg)
 {
     (void)arg;
     for (;;) {
         poll_once();
+        poll_rssi_if_due();
         push_battery_if_due();
         vTaskDelay(pdMS_TO_TICKS(TB_POLL_MS));
     }

@@ -516,7 +516,7 @@ static int cmd_i2clink(int argc, char **argv)
 {
     i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
     i2c_master_dev_handle_t dev = NULL;
-    uint8_t raw[TB_REG_READ_END];
+    uint8_t raw[TB_REG_SNAPSHOT_END];
     uint8_t reg = TB_REG_PROTO_VER;
     vitals_t v;
     esp_err_t err;
@@ -541,13 +541,30 @@ static int cmd_i2clink(int argc, char **argv)
         return 1;
     }
 
-    err = i2c_master_transmit_receive(dev, &reg, 1, raw, sizeof(raw), 200);
+    err = i2c_master_transmit_receive(dev, &reg, 1, raw, TB_REG_READ_END, 200);
     if (err != ESP_OK) {
         printf("read failed: %s\n", esp_err_to_name(err));
         printf("  check SDA=GPIO15->PB3, SCL=GPIO7->PB10, and that the STM32\n"
                "  is running (not halted at a breakpoint).\n");
         (void)i2c_master_bus_rm_device(dev);
         return 1;
+    }
+
+    /*
+     * RSSI in its own transaction, exactly as the poll task does it, and for the
+     * same reason: asking for TB_REG_SNAPSHOT_END bytes in one go would make an
+     * STM32 built before that register serve one byte past its buffer, turning
+     * the whole command into "read failed" on the firmware that needs it most.
+     * A failed second read is not fatal here -- it decodes as "no reading".
+     */
+    {
+        uint8_t rssi_reg = TB_REG_LORA_RSSI;
+
+        if (i2c_master_transmit_receive(dev, &rssi_reg, 1,
+                                        &raw[TB_REG_LORA_RSSI], 1, 200)
+            != ESP_OK) {
+            raw[TB_REG_LORA_RSSI] = 0xFFU;
+        }
     }
 
     printf("proto_ver : 0x%02x %s\n", raw[TB_REG_PROTO_VER],
@@ -589,6 +606,28 @@ static int cmd_i2clink(int argc, char **argv)
            (raw[TB_REG_SENSOR_OK] & TB_SENSOR_LORA) ? 1 : 0);
     printf("battery   : %u%s\n", raw[TB_REG_BATTERY],
            (raw[TB_REG_BATTERY] == 0xFFU) ? " (not measured)" : "%");
+
+    /*
+     * Downlink RSSI, one byte past the vitals block. Printing the raw byte
+     * alongside the reading is deliberate: 0x00 (no poll heard yet) and 0xFF (an
+     * STM32 built before this register existed, answering with its pad) are the
+     * two states someone debugging a silent radio actually needs to tell apart,
+     * and both render as "--" on the screen.
+     */
+    {
+        int8_t rssi = (int8_t)raw[TB_REG_LORA_RSSI];
+
+        if (tb_rssi_valid(rssi)) {
+            printf("lora_rssi : %d dBm  (station -> this node, last poll)\n",
+                   (int)rssi);
+        } else {
+            printf("lora_rssi : -- (raw 0x%02x: %s)\n",
+                   (unsigned)raw[TB_REG_LORA_RSSI],
+                   (raw[TB_REG_LORA_RSSI] == 0x00U)
+                       ? "no poll heard yet -- polls are 15s apart"
+                       : "STM32 predates this register, or refused the address");
+        }
+    }
 
     if (tb_i2c_decode_vitals(raw, &v)) {
         printf("decoded   : hr=%u spo2=%u rr=%u bp=%u/%u\n",
