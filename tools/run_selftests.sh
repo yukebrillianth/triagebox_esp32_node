@@ -69,6 +69,10 @@ run ui/logic/ui_runtime_selftest.c \
 run ui/logic/ui_status_selftest.c \
     ui/logic/ui_status_selftest.c ui/logic/ui_status.c
 
+# Demo mode: the fake vitals have to agree with the RED verdict it hardcodes.
+run ui/logic/ui_demo_selftest.c \
+    ui/logic/ui_demo_selftest.c ui/logic/ui_demo.c
+
 # The real ui_board.c, compiled against components/triagebox_board/test_fakes/
 # instead of ESP-IDF. It is the only function in the tree that cuts power to a
 # running device, so the sequence is worth pinning on the host.
@@ -81,6 +85,7 @@ run components/triagebox_board/ui_board_power_selftest.c \
 run components/triagebox_link/tb_ui_source_selftest.c \
     components/triagebox_link/tb_ui_source_selftest.c \
     components/triagebox_link/tb_ui_source.c \
+    ui/logic/ui_demo.c \
     ui/logic/ui_types.c
 
 [ "$fail" -eq 0 ] && echo "all selftests OK"

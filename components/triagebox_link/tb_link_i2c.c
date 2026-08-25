@@ -11,6 +11,7 @@
 #include "tb_frame.h" /* tb_frame_priority_to_wire() only -- see below */
 #include "tb_i2c_codec.h"
 #include "tb_ui_source.h"
+#include "ui_board.h" /* ui_board_battery(): the gauge lives on our side */
 
 static const char *TAG = "tb_link_i2c";
 
@@ -158,11 +159,62 @@ static void poll_once(void)
     }
 }
 
+/*
+ * The battery percentage the STM32 cannot read for itself.
+ *
+ * The SW6106 fuel gauge sits at 0x3c on this same bus, but as a slave, so only
+ * this board can read it -- and the LoRa packet is built on the STM32. Without
+ * these few lines the node shows a real percentage on its own LCD while the
+ * dashboard's battery column stays permanently blank, which is the state this
+ * fixed. See TB_REG_HOST_BATTERY.
+ *
+ * Not every poll: a SoC that moves ~1% per several minutes does not need a write
+ * every 50ms, and each attempt costs two addressed PMIC reads plus a write on a
+ * bus shared with the touch controller. 5s is still 3 updates per LoRa cycle.
+ */
+#define TB_BATTERY_EVERY (5000U / TB_POLL_MS)
+
+static void push_battery_if_due(void)
+{
+    static uint32_t s_ticks;
+    uint8_t pct;
+
+    if ((s_ticks++ % TB_BATTERY_EVERY) != 0U) {
+        return; /* first pass runs, so the value is up within one poll of boot */
+    }
+
+    /*
+     * 0xFF on a failed read, deliberately, rather than holding the last good
+     * value. Same rule as the status bar: a frozen 80% while the pack drains is
+     * worse than one blank cycle. Never 0 -- 0 is a flat pack, and the station
+     * publishes it instead of omitting the key.
+     *
+     * The charging flag is dropped (NULL): the LoRa vital has no field for it,
+     * so carrying it would need a wire change on a link the STM32 owns, for
+     * something only useful next to the socket -- where the LCD already shows it.
+     */
+    if (!ui_board_battery(&pct, NULL)) {
+        pct = 0xFFU;
+    }
+
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(TB_I2C_TIMEOUT)) != pdTRUE) {
+        return;
+    }
+    if (write_reg(TB_REG_HOST_BATTERY, pct) != ESP_OK) {
+        /* Debug for the same reason poll failures are: with no STM32 attached
+         * this would fire every 5s forever. A stale battery is the mildest
+         * symptom of a dead link, and the status dots already show that. */
+        ESP_LOGD(TAG, "battery %u not delivered", (unsigned)pct);
+    }
+    xSemaphoreGive(s_lock);
+}
+
 static void poll_task(void *arg)
 {
     (void)arg;
     for (;;) {
         poll_once();
+        push_battery_if_due();
         vTaskDelay(pdMS_TO_TICKS(TB_POLL_MS));
     }
 }

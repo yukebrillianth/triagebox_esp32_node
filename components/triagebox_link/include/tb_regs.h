@@ -73,7 +73,7 @@
 #define TB_REG_RR_X10     0x08U /* u16  breaths/min * 10, 0 = no reading */
 #define TB_REG_BP_SYS     0x0AU /* u16  mmHg, valid only if TB_FLAG_BP_VALID */
 #define TB_REG_BP_DIA     0x0CU /* u16  mmHg, valid only if TB_FLAG_BP_VALID */
-#define TB_REG_BATTERY    0x0EU /* u8   percent, 0xFF = not measured */
+#define TB_REG_BATTERY    0x0EU /* u8   percent, 0xFF = none; TB_REG_HOST_BATTERY */
 #define TB_REG_SENSOR_OK  0x0FU /* u8   TB_SENSOR_* */
 #define TB_REG_RFID_LEN   0x10U /* u8   bytes of ASCII tag below, 0 = no tag */
 #define TB_REG_RFID       0x11U /* char[TB_RFID_MAX], NOT NUL-terminated */
@@ -248,16 +248,45 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
 
 /* ---- Write block (ESP32 -> STM32) --------------------------------------- */
 
-#define TB_REG_CMD        0x40U /* u8   TB_CMD_*, self-clearing once acted on */
-#define TB_REG_PRIORITY   0x41U /* u8   LoRa order: 0=BLACK 1=RED 2=YELLOW 3=GREEN */
-#define TB_REG_CONFIDENCE 0x42U /* u8   0..100 */
-#define TB_REG_WRITE_END  0x43U
+#define TB_REG_CMD          0x40U /* u8   TB_CMD_*, self-clearing once acted on */
+#define TB_REG_PRIORITY     0x41U /* u8   LoRa order: 0=BLACK 1=RED 2=YELLOW 3=GREEN */
+#define TB_REG_CONFIDENCE   0x42U /* u8   0..100 */
+#define TB_REG_HOST_BATTERY 0x43U /* u8   percent, 0xFF = ESP32 has no reading */
+#define TB_REG_WRITE_END    0x44U
 
 /*
  * PRIORITY uses the LoRa numeric alias, NOT ui_priority_t's declaration order
  * (RED, YELLOW, GREEN, BLACK). The ESP32 must convert with
  * tb_frame_priority_to_wire() before writing here. Getting this wrong swaps
  * RED and BLACK -- the two that matter most -- so it fails silently and badly.
+ */
+
+/*
+ * HOST_BATTERY travels backwards compared to everything else on this link, and
+ * that is the whole reason it exists. The fuel gauge is the SW6106 PMIC at
+ * 0x3c -- on this same bus, but as another SLAVE, so only the ESP32 (the master)
+ * can read it. The LoRa packet is built here, on the STM32. So the board that
+ * knows the percentage is not the board that has to transmit it, and one byte
+ * across this link is the fix; the alternative was making the STM32 a second bus
+ * master to reach 0x3c, on a bus the ESP32 polls every 50ms.
+ *
+ * TB_REG_BATTERY (0x0E) keeps its own meaning: the STM32's OWN measurement,
+ * which this board does not have and reports as 0xFF. main.c substitutes
+ * HOST_BATTERY into both the snapshot and the LoRa packet, so every consumer
+ * still sees exactly one battery field and needs no fallback rule.
+ *
+ * 0xFF means "the ESP32 could not read the gauge", NOT 0%. The ESP32 writes 0xFF
+ * on a failed PMIC read rather than holding the last good value, matching what
+ * its own status bar does and for the same reason: a frozen 80% while the pack
+ * drains is more dangerous than a blank cell for one cycle. Never substitute 0 --
+ * 0 is a flat pack, and the station publishes 0 instead of omitting the key.
+ *
+ * WHY THIS DID NOT BUMP TB_PROTO_VER: nothing in the READ block moved, and the
+ * read block is the only thing a version check protects -- same argument as
+ * TB_FLAG_HR_FROM_PPG below. An STM32 built before this register existed hits
+ * `default: break` in its write switch and ignores the byte, so it keeps
+ * reporting 0xFF and the station keeps omitting the key: today's behaviour,
+ * exactly. The two boards can be flashed independently, in either order.
  */
 
 /* Commands. This is the single definition -- the ESP32's tb_frame.h used to
