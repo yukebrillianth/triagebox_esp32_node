@@ -5,8 +5,8 @@
 #include "ui_types.h"
 
 ui_priority_t tb_classify(const TriageInput* input) {
-    int best = predict_triage_start_init(input);
-    return (ui_priority_t)best;
+    TriageOutput output = predict_triage(input);
+    return (ui_priority_t)output.predicted_esi;
 }
 
 #endif // TB_CLASSIFY_H
