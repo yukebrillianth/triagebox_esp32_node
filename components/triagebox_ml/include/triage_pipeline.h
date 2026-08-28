@@ -12,6 +12,7 @@ typedef struct {
     float heart_rate;       // Heart rate (beats/min)
     float respiratory_rate; // Respiratory rate (breaths/min)
     float spo2;             // Oxygen saturation (%)
+    int airway_problem;
 } TriageInput;
 
 typedef struct {
