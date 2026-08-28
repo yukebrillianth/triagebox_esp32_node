@@ -783,7 +783,18 @@ static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
  * patient's ID was never cleared -- which on a triage screen means attaching the
  * wrong identity to a set of vitals. Painting "--" is the safe default; it is
  * also the tell that this code ran at all, which "-" is not.
+ *
+ * UI_PATIENT_ID_PREFIX is printed here rather than carried in rfid_t.tag, so the
+ * tag stays the bare card UID everywhere it is compared, hashed or sent. The
+ * backend adds the identical prefix on ingest (normalizeRfid() in
+ * src/common/mqtt-payload.ts) instead of it riding the LoRa packet, because a
+ * constant costs airtime on every reading and the packet's RFID field has no
+ * spare bytes. Change one side and you must change the other, or the operator
+ * reads a different ID off this screen than the command post reads off the
+ * dashboard.
  */
+#define UI_PATIENT_ID_PREFIX "TB-"
+
 static void set_patient_id(lv_obj_t *root, const char *prefix)
 {
     const rfid_t *tag = ui_session_get_rfid();
@@ -800,8 +811,10 @@ static void set_patient_id(lv_obj_t *root, const char *prefix)
         return;
     }
     if (tag != NULL && tag->present && tag->tag[0] != '\0') {
-        lv_label_set_text_fmt(label, "%s%s", prefix, tag->tag);
+        lv_label_set_text_fmt(label, "%s" UI_PATIENT_ID_PREFIX "%s", prefix,
+                              tag->tag);
     } else {
+        /* No prefix on the placeholder: "TB---" reads like a malformed ID. */
         lv_label_set_text_fmt(label, "%s--", prefix);
     }
 }
