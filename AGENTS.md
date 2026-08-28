@@ -17,7 +17,7 @@ Read this before writing any code. Prefer executable sources of truth (`mqtt-pay
 1. **Board revision is not optional.** V4.0 uses **CH32V003 @ I²C 0x24**. Older boards use **TCA9554**. Check silkscreen under the flex. Do not mix EXIO numbering across revisions. **This repo runs on V3.0 (TCA9554 @ 0x20)** — treat V4 notes as context only.
 2. On V4, `LCD_RST`, `TP_RST`, backlight PWM, buzzer, `SYS_EN`, battery ADC are **not ESP32 GPIOs** — they go through the CH32. Dark screen = CH32 init failed. **On V3 there is no `SYS_EN` at all** (EXIO5 is `BLC`); the **SW6106 PMIC @ 0x3c** owns the battery and the rails, and `ui_board_power_off()` cuts power by writing to it.
 3. **Framebuffer must live in PSRAM** (`fb_in_psram = 1`). OPI/octal PSRAM required. Without it the panel looks dead.
-4. Shared I²C: SDA `GPIO15`, SCL `GPIO7`. **Verified by bus scan on V3.0: `0x20` TCA9554, `0x3c` SW6106, `0x51` PCF85063A, `0x5d` GT911.** The 10-pin `Interface` header also exposes SDA/SCL, so external devices can add addresses. `0x26` ACKs but refuses every transaction — a partial-decode phantom, not a second expander. QMI8658 is **NC**, so `0x6a`/`0x6b` are free. Run **I²C bus recovery** after a soft reset (SDA can stick low). Re-scan any time with the `i2c` console command.
+4. Shared I²C: SDA `GPIO15`, SCL `GPIO7`. **Verified by bus scan on V3.0: `0x20` TCA9554, `0x3c` SW6106, `0x51` PCF85063A, `0x5d` GT911.** The 10-pin `Interface` header also exposes SDA/SCL, so external devices can add addresses. `0x26` ACKs but refuses every transaction — a partial-decode phantom, not a second expander. QMI8658 is **NC**, so `0x6a`/`0x6b` are free. Run **I²C bus recovery** after a soft reset (SDA can stick low) — `bsp_i2c_bus_recover()` does this before `i2c_new_master_bus()`. **The more common stall is SCL, not SDA**: measured SCL LOW 4/4 after soft resets with the STM32 attached, i.e. its slave clock-stretching forever. No master can clear that — power-cycle, and see `docs/firmware-architecture.md`. Re-scan any time with the `i2c` console command.
 5. **Dual-MCU link consumes RS485 pins.** Planned path is serial to STM32 over RS485 on `GPIO43` (RX) / `GPIO44` (TX) via the onboard **MAX13487EESA+** (U7) — an *AutoDirection* transceiver, so there is **no DE/RE pin to drive** and plain UART mode is correct. Those pins are **not free** for other uses once the link is wired.
 6. **4 physical buttons live on the STM32**, not on ESP32 GPIOs. Do not invent free ESP32 pins for buttons. Button presses arrive as serial frames from the STM32 and feed the LVGL keypad indev `read_cb`.
 7. Touch INT is wiki-mapped to `GPIO16` but official BSP leaves it `GPIO_NUM_NC` (poll mode). Do not depend on INT unless you re-enable it deliberately.
@@ -56,7 +56,7 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
 Prefer the managed BSP `waveshare/esp32_s3_touch_lcd_4` over hand-rolled ST7701/GT911 init — but **pick the version by silkscreen revision, not by "latest"**. The physical board here is **rev 3.0** → BSP `^1.1.0` (TCA9554 expander). BSP `^2`/`3.x` targets HW **V4.0** (CH32V003 @ 0x24, different EXIO numbering). Official demo repo: <https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4>. Wiki: <https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4>.
 
-BSP 1.1.0 does **not** compile on ESP-IDF v6 as shipped: v6 removed `psram_trans_align` and `bits_per_pixel` from `esp_lcd_rgb_panel_config_t`, and the registry manifest claims `idf: >=5.3` with no upper bound so the solver never catches it. Workaround in tree: the component is vendored to `components/esp32_s3_touch_lcd_4/` (overrides the managed copy) with those two fields deleted, plus the 180° panel/touch mirror for the enclosure. Keep both — do not "upgrade" to `^3.0.0`.
+BSP 1.1.0 does **not** compile on ESP-IDF v6 as shipped: v6 removed `psram_trans_align` and `bits_per_pixel` from `esp_lcd_rgb_panel_config_t`, and the registry manifest claims `idf: >=5.3` with no upper bound so the solver never catches it. Workaround in tree: the component is vendored to `components/esp32_s3_touch_lcd_4/` (overrides the managed copy) with those two fields deleted, plus the 180° panel/touch mirror for the enclosure, plus `touch_read_tolerant()` — a touch read callback that replaces the port's, because `esp_lvgl_port` `ESP_ERROR_CHECK`s `esp_lcd_touch_read_data()` and one GT911 timeout on the shared bus therefore `abort()`ed the firmware (that was the "blackscreen, backlight lit" bug; see `docs/firmware-architecture.md`). Keep all three — do not "upgrade" to `^3.0.0`.
 
 Pin LVGL to v9 — the port component accepts `>=8,<10`, so an unpinned resolve can silently give you v8:
 
@@ -95,24 +95,22 @@ Reject any snippet using `lv_indev_drv_t`, `lv_disp_drv_t`, or `lv_disp_draw_buf
 
 Physical button model: 4 keys on the **STM32**, context-dependent labels on the ESP32 ButtonBar. Prefer `LV_INDEV_TYPE_KEYPAD` + `lv_group_t` focus for list screens (age/gender); for fixed action bars, map each STM32 button event directly to the screen's action table (do not rely on focus for the bottom bar). The keypad `read_cb` reads the latest STM32 button state from a shared buffer filled by the serial RX task — never `gpio_get_level()` for the four keys.
 
-## Dual-MCU RS485 contract (STM32 ↔ ESP32)
+## Dual-MCU I²C contract (STM32 ↔ ESP32)
 
-**Implemented** in `components/triagebox_link/` — `tb_frame.h` is the authoritative wire format, this table is a summary. Full detail: `docs/firmware-architecture.md`.
+**Implemented** in `components/triagebox_link/` — `tb_regs.h` is the authoritative register map and is a **verbatim copy** of the STM32 project's file; edit one, copy it over. `TB_PROTO_VER` (read first, at reg `0x00`) makes a stale copy fail loudly instead of misreading offsets. Full detail: `docs/firmware-architecture.md`.
 
-UART2 on GPIO44 (TX) / GPIO43 (RX) via the onboard MAX13487EESA+, 115200 8N1. UART2 and not UART0 because those pins are the ESP32-S3 default console pins; the console stays on USB Serial/JTAG so `idf.py monitor` keeps working.
+ESP32-S3 is I²C **master**, STM32F411 is slave at **0x42**, on the display's existing bus (SDA GPIO15 / SCL GPIO7). No extra pins, no transceiver, and the read-only `i2creg` / `i2cdump` / `i2craw` console commands inspect the STM32 like any other chip on that bus.
 
 ```
-0xA5 0x5A | kind:u8 | len:u8 | payload[len] | crc16:u16   (CRC-16/CCITT-FALSE over kind+len+payload)
+read : S 0x42 W [reg] Sr 0x42 R [d0] [d1] ... P     (snapshot, pointer auto-increments)
+write: S 0x42 W [reg] [d0] [d1] ... P
 ```
 
-| Kind | Dir | Payload |
-| --- | --- | --- |
-| `VITAL` 0x01 | STM32→ESP32 | `hr,spo2,rr,bp_sys,bp_dia:u16` + `battery:u8` + `flags:u8` (bit0 = valid) |
-| `BUTTON` 0x02 | STM32→ESP32 | `index:u8` (0..3) + `pressed:u8` (debounce on STM32) |
-| `RFID` 0x03 | STM32→ESP32 | `tag[len]` ASCII, ≤31, not NUL-terminated |
-| `STATUS` 0x04 | STM32→ESP32 | `sensor_ok:u8` bitmask + `battery:u8` |
-| `CMD` 0x10 | ESP32→STM32 | `cmd:u8` — START_SCAN / START_MEASURE / ABORT / POWER_OFF |
-| `RESULT` 0x11 | ESP32→STM32 | `priority:u8` + `confidence:u8` (0..100) + `tag[]` |
+The read block is latched when the master addresses the slave for reading, so one multi-byte read can never mix an old HR with a new SpO2. Little-endian. Layout, per-vital validity bits, the button **state** mask (the ESP32 diffs it into edges — see `tb_i2c_codec.c`) and the command register all live in `tb_regs.h`; do not restate offsets anywhere else.
+
+`RESULT` (priority + confidence + tag) goes back through the command/result registers. Poll cadence is 50 ms from the LVGL timer.
+
+**RS485 is superseded.** `tb_link.c` (UART2, `0xA5 0x5A` framing, CRC-16/CCITT-FALSE) is kept for one release in case the swap has to be reverted; the STM32 never had a USART, so I²C is the only transport that has ever had two ends. `tb_frame.c` stays regardless — the LoRa payload still uses its priority conversion, and it is host-tested.
 
 `priority` on the wire uses the **LoRa numeric alias** (`0=BLACK, 1=RED, 2=YELLOW, 3=GREEN`), which is not `ui_priority_t` order. Always go through `tb_frame_priority_to_wire()` / `_from_wire()`. `tb_frame.c` has no malloc and no ESP-IDF dependency so the STM32 side can compile it verbatim.
 
@@ -196,7 +194,7 @@ This firmware talks to the STM32 over UART with an internal framing of your choo
 | `ui/logic/` | Hand-written C only: types, session, mock, input, nav, action, runtime (+ host selftests) |
 | `sim/` | SDL2 desktop simulator (LVGL v9.5, 480×480) |
 | `main/` | ESP-IDF app (bring-up only: `app_main.c`, `asset_fs.c`) |
-| `components/esp32_s3_touch_lcd_4/` | Vendored BSP: IDF-v6 patch + 180° panel/touch mirror. Overrides the managed copy. |
+| `components/esp32_s3_touch_lcd_4/` | Vendored BSP: IDF-v6 patch + 180° panel/touch mirror + non-fatal touch read. Overrides the managed copy. |
 | `components/triagebox_link/` | RS485 ↔ STM32: `tb_frame.c` codec (platform-neutral), `tb_link.c` UART2, `tb_ui_source.c` |
 | `components/triagebox_board/` | Backlight + buzzer via TCA9554, and `ui_board_power_off()` via the SW6106 PMIC. `test_fakes/` lets the host selftest compile the real file. |
 | `components/triagebox_debug/` | `CONFIG_TB_DEBUG_CONSOLE` REPL: frame injection + I²C scan/read (`i2c`, `i2creg`, `i2craw`, `i2cdump`) + `stats`. Off by default. |

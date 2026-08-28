@@ -9,6 +9,7 @@
 #include "esp_spiffs.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "esp_rom_sys.h" /* esp_rom_delay_us() for the I2C bus recovery below */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -80,12 +81,116 @@ static const st7701_lcd_init_cmd_t lcd_init_cmds[] = {
  * I2C Function
  *
  **************************************************************************************************/
+/*
+ * Free a slave that is holding SDA low, BEFORE the peripheral claims the pins.
+ *
+ * Why this has to exist at all: the ESP32 resets far more often than the STM32
+ * does -- every flash, every RTS pulse, every panic -- and a soft reset does not
+ * power-cycle the STM32 or the GT911. A slave that was mid-byte when we vanished
+ * is still mid-byte, still driving SDA low, waiting for clocks that never came.
+ * From then on the master cannot even issue a valid START.
+ *
+ * Why that is fatal rather than an error: esp_lcd_panel_io_i2c passes -1 as the
+ * transaction timeout (esp_lcd/i2c/esp_lcd_panel_io_i2c.c:145 in IDF v6.0.2), so
+ * the very first GT911 config read blocks FOREVER. No error, no log, no
+ * watchdog -- boot simply stops between "I2C address initialization procedure
+ * skipped" and "TouchPad_ID:", which is exactly the reported symptom. Nothing
+ * downstream can recover from it, so it has to be cleared here.
+ *
+ * The sequence is the standard one: with SDA released, pulse SCL until the slave
+ * finishes the byte it thinks it is transmitting and lets go, then issue a STOP
+ * so it returns to idle rather than staying addressed. 9 pulses is one byte plus
+ * the ACK, which is the most any slave can still owe us.
+ *
+ * Open-drain throughout: this bus has other masters' worth of devices on it and
+ * a hard-driven high would fight whatever else is on the line.
+ */
+#define I2C_RECOVER_PULSES 9
+#define I2C_RECOVER_HALF_US 5 /* ~100 kHz, the speed every device here agrees on */
+
+static void bsp_i2c_bus_recover(void)
+{
+    const gpio_config_t od_conf = {
+        .pin_bit_mask = BIT64(BSP_I2C_SDA) | BIT64(BSP_I2C_SCL),
+        .mode = GPIO_MODE_INPUT_OUTPUT_OD,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    int pulses = 0;
+
+    if (gpio_config(&od_conf) != ESP_OK) {
+        return;
+    }
+    gpio_set_level(BSP_I2C_SDA, 1);
+    gpio_set_level(BSP_I2C_SCL, 1);
+    esp_rom_delay_us(I2C_RECOVER_HALF_US);
+
+    /*
+     * Both lines matter, and they fail differently.
+     *
+     * SDA low = a slave is mid-byte and can be clocked out of it, which is what
+     * the pulses below do.
+     *
+     * SCL low = a slave is CLOCK STRETCHING and there is nothing a master can do
+     * about it: it cannot drive a line another device is holding down. That is
+     * the STM32 case -- its I2C slave stretches SCL while its superloop gets
+     * round to the transfer, and if we reset in that window it stretches
+     * forever, waiting for clocks from a master that no longer exists. Only
+     * power-cycling the STM32 (or resetting its I2C peripheral from its own
+     * firmware) clears it, so all this can do is name it.
+     */
+    if (gpio_get_level(BSP_I2C_SCL) == 0) {
+        ESP_LOGE(TAG, "I2C SCL held LOW -- a slave is clock-stretching (the "
+                      "STM32 at 0x42 does this if the ESP32 reset mid-transfer). "
+                      "A master cannot clear this: power-cycle the board. Boot "
+                      "would otherwise hang in the GT911 read.");
+        return;
+    }
+
+    if (gpio_get_level(BSP_I2C_SDA) != 0) {
+        return; /* Bus idle. Nothing to report -- this is the normal path. */
+    }
+
+    while (pulses < I2C_RECOVER_PULSES && gpio_get_level(BSP_I2C_SDA) == 0) {
+        gpio_set_level(BSP_I2C_SCL, 0);
+        esp_rom_delay_us(I2C_RECOVER_HALF_US);
+        gpio_set_level(BSP_I2C_SCL, 1);
+        esp_rom_delay_us(I2C_RECOVER_HALF_US);
+        pulses++;
+    }
+
+    /* STOP: SDA low while SCL is high, then release SDA. */
+    gpio_set_level(BSP_I2C_SDA, 0);
+    esp_rom_delay_us(I2C_RECOVER_HALF_US);
+    gpio_set_level(BSP_I2C_SCL, 1);
+    esp_rom_delay_us(I2C_RECOVER_HALF_US);
+    gpio_set_level(BSP_I2C_SDA, 1);
+    esp_rom_delay_us(I2C_RECOVER_HALF_US);
+
+    if (gpio_get_level(BSP_I2C_SDA) == 0) {
+        /* Still held: not a mid-byte slave, so clocking it will not help. Either
+         * something is driving SDA continuously (a second master on the shared
+         * header, or a dead device) or the line is shorted. Logged rather than
+         * retried, because the boot that follows will hang and this line is the
+         * only thing that will say why. */
+        ESP_LOGE(TAG, "I2C SDA still low after %d recovery pulses -- boot will "
+                      "hang in the GT911 read; power-cycle the board", pulses);
+    } else {
+        ESP_LOGW(TAG, "I2C bus was wedged (SDA low); freed after %d pulses",
+                 pulses);
+    }
+}
+
 esp_err_t bsp_i2c_init(void)
 {
     /* I2C was initialized before */
     if (i2c_initialized) {
         return ESP_OK;
     }
+
+    /* Before i2c_new_master_bus() takes the pins: see bsp_i2c_bus_recover(). */
+    bsp_i2c_bus_recover();
 
     i2c_master_bus_config_t i2c_bus_conf = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -462,6 +567,63 @@ static lv_display_t *bsp_display_lcd_init()
 }
 
 
+/*
+ * Fault-tolerant replacement for esp_lvgl_port's touch read.
+ *
+ * The port's own callback wraps esp_lcd_touch_read_data() in ESP_ERROR_CHECK
+ * (esp_lvgl_port_touch.c:127), so ONE failed GT911 transaction calls abort().
+ * That is the confirmed cause of the "screen goes black, backlight stays lit,
+ * kinda reset" reports: with PANIC_PRINT_REBOOT at 0 s the SoC restarts
+ * instantly while the backlight, driven by the TCA9554, does not reset with it.
+ * Captured at ~56 min uptime as
+ *   i2c.master: I2C transaction timeout detected
+ *   panel_io_i2c_rx_buffer(145) -> GT911 read error -> 0x108 -> abort()
+ * on a bus shared by five devices (TCA9554, SW6106, PCF85063A, GT911 and the
+ * STM32 polled every 50 ms) with no cross-component lock, so the occasional
+ * timeout is expected. Dropping one touch sample is the right trade; rebooting
+ * mid-measurement on a triage device is not.
+ *
+ * The last state is held rather than forced to RELEASED: a synthetic release in
+ * the middle of a real press is a phantom click, and on these screens a click
+ * starts or aborts a measurement. Errors are logged (WARN survives the default
+ * level) so the bus glitch stays visible now that it no longer panics.
+ */
+static void touch_read_tolerant(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    static lv_point_t last_point;
+    static lv_indev_state_t last_state = LV_INDEV_STATE_RELEASED;
+    static uint32_t errors;
+
+    uint8_t cnt = 0;
+    esp_lcd_touch_point_data_t pts[CONFIG_ESP_LCD_TOUCH_MAX_POINTS] = {0};
+    esp_err_t err;
+
+    (void)indev;
+
+    err = esp_lcd_touch_read_data(tp);
+    if (err == ESP_OK) {
+        err = esp_lcd_touch_get_data(tp, pts, &cnt, CONFIG_ESP_LCD_TOUCH_MAX_POINTS);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "touch read failed (%s), holding last state, errors=%u",
+                 esp_err_to_name(err), (unsigned)++errors);
+        data->point = last_point;
+        data->state = last_state;
+        return;
+    }
+
+    if (cnt > 0) {
+        data->point.x = pts[0].x;
+        data->point.y = pts[0].y;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+
+    last_point = data->point;
+    last_state = data->state;
+}
+
 static lv_indev_t *bsp_display_indev_init(lv_display_t *disp)
 {
     BSP_ERROR_CHECK_RETURN_NULL(bsp_touch_new(NULL, &tp));
@@ -473,7 +635,14 @@ static lv_indev_t *bsp_display_indev_init(lv_display_t *disp)
         .handle = tp,
     };
 
-    return lvgl_port_add_touch(&touch_cfg);
+    lv_indev_t *indev = lvgl_port_add_touch(&touch_cfg);
+    if (indev) {
+        /* Scale stays 1:1 here, so the port's callback adds nothing we need.
+         * See touch_read_tolerant() for why it must not stay installed. */
+        lv_indev_set_read_cb(indev, touch_read_tolerant);
+    }
+
+    return indev;
 }
 
 

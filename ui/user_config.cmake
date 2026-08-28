@@ -28,6 +28,8 @@ list(APPEND LV_EDITOR_PROJECT_SOURCES
     # Editor preview has to link them too or Ctrl+B fails at wasm-ld.
     ${CMAKE_CURRENT_LIST_DIR}/logic/ui_status.c
     ${CMAKE_CURRENT_LIST_DIR}/logic/ui_mock.c
+    # Demo mode flag + fake vitals, read by ui_bindings' Menu dialog.
+    ${CMAKE_CURRENT_LIST_DIR}/logic/ui_demo.c
     # No expander in the Editor preview -- link the no-op board.
     ${CMAKE_CURRENT_LIST_DIR}/logic/ui_board_stub.c
 )
