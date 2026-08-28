@@ -8,8 +8,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "tb_link.h"
-#include "tb_svm.h"
+#include "tb_link_i2c.h"
+#include "tb_regs.h" /* tb_rssi_valid() */
+#include "tb_triage.h"
+#include "ui_demo.h"
+#include "ui_session.h"
 #include "tb_ui_source.h"
 #include "ui_board.h"
 #include "ui_mock.h"
@@ -26,12 +29,34 @@ static bool s_have_vitals;
 static rfid_t s_rfid;
 static bool s_rfid_ready;
 
-static bool s_btn_pending;
-static btn_event_t s_btn;
+/*
+ * True while we are waiting for the STM32 to confirm it dropped the last
+ * patient's tag. See ui_mock_start_scan() -- this is the whole fix for "press
+ * Restart, start a scan, and it already has a value with no card present".
+ */
+static bool s_rfid_gate;
+
+/*
+ * Button events, ring buffer. The I2C link publishes a STATE bitmask, so one
+ * poll can legitimately yield up to 4 edges at once (two fingers, or a poll
+ * missed while the LVGL task was busy). A single slot silently dropped all but
+ * the last, which on the Age/Gender screens shows up as a key that "sometimes
+ * does nothing" -- the worst kind of bug to chase.
+ *
+ * 8 is two full press+release cycles on all four keys: more than a human can
+ * generate inside one 50 ms tick, and 96 bytes.
+ */
+#define BTN_QUEUE_LEN 8U
+static btn_event_t s_btn_q[BTN_QUEUE_LEN];
+static uint8_t s_btn_head; /* next write */
+static uint8_t s_btn_tail; /* next read */
+static uint32_t s_btn_dropped;
 
 static uint8_t s_sensor_mask;
 static bool s_lora_ok;
 static bool s_lora_reported;
+static int8_t s_rssi_dbm;
+static bool s_rssi_valid;
 static uint32_t s_last_frame_ms;
 static bool s_frame_seen;
 
@@ -46,6 +71,14 @@ static bool s_have_priority;
 static ui_priority_t s_priority;
 static float s_confidence;
 
+/*
+ * Running min/max/mean across the measure window. Eight of the model's fifteen
+ * features are window aggregates, so a single last-snapshot cannot fill them.
+ * Written from the RX task, read once by the LVGL task at the end of the window,
+ * so it sits under the same spinlock as the snapshot itself.
+ */
+static tb_vitals_window_t s_window;
+
 /* ---------------------------------------------------------------- RX task -- */
 
 void tb_ui_source_on_vital(const vitals_t *v)
@@ -56,23 +89,38 @@ void tb_ui_source_on_vital(const vitals_t *v)
     portENTER_CRITICAL(&s_mux);
     s_vitals = *v;
     s_have_vitals = true;
+    /* Fold every snapshot in, not just the last one -- the aggregate is the
+     * model's actual input. Cheap: four compares and four adds. */
+    tb_vitals_window_add(&s_window, v);
     portEXIT_CRITICAL(&s_mux);
 }
 
 void tb_ui_source_on_button(uint8_t index, bool pressed)
 {
-    /* Single slot, same as the mock: the UI drains it every 50 ms and a human
-     * cannot press faster. ponytail: ceiling is one event per LVGL tick —
-     * switch to a FreeRTOS queue if the STM32 ever bursts BUTTON frames. */
+    uint8_t next;
+
     if (index > 3U) {
         return;
     }
     portENTER_CRITICAL(&s_mux);
-    s_btn.index = index;
-    s_btn.pressed = pressed;
-    s_btn.timestamp_ms = s_now_ms;
-    s_btn_pending = true;
+    next = (uint8_t)((s_btn_head + 1U) % BTN_QUEUE_LEN);
+    if (next == s_btn_tail) {
+        /* Full. Drop the NEWEST rather than overwriting the oldest: the UI is
+         * mid-sequence on the events already queued, and reordering them would
+         * be worse than losing one. Counted so it is not silent. */
+        ++s_btn_dropped;
+    } else {
+        s_btn_q[s_btn_head].index = index;
+        s_btn_q[s_btn_head].pressed = pressed;
+        s_btn_q[s_btn_head].timestamp_ms = s_now_ms;
+        s_btn_head = next;
+    }
     portEXIT_CRITICAL(&s_mux);
+}
+
+uint32_t tb_ui_source_buttons_dropped(void)
+{
+    return s_btn_dropped;
 }
 
 void tb_ui_source_on_rfid(const rfid_t *r)
@@ -81,8 +129,21 @@ void tb_ui_source_on_rfid(const rfid_t *r)
         return;
     }
     portENTER_CRITICAL(&s_mux);
-    s_rfid = *r;
-    s_rfid_ready = r->present;
+    if (s_rfid_gate) {
+        /* An empty snapshot is the STM32 saying "old tag gone"; only then do we
+         * start believing tags again. Anything with a tag still in it was latched
+         * before our START_SCAN landed, whatever its contents. */
+        if (!r->present) {
+            s_rfid_gate = false;
+        }
+    } else if (r->present) {
+        s_rfid = *r;
+        s_rfid_ready = true;
+    }
+    /* An empty snapshot with the gate open is deliberately ignored rather than
+     * clearing s_rfid: the STM32 keeps publishing the tag it found, but if it
+     * ever stops, Monitor and Result must not lose the ID they are showing.
+     * ui_mock_start_scan() is the one place a tag is forgotten. */
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -96,6 +157,24 @@ void tb_ui_source_on_status(uint8_t sensor_ok_mask, uint8_t battery, int lora_ok
         s_lora_ok = (lora_ok != 0);
         s_lora_reported = true;
     }
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void tb_ui_source_on_rssi(int8_t dbm)
+{
+    /*
+     * An out-of-range byte does NOT clear a previously good reading, it is simply
+     * not adopted. That distinction matters while range-testing: the STM32 zeroes
+     * this field until the next poll arrives, and polls are 15 s apart, so
+     * treating "not yet" as "no signal" would blank the number for most of every
+     * cycle and make it unreadable exactly when someone is walking with it.
+     */
+    if (!tb_rssi_valid(dbm)) {
+        return;
+    }
+    portENTER_CRITICAL(&s_mux);
+    s_rssi_dbm = dbm;
+    s_rssi_valid = true;
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -121,11 +200,16 @@ void ui_mock_init(void)
     s_have_vitals = false;
     memset(&s_rfid, 0, sizeof(s_rfid));
     s_rfid_ready = false;
-    s_btn_pending = false;
-    memset(&s_btn, 0, sizeof(s_btn));
+    s_rfid_gate = false; /* Nothing to clear yet; the first scan need not wait. */
+    memset(s_btn_q, 0, sizeof(s_btn_q));
+    s_btn_head = 0;
+    s_btn_tail = 0;
+    s_btn_dropped = 0;
     s_sensor_mask = 0;
     s_lora_ok = false;
     s_lora_reported = false;
+    s_rssi_dbm = 0;
+    s_rssi_valid = false;
     s_last_frame_ms = 0;
     s_frame_seen = false;
     portEXIT_CRITICAL(&s_mux);
@@ -156,6 +240,21 @@ void ui_mock_start_scan(void)
     portENTER_CRITICAL(&s_mux);
     s_rfid_ready = false;
     memset(&s_rfid, 0, sizeof(s_rfid));
+    /*
+     * Clearing locally is not enough. The STM32 clears its published tag when it
+     * services START_SCAN, but that is up to a superloop later, so the next one or
+     * two 50 ms polls still return the *previous* patient's card -- and the
+     * scanning screen accepts it instantly. That is the reported "press Restart
+     * and it already has a value with no card present", and it attaches one
+     * patient's vitals to another's ID.
+     *
+     * So stop trusting tags until a snapshot arrives with rfid_len == 0, which
+     * only the STM32 can produce and only after it has processed this command.
+     *
+     * Gated even when the write below fails: a scan that never completes is a
+     * visible fault, where a scan that completes with the wrong identity is not.
+     */
+    s_rfid_gate = true;
     portEXIT_CRITICAL(&s_mux);
 
     if (tb_link_send_cmd(TB_CMD_START_SCAN) != ESP_OK) {
@@ -186,6 +285,12 @@ void ui_mock_start_measure(void)
     s_measure_done = false;
     s_measure_start_ms = s_now_ms;
     s_have_priority = false;
+
+    /* Fresh window per patient: leftover extremes from the previous one would
+     * be attributed to this patient's vitals. */
+    portENTER_CRITICAL(&s_mux);
+    tb_vitals_window_reset(&s_window);
+    portEXIT_CRITICAL(&s_mux);
 
     if (tb_link_send_cmd(TB_CMD_START_MEASURE) != ESP_OK) {
         ESP_LOGW(TAG, "START_MEASURE not sent");
@@ -221,10 +326,20 @@ void ui_mock_get_vitals(vitals_t *out)
     }
     portENTER_CRITICAL(&s_mux);
     *out = s_vitals;
-    /* No VITAL frame yet means no readings — the screens render "--" on
-     * !valid, so never claim validity we do not have. */
-    out->valid = s_have_vitals && s_vitals.valid;
+    /* No snapshot has arrived yet, so nothing is measured -- clear both the
+     * display mask and the SVM gate rather than trusting a zeroed struct. */
+    if (!s_have_vitals) {
+        out->valid_mask = 0U;
+        out->valid = false;
+    }
     portEXIT_CRITICAL(&s_mux);
+
+    /* Last, and outside the lock: the real snapshot is copied first so the demo
+     * patient inherits the true battery reading, and so switching demo off
+     * returns to live data with nothing to undo. */
+    if (ui_demo_enabled()) {
+        ui_demo_vitals(s_now_ms, out);
+    }
 }
 
 /* Runs the SVM once per measurement and reports the result to the STM32,
@@ -233,6 +348,7 @@ void ui_mock_get_vitals(vitals_t *out)
 static void infer_once(void)
 {
     vitals_t v;
+    tb_vitals_window_t window;
     char tag[RFID_TAG_CAPACITY];
 
     if (s_have_priority) {
@@ -240,7 +356,30 @@ static void infer_once(void)
     }
 
     ui_mock_get_vitals(&v);
-    s_priority = tb_svm_classify(&v, &s_confidence);
+
+    portENTER_CRITICAL(&s_mux);
+    window = s_window;
+    portEXIT_CRITICAL(&s_mux);
+
+    if (ui_demo_enabled()) {
+        /*
+         * Substituted rather than fed through the model: the demo vitals would
+         * score somewhere plausible, but "somewhere plausible" is not a fixed
+         * colour, and a take that comes out YELLOW is a wasted take. Logged at
+         * WARN on every result because this is the one code path that reports a
+         * triage nobody measured.
+         */
+        s_priority = UI_DEMO_PRIORITY;
+        s_confidence = UI_DEMO_CONFIDENCE;
+        ESP_LOGW(TAG, "DEMO MODE: reporting priority=%d, model not run",
+                 (int)s_priority);
+    } else {
+        s_priority = tb_triage_classify(&window, ui_session_get_age(),
+                                        ui_session_get_gender(), &s_confidence);
+        ESP_LOGI(TAG, "triage: priority=%d confidence=%.2f samples=%u valid=%d",
+                 (int)s_priority, (double)s_confidence,
+                 (unsigned)window.samples, (int)v.valid);
+    }
     s_have_priority = true;
 
     portENTER_CRITICAL(&s_mux);
@@ -248,9 +387,8 @@ static void infer_once(void)
     portEXIT_CRITICAL(&s_mux);
     tag[RFID_TAG_CAPACITY - 1U] = '\0';
 
-    ESP_LOGI(TAG, "svm: priority=%d confidence=%.2f valid=%d", (int)s_priority,
-             (double)s_confidence, (int)v.valid);
-
+    /* Sent in demo mode too, deliberately: the station and the dashboard are
+     * part of what is being filmed, so they have to see the same patient. */
     if (tb_link_send_result(s_priority, s_confidence, tag[0] ? tag : NULL) != ESP_OK) {
         ESP_LOGW(TAG, "RESULT not sent — station will miss this triage");
     }
@@ -290,12 +428,12 @@ bool ui_mock_pop_button(btn_event_t *out)
     bool pending;
 
     portENTER_CRITICAL(&s_mux);
-    pending = s_btn_pending;
+    pending = (s_btn_head != s_btn_tail);
     if (pending) {
         if (out != NULL) {
-            *out = s_btn;
+            *out = s_btn_q[s_btn_tail];
         }
-        s_btn_pending = false;
+        s_btn_tail = (uint8_t)((s_btn_tail + 1U) % BTN_QUEUE_LEN);
     }
     portEXIT_CRITICAL(&s_mux);
 
@@ -313,7 +451,18 @@ void ui_mock_get_link_status(link_status_t *out)
     out->lora_reported = s_lora_reported;
     out->link_age_ms = s_frame_seen ? (s_now_ms - s_last_frame_ms) : 0U;
     out->link_never_seen = !s_frame_seen;
+    out->lora_rssi_dbm = s_rssi_dbm;
+    out->lora_rssi_valid = s_rssi_valid;
     portEXIT_CRITICAL(&s_mux);
+
+    /* Only the sensor dot is faked. The Sistem and LoRa dots stay honest because
+     * they report the STM32 link, which demo mode does not replace -- the RFID
+     * tag still comes over it, so a dead link is still a dead demo. RSSI is left
+     * alone for the same reason and one more: the point of putting it on screen
+     * is measuring real range, so a fake number there would defeat the feature. */
+    if (ui_demo_enabled()) {
+        out->sensor_mask = ui_demo_sensor_mask();
+    }
 }
 
 void ui_mock_power_off(void)
@@ -322,17 +471,19 @@ void ui_mock_power_off(void)
      * Two steps, in this order.
      *
      * 1. Tell the STM32. It has to stop acquisition, park its sensors and stop
-     *    transmitting before the rail drops -- it does not own the rail, but it
-     *    does own everything hanging off it. Fire-and-forget: a missing or
-     *    unresponsive STM32 must not block the operator's shutdown.
+     *    transmitting before the rail drops. It does not own the rail, but it
+     *    does own everything hanging off it -- and on this build the STM32 is
+     *    powered FROM the ESP32 board's 3V3, so when the rail goes it goes too.
+     *    Fire-and-forget: a missing or unresponsive STM32 must not block the
+     *    operator's shutdown.
      * 2. Cut the rail ourselves. On board V3.0 the SW6106 PMIC owns power (no
      *    SYS_EN exists; the earlier "the STM32 owns the power rail (EXIO5/
      *    SYS_EN)" comment here was V4.0 reasoning -- on V3 EXIO5 is BLC), and it
      *    sits on the shared I2C bus at 0x3c. See ui_board_power_off().
      *
-     * The delay is the STM32's head start. 150 ms is one 750 ms LoRa cycle's
-     * worth of slack without making the button feel broken; the frame is only
-     * ~7 bytes so it has long since left the UART.
+     * The delay is the STM32's head start -- the only window it gets, since it
+     * loses power with us. 150 ms is enough for the register write to land and
+     * for its superloop to notice, without making the button feel broken.
      *
      * Log unconditionally: silence would look like a dead button.
      */

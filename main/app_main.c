@@ -3,10 +3,12 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_spiffs.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 
 #include "asset_fs.h"
 #include "tb_debug.h"
-#include "tb_link.h"
+#include "tb_link_i2c.h"
 #include "ui_board.h"
 
 #include "ui.h"
@@ -49,6 +51,37 @@ static esp_err_t mount_assets(void)
     return ESP_OK;
 }
 
+/*
+ * Why the app logs this itself instead of trusting the ROM's "rst:0x.." header:
+ * a panic here reboots after 0 s with coredump off, so a crash and a clean boot
+ * leave the same trace -- and the backlight hangs off the TCA9554, which does not
+ * reset with the SoC, so a crash-reboot looks like a dead panel with the light
+ * still on. That is the reported "blackscreen but backlight stays lit, kinda
+ * reset". This line is the difference between guessing and knowing which of
+ * panic / brownout / interrupt-WDT it is.
+ *
+ * Free heap goes with it because the other candidate is an LVGL allocation
+ * failure: 50 tiny_ttf fonts on a clib-malloc heap, where LV_ASSERT_MALLOC ends
+ * in abort() -- which arrives here next boot as PANIC.
+ */
+static void log_boot_reason(void)
+{
+    /* Indexed by esp_reset_reason_t, which is contiguous from 0. */
+    static const char *const names[] = {
+        "unknown", "power-on", "ext-pin", "sw-restart", "PANIC", "int-wdt",
+        "task-wdt", "other-wdt", "deep-sleep", "BROWNOUT", "sdio", "usb",
+        "jtag", "efuse", "PWR-GLITCH", "cpu-lockup",
+    };
+    esp_reset_reason_t reason = esp_reset_reason();
+    const char *name = ((unsigned)reason < sizeof(names) / sizeof(names[0]))
+                           ? names[reason]
+                           : "out-of-range";
+
+    ESP_LOGW(TAG, "boot: reset=%s (%d), heap free=%u min=%u", name, (int)reason,
+             (unsigned)esp_get_free_heap_size(),
+             (unsigned)esp_get_minimum_free_heap_size());
+}
+
 static void register_triage_screens(void)
 {
     ui_nav_register(UI_SCREEN_HOME, show_home);
@@ -61,22 +94,54 @@ static void register_triage_screens(void)
     ui_nav_register(UI_SCREEN_MONITOR, show_monitor);
 }
 
+/*
+ * Heartbeat for the "blackscreen, backlight still lit, kinda reset" report. It
+ * lives inside the LVGL timer callback on purpose: if this line prints, the LVGL
+ * task is running and pumping timers, which splits the three candidate causes
+ * apart without needing anyone to be watching the monitor at the moment it fails.
+ *
+ *   uptime restarts near 0   -> it WAS a reset; read the boot: reset= line above.
+ *   uptime keeps climbing    -> SoC and UI are fine, the panel stream is dead
+ *                               (single PSRAM framebuffer + 480x20 bounce buffer,
+ *                               and CONFIG_LCD_RGB_RESTART_IN_VSYNC is not set).
+ *   log stops, no boot line  -> the LVGL task itself wedged, most likely blocked
+ *                               on the shared I2C bus (see the GT911 timeouts).
+ *
+ * lv_tick and wall clock are both printed because they can diverge: LVGL timers
+ * run off lv_tick, so a starved tick source freezes the UI while the SoC is
+ * healthy, and that looks identical on the panel.
+ */
+static void log_heartbeat(uint32_t lv_ms)
+{
+    ESP_LOGW(TAG, "hb: lv=%ums wall=%llums screen=%d heap=%u min=%u frames=%u",
+             (unsigned)lv_ms, (unsigned long long)(esp_timer_get_time() / 1000),
+             (int)ui_nav_current(), (unsigned)esp_get_free_heap_size(),
+             (unsigned)esp_get_minimum_free_heap_size(),
+             (unsigned)tb_link_frames_ok());
+}
+
 static void runtime_timer_cb(lv_timer_t *timer)
 {
+    static uint32_t ticks;
+    uint32_t now = lv_tick_get();
+
     (void)timer;
-    ui_runtime_tick(lv_tick_get());
+    ui_runtime_tick(now);
+
+    /* 200 x 50 ms = 10 s: fine enough to bracket a blackout, sparse enough to
+     * read a whole shift of it. WARN so it survives the default log level. */
+    if ((ticks++ % 200U) == 0U) {
+        log_heartbeat(now);
+    }
 }
 
 void app_main(void)
 {
     lv_display_t *disp;
 
-    ESP_ERROR_CHECK(mount_assets());
+    log_boot_reason();
 
-    /* Before ui_runtime_init(): the RX task must be draining the line before
-     * the UI starts polling, or the STM32's first frames are lost. A missing
-     * STM32 is not fatal — no frames simply means the UI idles on Home. */
-    ESP_ERROR_CHECK(tb_link_start());
+    ESP_ERROR_CHECK(mount_assets());
 
     ui_runtime_init();
 
@@ -101,6 +166,20 @@ void app_main(void)
     /* Needs the I2C bus the display brought up. Enables the backlight and puts
      * the buzzer in a known-quiet state before any screen appears. */
     ui_board_init();
+
+    /*
+     * The STM32 link shares that same I2C bus, so it cannot start any earlier
+     * than this -- bsp_i2c_get_handle() is only valid once the display is up.
+     * That is a change from the RS485 transport, which owned its own UART and
+     * started before the display.
+     *
+     * Still before the first screen loads, so the Home status dots have real
+     * data on their first paint. Not fatal if the STM32 is absent: polls fail,
+     * the dots show the link down, and the UI runs.
+     */
+    if (tb_link_start() != ESP_OK) {
+        ESP_LOGW(TAG, "STM32 link did not start -- UI will run without vitals");
+    }
 
 
     asset_fs_init();

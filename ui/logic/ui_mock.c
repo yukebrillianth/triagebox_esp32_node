@@ -15,6 +15,9 @@ static const vitals_t k_base_vitals = {
     .bp_sys = 120,
     .bp_dia = 80,
     .battery = 80,
+    /* The sim fakes a fully instrumented patient: every tile has a number, so
+     * QA sees the populated layout. The device fills this from the wire flags. */
+    .valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP,
     .valid = true,
 };
 
@@ -232,6 +235,11 @@ void ui_mock_get_link_status(link_status_t *out)
     out->lora_reported = true;
     out->link_age_ms = 0;
     out->link_never_seen = false;
+    /* A plausible mid-range value so the status bar renders a real number in the
+     * simulator. -97 is in the amber band deliberately: the interesting case to
+     * look at on the desktop is the one that is not green. */
+    out->lora_rssi_dbm = -97;
+    out->lora_rssi_valid = true;
 }
 
 void ui_mock_power_off(void)
