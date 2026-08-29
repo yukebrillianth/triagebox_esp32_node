@@ -11,7 +11,7 @@ extern "C" {
 
 #define BP_SAMPLING_RATE_HZ 100.0
 
-void bp_min_max_normalize(double *buffer, size_t length);
+void bp_zscore_normalize(double *buffer, size_t length);
 void bp_compute_derivatives(const double *input, double *v_out, double *a_out, size_t length);
 
 bool bp_extract_features(

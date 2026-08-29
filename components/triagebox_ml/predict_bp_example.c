@@ -25,6 +25,7 @@ int main(int argc, char *argv[]) {
 
     double sbp_estimated;
 
+    // isi pake bandpassed signal, jangan di normalize dlu
     bool success = bp_predict(red_data, ir_data, ecg_data, data_length, is_male, &sbp_estimated);
 
     return 0;
