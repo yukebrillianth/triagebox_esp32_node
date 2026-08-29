@@ -15,11 +15,19 @@
  */
 
 /*
- * QA shortcut: real hardware measure window is 60000 ms.
- * Keep this <= 5000 so host/sim UI can exercise Mengukur → Result quickly.
+ * Measure window. 60 s is not a round number picked for feel -- respiratory rate
+ * is counted from the breathing microphone, and a rate per MINUTE needs a minute
+ * of audio before it means anything. Shortening this does not make the box
+ * faster, it makes RR a guess extrapolated from a few breaths.
+ *
+ * This used to default to 2000 with a comment saying hardware was 60000, and
+ * nothing set 60000 anywhere -- so the device ran a 2 s window. The default is
+ * now the real value, and the fast one is opt-in for desktop QA:
+ * sim/CMakeLists.txt and tools/run_selftests.sh both pass -DUI_MEASURE_MS=2000.
+ * Keep any override <= 5000 so the host/sim UI still steps through quickly.
  */
 #ifndef UI_MEASURE_MS
-#define UI_MEASURE_MS 2000U
+#define UI_MEASURE_MS 60000U
 #endif
 
 #ifndef UI_MOCK_SCAN_MS
@@ -46,6 +54,16 @@ void ui_mock_get_vitals(vitals_t *out);
 ui_priority_t ui_mock_get_priority(void);
 float ui_mock_get_confidence(void);
 const char *ui_mock_get_reasons(void);
+
+/*
+ * Raw ESI 1..5 behind the colour, or 0 when the model refused to score.
+ *
+ * Separate from the priority because the colour cannot be un-collapsed: ESI 3, 4
+ * and 5 are all GREEN under the three-colour START grouping, so the colour alone
+ * cannot tell a walking-wounded patient from a borderline one. Shown on Result
+ * under the patient ID, and logged.
+ */
+int ui_mock_get_esi(void);
 
 /* GREEN → YELLOW → RED → BLACK → GREEN … */
 void ui_mock_cycle_priority(void);

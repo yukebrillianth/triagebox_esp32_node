@@ -70,14 +70,9 @@ static uint32_t s_measure_start_ms;
 static bool s_have_priority;
 static ui_priority_t s_priority;
 static float s_confidence;
-
-/*
- * Running min/max/mean across the measure window. Eight of the model's fifteen
- * features are window aggregates, so a single last-snapshot cannot fill them.
- * Written from the RX task, read once by the LVGL task at the end of the window,
- * so it sits under the same spinlock as the snapshot itself.
- */
-static tb_vitals_window_t s_window;
+/* The model's raw 1..5 behind s_priority, or 0 when it refused. Kept because the
+ * colour cannot be un-collapsed: 3, 4 and 5 are all GREEN. */
+static int s_esi;
 
 /* ---------------------------------------------------------------- RX task -- */
 
@@ -89,9 +84,6 @@ void tb_ui_source_on_vital(const vitals_t *v)
     portENTER_CRITICAL(&s_mux);
     s_vitals = *v;
     s_have_vitals = true;
-    /* Fold every snapshot in, not just the last one -- the aggregate is the
-     * model's actual input. Cheap: four compares and four adds. */
-    tb_vitals_window_add(&s_window, v);
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -221,6 +213,7 @@ void ui_mock_init(void)
     s_have_priority = false;
     s_priority = UI_PRIORITY_BLACK;
     s_confidence = 0.0f;
+    s_esi = 0;
 }
 
 void ui_mock_tick(uint32_t now_ms)
@@ -286,12 +279,6 @@ void ui_mock_start_measure(void)
     s_measure_start_ms = s_now_ms;
     s_have_priority = false;
 
-    /* Fresh window per patient: leftover extremes from the previous one would
-     * be attributed to this patient's vitals. */
-    portENTER_CRITICAL(&s_mux);
-    tb_vitals_window_reset(&s_window);
-    portEXIT_CRITICAL(&s_mux);
-
     if (tb_link_send_cmd(TB_CMD_START_MEASURE) != ESP_OK) {
         ESP_LOGW(TAG, "START_MEASURE not sent");
     }
@@ -342,24 +329,24 @@ void ui_mock_get_vitals(vitals_t *out)
     }
 }
 
-/* Runs the SVM once per measurement and reports the result to the STM32,
+/* Runs the model once per measurement and reports the result to the STM32,
  * which owns the LoRa TX. ui_runtime.c calls this exactly once via
  * pull_mock_priority_once(). */
 static void infer_once(void)
 {
     vitals_t v;
-    tb_vitals_window_t window;
     char tag[RFID_TAG_CAPACITY];
 
     if (s_have_priority) {
         return;
     }
 
+    /*
+     * The last snapshot, not an aggregate over the window. The model takes seven
+     * instantaneous scalars -- what a triage nurse would have written down once --
+     * so there is nothing for a mean or a min to fill.
+     */
     ui_mock_get_vitals(&v);
-
-    portENTER_CRITICAL(&s_mux);
-    window = s_window;
-    portEXIT_CRITICAL(&s_mux);
 
     if (ui_demo_enabled()) {
         /*
@@ -371,14 +358,26 @@ static void infer_once(void)
          */
         s_priority = UI_DEMO_PRIORITY;
         s_confidence = UI_DEMO_CONFIDENCE;
-        ESP_LOGW(TAG, "DEMO MODE: reporting priority=%d, model not run",
-                 (int)s_priority);
+        s_esi = UI_DEMO_ESI;
+        ESP_LOGW(TAG, "DEMO MODE: reporting priority=%d esi=%d, model not run",
+                 (int)s_priority, s_esi);
     } else {
-        s_priority = tb_triage_classify(&window, ui_session_get_age(),
-                                        ui_session_get_gender(), &s_confidence);
-        ESP_LOGI(TAG, "triage: priority=%d confidence=%.2f samples=%u valid=%d",
-                 (int)s_priority, (double)s_confidence,
-                 (unsigned)window.samples, (int)v.valid);
+        int esi = 0;
+
+        s_priority = tb_triage_classify(&v, ui_session_get_age(),
+                                        ui_session_get_gender(),
+                                        ui_session_get_airway(), &s_confidence,
+                                        &esi);
+        /* ESI logged alongside the colour because the colour cannot be
+         * un-collapsed: 3, 4 and 5 are all GREEN. airway too, because it is what
+         * separates a RED the model chose from a RED the operator forced. */
+        ESP_LOGI(TAG, "triage: priority=%d esi=%d airway=%d confidence=%.2f "
+                      "valid=%d hr=%u spo2=%u rr=%u sbp=%u",
+                 (int)s_priority, esi, (int)ui_session_get_airway(),
+                 (double)s_confidence, (int)v.valid,
+                 (unsigned)v.hr, (unsigned)v.spo2, (unsigned)v.rr,
+                 (unsigned)v.bp_sys);
+        s_esi = esi;
     }
     s_have_priority = true;
 
@@ -404,6 +403,12 @@ float ui_mock_get_confidence(void)
 {
     infer_once();
     return s_confidence;
+}
+
+int ui_mock_get_esi(void)
+{
+    infer_once();
+    return s_esi;
 }
 
 const char *ui_mock_get_reasons(void)

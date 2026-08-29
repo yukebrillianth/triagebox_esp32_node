@@ -12,6 +12,7 @@
 #include "hal.h"
 
 #include "ui_action.h"
+#include "ui_airway.h"
 #include "ui_input.h"
 #include "ui_mock.h"
 #include "ui_nav.h"
@@ -63,7 +64,8 @@ static void runtime_timer_cb(lv_timer_t *t)
  *   Scanning: (auto RFID after UI_MOCK_SCAN_MS) | 1=Abort
  *   Berhasil: 1=Start  2=Restart
  *   Age:      4=Select (3=Back)
- *   Gender:   4=Select → Mengukur (3=Back)
+ *   Gender:   4=Select → Airway (3=Back)
+ *   Airway:   1/2=Up/Down  4=Select → Mengukur (3=Back)
  *   Mengukur: (auto after UI_MEASURE_MS) | 1=Abort
  *   Result:   1=Monitor  2=Reset
  *   Monitor:  1=Back  2=Stop
@@ -92,6 +94,13 @@ static void show_gender(void)
 {
     LV_LOG_USER("nav → GENDER");
     lv_screen_load(gender);
+}
+/* Built in C rather than exported from the Editor -- see ui_airway.h. That is
+ * also why it has no *_gen.h include above and no generated global. */
+static void show_airway(void)
+{
+    LV_LOG_USER("nav → AIRWAY");
+    lv_screen_load(ui_airway_screen());
 }
 static void show_mengukur(void)
 {
@@ -129,6 +138,7 @@ static void register_triage_screens(void)
     ui_nav_register(UI_SCREEN_BERHASIL, show_berhasil);
     ui_nav_register(UI_SCREEN_AGE, show_age);
     ui_nav_register(UI_SCREEN_GENDER, show_gender);
+    ui_nav_register(UI_SCREEN_AIRWAY, show_airway);
     ui_nav_register(UI_SCREEN_MENGUKUR, show_mengukur);
     ui_nav_register(UI_SCREEN_RESULT, show_result);
     ui_nav_register(UI_SCREEN_MONITOR, show_monitor);

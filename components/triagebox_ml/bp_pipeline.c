@@ -277,13 +277,16 @@ bool bp_extract_features(
     double *v_red = (double*)malloc(num_samples * sizeof(double));
     double *a_red = (double*)malloc(num_samples * sizeof(double));
     if (!v_ir || !a_ir || !v_red || !a_red) {
+        /* No `if (p)` guards: free(NULL) is a no-op by definition, and two
+         * `if`s on one line is what -Werror=misleading-indentation rejected.
+         * One statement per line so neither can come back. */
         free(red_norm);
         free(ir_norm);
         free(ecg_norm);
-        if (v_ir) free(v_ir);
-        if (a_ir) free(a_ir);
-        if (v_red) free(v_red);
-        if (a_red) free(a_red);
+        free(v_ir);
+        free(a_ir);
+        free(v_red);
+        free(a_red);
         return false;
     }
     bp_compute_derivatives(ir_norm, v_ir, a_ir, num_samples);

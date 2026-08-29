@@ -7,6 +7,7 @@
 #include "ui_bindings.h"
 #include "../ui.h"
 #include "ui_action.h"
+#include "ui_airway.h"
 #include "ui_board.h"
 #include "ui_demo.h"
 #include "ui_mock.h"
@@ -20,6 +21,7 @@ static const ui_screen_id_t k_screen_ids[UI_SCREEN_COUNT] = {
     UI_SCREEN_BERHASIL,
     UI_SCREEN_AGE,
     UI_SCREEN_GENDER,
+    UI_SCREEN_AIRWAY,
     UI_SCREEN_MENGUKUR,
     UI_SCREEN_RESULT,
     UI_SCREEN_MONITOR,
@@ -33,6 +35,10 @@ static lv_obj_t *screen_root(ui_screen_id_t id)
     case UI_SCREEN_BERHASIL: return berhasil;
     case UI_SCREEN_AGE:      return age;
     case UI_SCREEN_GENDER:   return gender;
+    /* Not a generated global like the other eight: this screen is built in C,
+     * so ui_airway_screen() both creates and caches it. Safe to call on every
+     * status-bar tick -- the second call onward just returns the cache. */
+    case UI_SCREEN_AIRWAY:   return ui_airway_screen();
     case UI_SCREEN_MENGUKUR: return mengukur;
     case UI_SCREEN_RESULT:   return result;
     case UI_SCREEN_MONITOR:  return monitor;
@@ -89,6 +95,16 @@ static void gender_option_cb(lv_event_t *e)
     ui_gender_t g = (ui_gender_t)(uintptr_t)lv_event_get_user_data(e);
 
     ui_nav_set_pending_gender(g);
+    ui_bindings_sync_selection();
+}
+
+/* Touch only moves the highlight, exactly like Age and Gender. Committing stays
+ * with Select, so a stray tap on "Ada / tersumbat" cannot mark a patient RED. */
+static void airway_option_cb(lv_event_t *e)
+{
+    bool problem = (bool)(uintptr_t)lv_event_get_user_data(e);
+
+    ui_nav_set_pending_airway(problem);
     ui_bindings_sync_selection();
 }
 
@@ -707,6 +723,93 @@ static void apply_priority(ui_priority_t p)
 }
 
 /*
+ * ESI under the patient ID, inside the result banner.
+ *
+ * Created here rather than in result.xml because a new label there needs an
+ * Editor re-export, same constraint as the Airway screen. It is added as the
+ * banner's fourth child, so flex puts it directly below the ID pill.
+ *
+ * The banner is a FIXED 225 px with pad_ver 44, and its three authored children
+ * already fill that almost exactly -- a fourth row spills outside the rounded
+ * rectangle. So the padding is narrowed here to pay for the row. That is an
+ * override of an authored style, which this file already does for the banner's
+ * colour a few lines up; the number is checked against the measured geometry, not
+ * guessed (see the LV_LOG_INFO below, kept because the next font change is what
+ * will break it).
+ *
+ * Styled like the ID pill -- dark at 30% behind white text -- rather than plain
+ * white like priority_label, because the banner behind it is RED, YELLOW or
+ * GREEN and white on #F0B100 is about 2:1. The pill background makes one
+ * treatment legible on all three.
+ */
+#define RESULT_BANNER_PAD_VER 20
+
+static lv_obj_t *esi_label(void)
+{
+    lv_obj_t *banner;
+    lv_obj_t *label;
+
+    if (result == NULL) {
+        return NULL;
+    }
+    banner = lv_obj_find_by_name(result, "result_banner");
+    if (banner == NULL) {
+        return NULL;
+    }
+    label = lv_obj_find_by_name(banner, "esi_text");
+    if (label != NULL) {
+        return label;
+    }
+
+    lv_obj_set_style_pad_ver(banner, RESULT_BANNER_PAD_VER, 0);
+
+    label = lv_label_create(banner);
+    lv_obj_set_name(label, "esi_text");
+    lv_obj_set_style_bg_color(label, COLOR_DARK_BG, 0);
+    lv_obj_set_style_bg_opa(label, LV_OPA_30, 0);
+    lv_obj_set_style_radius(label, 100, 0);
+    lv_obj_set_style_pad_hor(label, 12, 0);
+    lv_obj_set_style_pad_ver(label, 4, 0);
+    lv_obj_set_style_text_color(label, COLOR_DARK_TEXT, 0);
+    if (font_inter_semi_bold_14 != NULL) {
+        lv_obj_set_style_text_font(label, font_inter_semi_bold_14, 0);
+    }
+
+    /*
+     * One-shot geometry check. LV_LOG_USER, not INFO: the build runs at
+     * LV_LOG_LEVEL_WARN, so INFO is compiled out and this would silently never
+     * print. RESULT_BANNER_PAD_VER above is only correct for the current four
+     * rows at the current fonts; if a font grows, this line is what says the
+     * bottom row is now outside the banner, instead of leaving it to be noticed
+     * on camera. Fires once -- the label is created once.
+     */
+    lv_obj_update_layout(banner);
+    LV_LOG_USER("result banner %dx%d, ESI row ends at y=%d",
+                (int)lv_obj_get_width(banner), (int)lv_obj_get_height(banner),
+                (int)(lv_obj_get_y(label) + lv_obj_get_height(label)));
+    return label;
+}
+
+static void apply_esi(int esi)
+{
+    lv_obj_t *label = esi_label();
+
+    if (label == NULL) {
+        return;
+    }
+    if (esi >= 1 && esi <= 5) {
+        /* Spelled out, not just the digit: "2" alone on a triage screen could be
+         * read as a count, a bed number or a colour index. */
+        lv_label_set_text_fmt(label, "ESI %d", esi);
+    } else {
+        /* 0 is the model's "cannot score". "--" matches every other unknown on
+         * this box (battery "--%", clock "--:--", a blank vital tile) instead of
+         * inventing a fourth way to say the same thing. */
+        lv_label_set_text(label, "ESI --");
+    }
+}
+
+/*
  * Every screen was authored with placeholder text ("--", "ID Pasien: -"), so
  * nothing showed real readings until these ran. Set one `lbl_value` inside a
  * named result_vital tile.
@@ -783,7 +886,18 @@ static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
  * patient's ID was never cleared -- which on a triage screen means attaching the
  * wrong identity to a set of vitals. Painting "--" is the safe default; it is
  * also the tell that this code ran at all, which "-" is not.
+ *
+ * UI_PATIENT_ID_PREFIX is printed here rather than carried in rfid_t.tag, so the
+ * tag stays the bare card UID everywhere it is compared, hashed or sent. The
+ * backend adds the identical prefix on ingest (normalizeRfid() in
+ * src/common/mqtt-payload.ts) instead of it riding the LoRa packet, because a
+ * constant costs airtime on every reading and the packet's RFID field has no
+ * spare bytes. Change one side and you must change the other, or the operator
+ * reads a different ID off this screen than the command post reads off the
+ * dashboard.
  */
+#define UI_PATIENT_ID_PREFIX "TB-"
+
 static void set_patient_id(lv_obj_t *root, const char *prefix)
 {
     const rfid_t *tag = ui_session_get_rfid();
@@ -800,8 +914,10 @@ static void set_patient_id(lv_obj_t *root, const char *prefix)
         return;
     }
     if (tag != NULL && tag->present && tag->tag[0] != '\0') {
-        lv_label_set_text_fmt(label, "%s%s", prefix, tag->tag);
+        lv_label_set_text_fmt(label, "%s" UI_PATIENT_ID_PREFIX "%s", prefix,
+                              tag->tag);
     } else {
+        /* No prefix on the placeholder: "TB---" reads like a malformed ID. */
         lv_label_set_text_fmt(label, "%s--", prefix);
     }
 }
@@ -810,6 +926,9 @@ static void apply_result_vitals(void)
 {
     apply_vital_tiles(result, ui_session_get_vitals());
     set_patient_id(result, "ID Pasien: ");
+    /* Every tick, not once with the priority: the two must never disagree, and
+     * this is the cheap way to guarantee it. */
+    apply_esi(ui_session_get_esi());
 }
 
 /* Mengukur: 4 tiles plus the progress bar and its percentage label. */
@@ -1157,6 +1276,14 @@ void ui_bindings_sync_selection(void)
 
     set_focus(gender, "opt_male",   g == UI_GENDER_M);
     set_focus(gender, "opt_female", g == UI_GENDER_F);
+
+    {
+        lv_obj_t *airway = ui_airway_screen();
+        bool problem = ui_nav_pending_airway();
+
+        set_focus(airway, "opt_airway_no",  !problem);
+        set_focus(airway, "opt_airway_yes",  problem);
+    }
 }
 
 void ui_bindings_init(void)
@@ -1174,6 +1301,13 @@ void ui_bindings_init(void)
 
     bind_option(gender, "opt_male",   gender_option_cb, (uintptr_t)UI_GENDER_M);
     bind_option(gender, "opt_female", gender_option_cb, (uintptr_t)UI_GENDER_F);
+
+    {
+        lv_obj_t *airway = ui_airway_screen();
+
+        bind_option(airway, "opt_airway_no",  airway_option_cb, (uintptr_t)0);
+        bind_option(airway, "opt_airway_yes", airway_option_cb, (uintptr_t)1);
+    }
 
     ui_bindings_sync_selection();
     ui_bindings_start_scan_animation();

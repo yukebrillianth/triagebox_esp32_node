@@ -168,9 +168,32 @@ static void gender_action(uint8_t btn_id)
     case 2: /* Back → Age */
         ui_nav_go(UI_SCREEN_AGE);
         break;
-    case 3: /* Select → Mengukur; commit pending gender */
+    case 3: /* Select → Airway; commit pending gender */
         beep();
         ui_session_set_gender(ui_nav_pending_gender());
+        ui_nav_go(UI_SCREEN_AIRWAY);
+        break;
+    default:
+        action_noop();
+        break;
+    }
+}
+
+static void airway_action(uint8_t btn_id)
+{
+    switch (btn_id) {
+    case 0: /* Up */
+        ui_nav_move_pending_airway(-1);
+        break;
+    case 1: /* Down */
+        ui_nav_move_pending_airway(1);
+        break;
+    case 2: /* Back → Gender */
+        ui_nav_go(UI_SCREEN_GENDER);
+        break;
+    case 3: /* Select → Mengukur; commit the airway answer */
+        beep();
+        ui_session_set_airway(ui_nav_pending_airway());
         ui_nav_go(UI_SCREEN_MENGUKUR);
         break;
     default:
@@ -184,8 +207,7 @@ static void mengukur_action(uint8_t btn_id)
     switch (btn_id) {
     case 0: /* Abort → Home */
         ui_nav_go(UI_SCREEN_HOME);
-        break;
-    case 2: /* Power */
+        break;    case 2: /* Power */
         action_power(btn_id);
         break;
     case 3: /* Menu */
@@ -243,12 +265,15 @@ static void monitor_action(uint8_t btn_id)
 
 typedef void (*ui_screen_action_fn)(uint8_t btn_id);
 
+/* Positional: index == ui_screen_id_t. Adding a screen mid-enum without adding
+ * its row here hands that screen the NEXT one's buttons. */
 static const ui_screen_action_fn s_tables[UI_SCREEN_COUNT] = {
     home_action,
     scanning_action,
     berhasil_action,
     age_action,
     gender_action,
+    airway_action,
     mengukur_action,
     result_action,
     monitor_action,

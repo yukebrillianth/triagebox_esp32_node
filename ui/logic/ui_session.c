@@ -11,10 +11,21 @@ typedef struct {
     bool has_age;
     ui_gender_t gender;
     bool has_gender;
+    /*
+     * Airway obstruction, answered by the operator on its own screen. Two fields
+     * rather than a tri-state because "not asked yet" and "asked, answered no"
+     * must not look alike: the model treats a set airway flag as RED on its own,
+     * so an unanswered question defaulting to false is a silent downgrade.
+     */
+    bool airway_problem;
+    bool has_airway;
     vitals_t vitals;
     ui_priority_t priority;
     bool has_priority;
     float confidence;
+    /* The model's raw 1..5, or 0 when it refused. Set with the priority, never
+     * on its own -- see ui_session_set_priority(). */
+    int esi;
     char reasons[UI_SESSION_REASONS_CAPACITY];
     uint8_t measurement_progress;
 } ui_session_state_t;
@@ -50,6 +61,12 @@ void ui_session_set_gender(ui_gender_t gender)
     session.has_gender = gender != UI_GENDER_U;
 }
 
+void ui_session_set_airway(bool problem)
+{
+    session.airway_problem = problem;
+    session.has_airway = true;
+}
+
 void ui_session_set_vitals(const vitals_t *vitals)
 {
     if (vitals != NULL) {
@@ -59,13 +76,15 @@ void ui_session_set_vitals(const vitals_t *vitals)
     }
 }
 
-void ui_session_set_priority(ui_priority_t priority, float confidence, const char *reasons)
+void ui_session_set_priority(ui_priority_t priority, float confidence,
+                             const char *reasons, int esi)
 {
     size_t index = 0U;
 
     session.priority = priority;
     session.has_priority = true;
     session.confidence = confidence;
+    session.esi = esi;
 
     if (reasons != NULL) {
         while (index + 1U < sizeof(session.reasons) && reasons[index] != '\0') {
@@ -111,6 +130,16 @@ ui_gender_t ui_session_get_gender(void)
     return session.gender;
 }
 
+bool ui_session_has_airway(void)
+{
+    return session.has_airway;
+}
+
+bool ui_session_get_airway(void)
+{
+    return session.airway_problem;
+}
+
 const vitals_t *ui_session_get_vitals(void)
 {
     return &session.vitals;
@@ -124,6 +153,11 @@ bool ui_session_has_priority(void)
 ui_priority_t ui_session_get_priority(void)
 {
     return session.priority;
+}
+
+int ui_session_get_esi(void)
+{
+    return session.esi;
 }
 
 float ui_session_get_confidence(void)

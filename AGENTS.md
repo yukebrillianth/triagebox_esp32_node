@@ -6,11 +6,11 @@ Read this before writing any code. Prefer executable sources of truth (`mqtt-pay
 
 ## Scope of this repo
 
-**In scope:** LVGL screens, status bar, theme dark/light, display of vitals + triage result, RS485 receive of vitals + button/RFID events from STM32, UI state machine of the triage flow, mapping STM32 button events → LVGL keypad indev, **on-device linear SVM inference** (runtime only), and sending the result back to the STM32 which owns the LoRa TX.
+**In scope:** LVGL screens, status bar, theme dark/light, display of vitals + triage result, RS485 receive of vitals + button/RFID events from STM32, UI state machine of the triage flow, mapping STM32 button events → LVGL keypad indev, **on-device GBM inference** (runtime only), and sending the result back to the STM32 which owns the LoRa TX.
 
-**Out of scope:** sensor drivers (MAX30102 / AD8232 / MPX5010DP / RFID live on STM32), physical button GPIO (STM32 owns them), **LoRa radio** (SX1278 hangs off the STM32 — no free SPI pins here), **training** of the SVM (offline), MQTT broker/publish (station owns that), dashboard. Do not invent sensor code here.
+**Out of scope:** sensor drivers (MAX30102 / AD8232 / MPX5010DP / RFID live on STM32), physical button GPIO (STM32 owns them), **LoRa radio** (SX1278 hangs off the STM32 — no free SPI pins here), **training** of the model (offline), MQTT broker/publish (station owns that), dashboard. Do not invent sensor code here.
 
-> **Note on the ML model:** the PKM proposal (§2.2) specifies Decision Tree C5.0 and explicitly rejects SVM on memory grounds. The implementation was changed to **linear SVM** by the team after that was written. The proposal text has not been updated — flag this if a reviewer compares them.
+> **Note on the ML model:** the PKM proposal (§2.2) specifies Decision Tree C5.0 and explicitly rejects SVM on memory grounds. The implementation went C5.0 -> linear SVM -> **LightGBM GBM emitted as C**, and it now predicts **ESI 1..5** which an adapter groups into the three START colours. The proposal text has not been updated — flag this if a reviewer compares them.
 
 ## Hardware traps (will waste hours if missed)
 
@@ -75,7 +75,7 @@ Reject any snippet using `lv_indev_drv_t`, `lv_disp_drv_t`, or `lv_disp_draw_buf
 
 - Canvas: **480×480**. Status bar 480×48 top. ButtonBar 480×71 bottom, 4 cells 120×71.
 - Themes: dark (`node-id=53-1781`) and light (`node-id=208-5`) of file `etAAzsnQu0RlnxnPYNBEJz`. Both must work at runtime.
-- Per-screen node IDs (dark / light): Home `16:98`/`208:6`, Scanning `16:302`/`208:78`, Berhasil `16:433`/`208:138`, Age `56:1789`/`208:200`, Gender `60:290`/`208:257`, Mengukur `36:1446`/`208:511`, Result `16:1008`/`208:318`, Monitor `63:378`/`208:402`.
+- Per-screen node IDs (dark / light): Home `16:98`/`208:6`, Scanning `16:302`/`208:78`, Berhasil `16:433`/`208:138`, Age `56:1789`/`208:200`, Gender `60:290`/`208:257`, Mengukur `36:1446`/`208:511`, Result `16:1008`/`208:318`, Monitor `63:378`/`208:402`. **Airway has no Figma node** — it postdates the design and is hand-built in C from gender.xml's styles; add it to the Figma file if the design is ever revised.
 - Tokens (author in LVGL Pro `ui/globals.xml`, no raw hex in hand-written logic):
 
   | Token | Dark | Light |
@@ -114,17 +114,22 @@ The read block is latched when the master addresses the slave for reading, so on
 
 `priority` on the wire uses the **LoRa numeric alias** (`0=BLACK, 1=RED, 2=YELLOW, 3=GREEN`), which is not `ui_priority_t` order. Always go through `tb_frame_priority_to_wire()` / `_from_wire()`. `tb_frame.c` has no malloc and no ESP-IDF dependency so the STM32 side can compile it verbatim.
 
-**ML ownership:** STM32 never sends `priority` / `confidence` / `reasons`. ESP32 runs the SVM on the received vitals and sends `RESULT` back; **the STM32 owns the LoRa TX** and forwards it to the station. Station-side MQTT still uses the canonical JSON in the next section.
+**ML ownership:** STM32 never sends `priority` / `confidence` / `reasons`. ESP32 runs the model on the received vitals and sends `RESULT` back; **the STM32 owns the LoRa TX** and forwards it to the station. Station-side MQTT still uses the canonical JSON in the next section.
 
 ### On-device inference constraints
 
-- Model is a **pre-trained linear SVM** (one-vs-rest, 4 classes) compiled into firmware as `static const float` weights in `components/triagebox_ml/include/tb_svm_model.h`. Training lives offline (Colab / host) — not on-device. **The committed model is a zero placeholder: it classifies everything RED.**
-- Inputs: hr, spo2, rr, bp_sys, bp_dia. Age band + gender are collected by the UI for victim registration but are **not** model features.
-- Outputs **must** match backend contract: `priority` ∈ `RED|YELLOW|GREEN|BLACK`, `confidence` float 0–1 (or 0–100, backend normalizes), `reasons` string array (e.g. `"HR>130"`, `"SpO2<90"`).
-- `reasons` is sent **empty**: an SVM has no rule path to quote and no separate threshold table was added. The backend defaults `reasons` to `[]`, so this is valid.
-- Invalid/stale vitals (`flags` bit0 clear) return BLACK with confidence 0 rather than guessing.
-- Keep it tiny — ESP32-S3 has headroom, but do not pull a general ML framework. A dot product over 5 floats is enough; `tb_svm_classify()` is ~40 flops and allocation-free.
-- Inference runs once when the measure window ends (`ui_runtime.c` → `pull_mock_priority_once`), and sends `RESULT` in the same call. It is cheap enough to run on the LVGL task; do not add a task for it.
+- Model is a **pre-trained LightGBM GBM emitted as C** (`triage_pipeline.c`), predicting **ESI 1..5** plus a 5-class probability vector. Training lives offline (Colab / host) — not on-device.
+- Measure window is **60 s** (`UI_MEASURE_MS` in `ui_mock.h`), because RR comes from the breathing microphone and a per-minute rate needs a minute of audio. The default used to be 2000 with a comment claiming hardware was 60000 and nothing setting it, so the device really did run a 2 s window. The fast value is now opt-in: `sim/CMakeLists.txt` and `tools/run_selftests.sh` pass `-DUI_MEASURE_MS=2000`. Do not "speed up" device testing by lowering the default.
+- Inputs, **six**: `age, sex, systolic_bp, heart_rate, respiratory_rate, spo2`. One instantaneous reading, **not** window aggregates — that changed with the model, and `tb_vitals_window_t` went with it. Age band and gender ARE features now; the UI only has a band, so `tb_triage_age_years()` picks the midpoint.
+- **ESI -> colour is 3-class Indonesian START**: 1 -> RED, 2 -> YELLOW, 3/4/5 -> GREEN. That mapping is the ML side's and lives in `include/tb_classify.h`; `tb_triage_classify()` in `tb_triage_model.c` is the only caller, and `tb_triage_selftest.c` pins it with its own stub `predict_triage()` so the mapping is tested without linking the 72k-line model. Never cast an ESI to `ui_priority_t` — `RED=0, YELLOW=1, GREEN=2, BLACK=3` is not severity order for BLACK.
+- `tb_triage_classify()` also reports the **raw ESI**, because 3/4/5 all collapse to GREEN and the colour alone cannot be un-collapsed in a log. Diagnostics only; nothing on screen reads it.
+- `airway_problem` in `TriageInput` forces RED on its own and comes from the **operator**, on its own screen: the flow is Age -> Gender -> **Airway** -> Mengukur. No sensor here can see an obstructed airway. "Tidak ada" is the pre-highlighted row (a highlight's safe default is the common answer, since only Select commits); moving the highlight or pressing Back does not commit; `ui_session_has_airway()` is separate from the value so "not asked" and "answered no" cannot look alike; and it never rescues a refusal into RED. All pinned in `ui_nav_selftest.c` and `tb_triage_selftest.c`.
+- The Airway screen is **hand-built in C** (`ui/logic/ui_airway.c`), not authored in the Editor: a new screen needs a generated `*_gen.c` plus an entry in the generated `ui_gen.c`. It instantiates the same generated components (`status_bar_create`, `button_bar_create`) so the physical ButtonBar works on it -- a dialog would have been touch-only. Registered in BOTH `main/app_main.c` and `sim/src/main.c`.
+- Outputs **must** match backend contract: `priority` ∈ `RED|YELLOW|GREEN|BLACK`, `confidence` float 0–1 (or 0–100, backend normalizes), `reasons` string array.
+- `reasons` is sent **empty**: the model has no rule path to quote and no separate threshold table was added. The backend defaults `reasons` to `[]`, so this is valid.
+- Any feature at 0, or `v->valid` clear, returns BLACK with confidence 0 rather than guessing.
+- `triage_pipeline.c` needs **`-mauto-litpools`** (set per-file in the component's CMakeLists). One ~67k-line function overruns `l32r`'s reach to its literal pool; `-mtext-section-literals` only moves the error from linker to assembler. Do not drop the flag without rebuilding.
+- Do not pull a general ML framework. Inference runs once when the measure window ends (`ui_runtime.c` → `pull_mock_priority_once`) and sends `RESULT` in the same call — cheap enough on the LVGL task; do not add a task for it. Measure it with the `stats` console command before assuming.
 
 ## Data contract with backend (do not invent names)
 
@@ -198,10 +203,10 @@ This firmware talks to the STM32 over UART with an internal framing of your choo
 | `components/triagebox_link/` | RS485 ↔ STM32: `tb_frame.c` codec (platform-neutral), `tb_link.c` UART2, `tb_ui_source.c` |
 | `components/triagebox_board/` | Backlight + buzzer via TCA9554, and `ui_board_power_off()` via the SW6106 PMIC. `test_fakes/` lets the host selftest compile the real file. |
 | `components/triagebox_debug/` | `CONFIG_TB_DEBUG_CONSOLE` REPL: frame injection + I²C scan/read (`i2c`, `i2creg`, `i2craw`, `i2cdump`) + `stats`. Off by default. |
-| `components/triagebox_ml/` | Linear SVM inference + the exported model header |
+| `components/triagebox_ml/` | GBM inference (ESI 1..5) + the adapter that groups it into START colours |
 | `tools/run_selftests.sh` | Compiles and runs every `*_selftest.c` on the host under ASan/UBSan |
 
-`ui_mock.h` has **two** implementations, selected in CMake rather than by `#ifdef`: `ui/logic/ui_mock.c` (sim, deterministic fake) and `components/triagebox_link/tb_ui_source.c` (device, RS485 + SVM). Anything added to that header must be implemented in both. See `docs/firmware-architecture.md`.
+`ui_mock.h` has **two** implementations, selected in CMake rather than by `#ifdef`: `ui/logic/ui_mock.c` (sim, deterministic fake) and `components/triagebox_link/tb_ui_source.c` (device, I²C + model). Anything added to that header must be implemented in both. See `docs/firmware-architecture.md`.
 
 Shared `ui/` and `ui/logic/` must stay platform-neutral (no `ESP_PLATFORM` / SDL ifdefs there). Platform glue lives in `sim/` and `main/` only.
 

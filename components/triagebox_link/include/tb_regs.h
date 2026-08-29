@@ -452,7 +452,7 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
 #define TB_SENSOR_ECG      0x01U
 #define TB_SENSOR_MAX30102 0x02U
 #define TB_SENSOR_MIC      0x04U
-#define TB_SENSOR_RFID     0x08U /* PN532; not in the build yet, so always 0 */
+#define TB_SENSOR_RFID     0x08U /* PN532; set once the module answers, card or not */
 #define TB_SENSOR_LORA     0x10U
 
 /*

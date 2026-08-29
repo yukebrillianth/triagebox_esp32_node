@@ -11,7 +11,7 @@
 
 static const char *const screen_names[UI_SCREEN_COUNT] = {
     "HOME", "SCANNING", "BERHASIL", "AGE",
-    "GENDER", "MENGUKUR", "RESULT", "MONITOR",
+    "GENDER", "AIRWAY", "MENGUKUR", "RESULT", "MONITOR",
 };
 
 static void expect(ui_screen_id_t expected)
@@ -44,7 +44,15 @@ int main(void)
     ui_action(UI_SCREEN_AGE, 3U);
     expect(UI_SCREEN_GENDER);
     ui_action(UI_SCREEN_GENDER, 3U);
+    /* Third manual input. Select commits the airway answer and only then does
+     * measuring start -- the model treats a set airway flag as RED on its own,
+     * so it has to be asked before the reading, not after. */
+    expect(UI_SCREEN_AIRWAY);
+    assert(!ui_session_has_airway());
+    ui_action(UI_SCREEN_AIRWAY, 3U);
     expect(UI_SCREEN_MENGUKUR);
+    assert(ui_session_has_airway());
+    assert(!ui_session_get_airway()); /* "Tidak ada" is the pre-highlighted row */
 
     /* Entering Mengukur: measure starts once, progress 0. */
     ui_runtime_tick(500);

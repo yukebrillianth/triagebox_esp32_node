@@ -15,7 +15,11 @@ case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) : "${SAN=}" ;;
 *)                        : "${SAN=-fsanitize=address,undefined}" ;;
 esac
-FLAGS="-std=c99 -Wall -Wextra -Werror -g $SAN"
+# UI_MEASURE_MS: the hardware default is 60 s (RR needs a minute of microphone),
+# which would make the runtime selftest wait a simulated minute for no benefit.
+# 2 s here matches what sim/CMakeLists.txt passes, and the two timing tests state
+# the number they assume.
+FLAGS="-std=c99 -Wall -Wextra -Werror -g -DUI_MEASURE_MS=2000 $SAN"
 [ -n "$SAN" ] || echo "note: sanitizers off, assertions still checked"
 fail=0
 
@@ -46,8 +50,10 @@ run components/triagebox_link/tb_i2c_codec_selftest.c \
     components/triagebox_link/tb_i2c_codec.c \
     ui/logic/ui_types.c
 
-# tb_triage.c only: tb_triage_model.c pulls in the 49k-line GBM pipeline, and
-# the parts worth pinning (ESI mapping, window aggregates) are not in it.
+# tb_triage.c plus the ML side's ESI->colour mapping. tb_triage_model.c is NOT
+# linked -- it pulls in the 72k-line GBM. Instead the selftest includes
+# tb_classify.h and supplies its own predict_triage(), so the mapping is checked
+# without the model.
 run components/triagebox_ml/tb_triage_selftest.c \
     components/triagebox_ml/tb_triage_selftest.c \
     components/triagebox_ml/tb_triage.c \
