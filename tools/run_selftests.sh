@@ -15,7 +15,11 @@ case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) : "${SAN=}" ;;
 *)                        : "${SAN=-fsanitize=address,undefined}" ;;
 esac
-FLAGS="-std=c99 -Wall -Wextra -Werror -g $SAN"
+# UI_MEASURE_MS: the hardware default is 60 s (RR needs a minute of microphone),
+# which would make the runtime selftest wait a simulated minute for no benefit.
+# 2 s here matches what sim/CMakeLists.txt passes, and the two timing tests state
+# the number they assume.
+FLAGS="-std=c99 -Wall -Wextra -Werror -g -DUI_MEASURE_MS=2000 $SAN"
 [ -n "$SAN" ] || echo "note: sanitizers off, assertions still checked"
 fail=0
 

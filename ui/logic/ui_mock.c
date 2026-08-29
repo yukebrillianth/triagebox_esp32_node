@@ -197,6 +197,20 @@ const char *ui_mock_get_reasons(void)
     return k_reasons[ui_mock_get_priority()];
 }
 
+int ui_mock_get_esi(void)
+{
+    /*
+     * One ESI per colour, so the desktop shows a consistent pair rather than a
+     * number pulled out of the air. The RED..BLACK order matches ui_priority_t;
+     * BLACK maps to 0 because that is the "refused to score" value, not an ESI.
+     * Reverses the grouping the device applies -- GREEN covers 3..5, and 3 is the
+     * one worth showing since it is the borderline end of that band.
+     */
+    static const int k_esi[4] = {1, 2, 3, 0};
+
+    return k_esi[ui_mock_get_priority()];
+}
+
 void ui_mock_cycle_priority(void)
 {
     s_cycle_idx = (uint8_t)((s_cycle_idx + 1u) % 4u);

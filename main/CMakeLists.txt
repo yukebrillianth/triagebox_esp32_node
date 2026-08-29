@@ -20,6 +20,7 @@ idf_component_register(
         "../ui/logic/ui_types.c"
         "../ui/logic/ui_status.c"
         "../ui/logic/ui_demo.c"
+        "../ui/logic/ui_airway.c"
         "../ui/logic/ui_bindings.c"
     INCLUDE_DIRS
         "."

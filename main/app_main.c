@@ -12,6 +12,7 @@
 #include "ui_board.h"
 
 #include "ui.h"
+#include "ui_airway.h"
 #include "ui_input.h"
 #include "ui_nav.h"
 #include "ui_runtime.h"
@@ -26,6 +27,8 @@ static void show_scanning(void) { lv_screen_load(scanning); }
 static void show_berhasil(void) { lv_screen_load(berhasil); }
 static void show_age(void)      { lv_screen_load(age); }
 static void show_gender(void)   { lv_screen_load(gender); }
+/* Built in C, not exported from the Editor -- see ui_airway.h. */
+static void show_airway(void)   { lv_screen_load(ui_airway_screen()); }
 static void show_mengukur(void) { lv_screen_load(mengukur); }
 static void show_result(void)   { lv_screen_load(result); }
 static void show_monitor(void)  { lv_screen_load(monitor); }
@@ -89,6 +92,7 @@ static void register_triage_screens(void)
     ui_nav_register(UI_SCREEN_BERHASIL, show_berhasil);
     ui_nav_register(UI_SCREEN_AGE, show_age);
     ui_nav_register(UI_SCREEN_GENDER, show_gender);
+    ui_nav_register(UI_SCREEN_AIRWAY, show_airway);
     ui_nav_register(UI_SCREEN_MENGUKUR, show_mengukur);
     ui_nav_register(UI_SCREEN_RESULT, show_result);
     ui_nav_register(UI_SCREEN_MONITOR, show_monitor);

@@ -19,7 +19,8 @@ static void pull_mock_priority_once(void)
     if (!ui_session_has_priority()) {
         ui_session_set_priority(ui_mock_get_priority(),
                                 ui_mock_get_confidence(),
-                                ui_mock_get_reasons());
+                                ui_mock_get_reasons(),
+                                ui_mock_get_esi());
     }
 }
 
@@ -88,6 +89,7 @@ void ui_runtime_debug_cycle_priority(void)
     if (ui_session_has_priority()) {
         ui_session_set_priority(ui_mock_get_priority(),
                                 ui_mock_get_confidence(),
-                                ui_mock_get_reasons());
+                                ui_mock_get_reasons(),
+                                ui_mock_get_esi());
     }
 }

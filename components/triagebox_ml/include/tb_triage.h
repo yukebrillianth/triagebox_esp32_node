@@ -36,6 +36,11 @@
  *                    priority from vitals that were never measured is worse than
  *                    admitting the box does not know.
  * @param age,gender  as committed on the Age/Gender screens.
+ * @param airway_problem
+ *                    as committed on the Airway screen. The ONE input that
+ *                    overrides the model: set, the result is RED whatever the ESI
+ *                    came out as. It is an operator judgement, not a reading --
+ *                    no sensor on this box can see an obstructed airway.
  * @param confidence  may be NULL; else the winning class probability, 0..1 --
  *                    the range the backend expects.
  * @param esi         may be NULL; else the raw ESI 1..5, or 0 when it refused.
@@ -43,11 +48,13 @@
  *                    colours cannot be un-collapsed back into it: ESI 3, 4 and 5
  *                    are all GREEN, so a log line carrying only the colour
  *                    cannot tell a walking-wounded patient from a borderline
- *                    one. Diagnostics only -- nothing on screen reads it.
+ *                    one. It also keeps the airway override auditable -- RED with
+ *                    esi=5 is the override, RED with esi=1 is the model.
+ *                    Diagnostics only -- nothing on screen reads it.
  */
 ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
-                                 ui_gender_t gender, float *confidence,
-                                 int *esi);
+                                 ui_gender_t gender, bool airway_problem,
+                                 float *confidence, int *esi);
 
 /*
  * The two band conversions, exposed for the selftest.

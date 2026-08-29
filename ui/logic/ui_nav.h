@@ -9,6 +9,11 @@ typedef enum {
     UI_SCREEN_BERHASIL,
     UI_SCREEN_AGE,
     UI_SCREEN_GENDER,
+    /* Third manual input, in flow order after Gender. Anything indexed by this
+     * enum positionally -- ui_action's s_tables, ui_bindings' k_screen_ids --
+     * has to be updated in step, which is deliberate: a silently shifted table
+     * would give one screen another screen's buttons. */
+    UI_SCREEN_AIRWAY,
     UI_SCREEN_MENGUKUR,
     UI_SCREEN_RESULT,
     UI_SCREEN_MONITOR,
@@ -26,10 +31,14 @@ void ui_nav_set_pending_age(ui_age_band_t age);
 ui_age_band_t ui_nav_pending_age(void);
 void ui_nav_set_pending_gender(ui_gender_t gender);
 ui_gender_t ui_nav_pending_gender(void);
+/* Airway is a yes/no list, so "pending" is just which row is highlighted. */
+void ui_nav_set_pending_airway(bool problem);
+bool ui_nav_pending_airway(void);
 
 /* Move list focus by dir (-1 up, +1 down), clamped to the band/gender range. */
 void ui_nav_move_pending_age(int dir);
 void ui_nav_move_pending_gender(int dir);
+void ui_nav_move_pending_airway(int dir);
 
 /* Non-button transitions delivered by the mock/hardware integration layer. */
 void ui_nav_on_rfid_ready(const rfid_t *rfid);

@@ -36,6 +36,12 @@ void ui_demo_toggle(void);
  */
 #define UI_DEMO_PRIORITY   UI_PRIORITY_RED
 #define UI_DEMO_CONFIDENCE 0.93f
+/*
+ * The ESI that goes with that colour. 1, because MERAH is ESI 1 under the
+ * three-colour grouping and the two are shown side by side on Result -- MERAH
+ * next to "ESI 3" would be the one detail on screen that contradicts itself.
+ */
+#define UI_DEMO_ESI        1
 
 /*
  * Overwrite the four readings with a patient whose numbers justify RED -- HR
