@@ -70,6 +70,9 @@ static uint32_t s_measure_start_ms;
 static bool s_have_priority;
 static ui_priority_t s_priority;
 static float s_confidence;
+/* The model's raw 1..5 behind s_priority, or 0 when it refused. Kept because the
+ * colour cannot be un-collapsed: 3, 4 and 5 are all GREEN. */
+static int s_esi;
 
 /* ---------------------------------------------------------------- RX task -- */
 
@@ -210,6 +213,7 @@ void ui_mock_init(void)
     s_have_priority = false;
     s_priority = UI_PRIORITY_BLACK;
     s_confidence = 0.0f;
+    s_esi = 0;
 }
 
 void ui_mock_tick(uint32_t now_ms)
@@ -354,8 +358,9 @@ static void infer_once(void)
          */
         s_priority = UI_DEMO_PRIORITY;
         s_confidence = UI_DEMO_CONFIDENCE;
-        ESP_LOGW(TAG, "DEMO MODE: reporting priority=%d, model not run",
-                 (int)s_priority);
+        s_esi = UI_DEMO_ESI;
+        ESP_LOGW(TAG, "DEMO MODE: reporting priority=%d esi=%d, model not run",
+                 (int)s_priority, s_esi);
     } else {
         int esi = 0;
 
@@ -372,6 +377,7 @@ static void infer_once(void)
                  (double)s_confidence, (int)v.valid,
                  (unsigned)v.hr, (unsigned)v.spo2, (unsigned)v.rr,
                  (unsigned)v.bp_sys);
+        s_esi = esi;
     }
     s_have_priority = true;
 
@@ -397,6 +403,12 @@ float ui_mock_get_confidence(void)
 {
     infer_once();
     return s_confidence;
+}
+
+int ui_mock_get_esi(void)
+{
+    infer_once();
+    return s_esi;
 }
 
 const char *ui_mock_get_reasons(void)

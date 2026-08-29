@@ -23,6 +23,9 @@ typedef struct {
     ui_priority_t priority;
     bool has_priority;
     float confidence;
+    /* The model's raw 1..5, or 0 when it refused. Set with the priority, never
+     * on its own -- see ui_session_set_priority(). */
+    int esi;
     char reasons[UI_SESSION_REASONS_CAPACITY];
     uint8_t measurement_progress;
 } ui_session_state_t;
@@ -73,13 +76,15 @@ void ui_session_set_vitals(const vitals_t *vitals)
     }
 }
 
-void ui_session_set_priority(ui_priority_t priority, float confidence, const char *reasons)
+void ui_session_set_priority(ui_priority_t priority, float confidence,
+                             const char *reasons, int esi)
 {
     size_t index = 0U;
 
     session.priority = priority;
     session.has_priority = true;
     session.confidence = confidence;
+    session.esi = esi;
 
     if (reasons != NULL) {
         while (index + 1U < sizeof(session.reasons) && reasons[index] != '\0') {
@@ -148,6 +153,11 @@ bool ui_session_has_priority(void)
 ui_priority_t ui_session_get_priority(void)
 {
     return session.priority;
+}
+
+int ui_session_get_esi(void)
+{
+    return session.esi;
 }
 
 float ui_session_get_confidence(void)

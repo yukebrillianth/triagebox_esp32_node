@@ -18,7 +18,13 @@ void ui_session_set_gender(ui_gender_t gender);
  */
 void ui_session_set_airway(bool problem);
 void ui_session_set_vitals(const vitals_t *vitals);
-void ui_session_set_priority(ui_priority_t priority, float confidence, const char *reasons);
+/*
+ * esi is the model's raw 1..5 output, or 0 when it refused. Passed in the SAME
+ * call as the priority on purpose: they are two views of one result, and separate
+ * setters would allow a fresh colour next to a previous patient's ESI.
+ */
+void ui_session_set_priority(ui_priority_t priority, float confidence,
+                             const char *reasons, int esi);
 void ui_session_set_measurement_progress(uint8_t progress);
 
 bool ui_session_has_rfid(void);
@@ -39,6 +45,8 @@ const vitals_t *ui_session_get_vitals(void);
 bool ui_session_has_priority(void);
 ui_priority_t ui_session_get_priority(void);
 float ui_session_get_confidence(void);
+/* 1..5, or 0 for "the model refused to score". */
+int ui_session_get_esi(void);
 const char *ui_session_get_reasons(void);
 
 uint8_t ui_session_get_measurement_progress(void);

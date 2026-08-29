@@ -155,6 +155,8 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
                                  int *esi);
 ```
 
+Jendela pengukuran **60 detik**, dan itu bukan angka yang dipilih karena terasa pas: RR dihitung dari mikrofon pernapasan, dan laju per **menit** butuh satu menit audio sebelum berarti. Memperpendeknya tidak membuat alat lebih cepat, hanya membuat RR jadi tebakan yang diekstrapolasi dari beberapa napas. Sebelumnya `UI_MEASURE_MS` default 2000 dengan komentar yang menyebut hardware 60000 — dan tidak ada satu pun tempat yang men-set 60000, jadi board benar-benar menjalankan jendela 2 detik. Sekarang defaultnya nilai yang sebenarnya, dan nilai cepatnya opt-in: `sim/CMakeLists.txt` dan `tools/run_selftests.sh` sama-sama mengirim `-DUI_MEASURE_MS=2000`.
+
 Modelnya makan **satu bacaan sesaat**, bukan agregat. Ini berubah dari pipeline sebelumnya yang minta mean/min/max sepanjang window — `tb_vitals_window_t` cuma ada untuk itu dan ikut hilang bersamanya. `infer_once()` sekarang mengirim snapshot terakhir apa adanya.
 
 ### ESI → warna: 3 kelas, standar START Indonesia
@@ -168,7 +170,15 @@ Modelnya makan **satu bacaan sesaat**, bukan agregat. Ini berubah dari pipeline 
 
 Pemetaan ini milik sisi ML dan tinggal di `include/tb_classify.h`. Adapter yang memanggilnya; `tb_triage_selftest.c` yang memakunya — dengan `predict_triage()` **versi stub milik selftest sendiri**, sehingga pemetaannya teruji tanpa me-link model 72k baris. Itu sebabnya file itu dulu tidak pernah teruji.
 
-`tb_triage_classify()` juga melaporkan **ESI mentah** karena warnanya tidak bisa dibalik: 3, 4, dan 5 sama-sama HIJAU, jadi log yang cuma membawa warna tidak bisa membedakan pasien yang bisa berjalan dari yang di ambang. Dipakai untuk diagnosa saja — tidak ada yang menampilkannya di layar.
+`tb_triage_classify()` juga melaporkan **ESI mentah** karena warnanya tidak bisa dibalik: 3, 4, dan 5 sama-sama HIJAU, jadi warna saja tidak bisa membedakan pasien yang bisa berjalan dari yang di ambang.
+
+ESI **tampil di layar Result**, di bawah pill ID pasien: `ESI 2`, atau `ESI --` kalau model menolak menilai. Label-nya dibuat dari kode (`esi_label()` di `ui_bindings.c`), bukan dari `result.xml`, karena label baru di XML butuh re-export Editor — kendala yang sama dengan layar Airway.
+
+Satu detail yang mudah terlewat: banner Result tingginya **fix 225 px** dengan `pad_ver 44`, dan tiga baris authored-nya sudah mengisi hampir penuh — baris keempat tumpah keluar rounded rectangle. Jadi `pad_ver`-nya dipersempit dari kode ke 20. Angkanya diverifikasi lewat `LV_LOG_USER` sekali saat label dibuat (`result banner WxH, ESI row ends at y=…`), bukan dikira-kira: kalau nanti ada font yang membesar, baris itu yang memberi tahu bahwa baris bawah sudah di luar banner — bukan ketahuan saat sedang direkam. `LV_LOG_USER`, bukan `INFO`, karena build jalan di `LV_LOG_LEVEL_WARN` sehingga INFO di-compile out dan lognya tidak akan pernah muncul.
+
+Gayanya mengikuti pill ID (gelap 30% di belakang teks putih), bukan putih polos seperti `priority_label`: banner di belakangnya bisa MERAH, KUNING, atau HIJAU, dan putih di atas `#F0B100` kontrasnya sekitar 2:1. Latar pill membuat satu perlakuan terbaca di ketiganya.
+
+ESI dibawa ke sesi lewat **panggilan yang sama** dengan priority (`ui_session_set_priority(..., esi)`), bukan setter terpisah — keduanya dua sisi dari satu hasil, dan setter terpisah memungkinkan warna baru bersebelahan dengan ESI pasien sebelumnya.
 
 `ui_priority_t` urutannya `RED=0, YELLOW=1, GREEN=2, BLACK=3` — **bukan** urutan severity untuk BLACK. Cast langsung dari ESI memetakan pasien paling kritis ke warna paling bisa ditunda. Selalu lewat pemetaan di atas.
 
