@@ -341,12 +341,19 @@ static void test_rssi_validity_window(void)
     assert(!tb_rssi_valid(0));
     assert(!tb_rssi_valid((int8_t)0xFFU));
 
-    /* Real receiver range: SF7/125k sensitivity is about -123 dBm, and closer
-     * than a metre saturates near -20. */
+    /* Real receiver range: SF7/125k sensitivity is about -123 dBm at the weak
+     * end. The strong end is NOT a saturation limit -- see tb_regs.h. */
     assert(tb_rssi_valid(-123));
     assert(tb_rssi_valid(TB_RSSI_MIN_DBM));
     assert(tb_rssi_valid(TB_RSSI_MAX_DBM));
     assert(!tb_rssi_valid(TB_RSSI_MAX_DBM + 1));
+
+    /* Regression: -12 dBm is what this link actually measures with an antenna
+     * fitted and the station on the same desk. The bound was -20, so a true
+     * reading was thrown away and the status bar showed "LoRa siap" on a working
+     * radio. Anything a real receiver can report has to pass. */
+    assert(tb_rssi_valid(-12));
+    assert(tb_rssi_valid(-38)); /* the sample that did pass, and froze the display */
 
     /* The lower bound is the TYPE, not a comparison: int8_t cannot represent
      * anything below -128, which is why tb_rssi_valid() only tests the top end.
