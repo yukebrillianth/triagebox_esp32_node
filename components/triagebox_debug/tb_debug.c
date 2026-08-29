@@ -441,8 +441,8 @@ static int cmd_stats(int argc, char **argv)
         .valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP,
         .valid = true,
     };
-    tb_vitals_window_t window;
     float conf = 0.0f;
+    int esi = 0;
     int64_t t0;
     int64_t elapsed_us;
     /* esp_lvgl_port names it "taskLVGL", not "LVGL". */
@@ -451,25 +451,23 @@ static int cmd_stats(int argc, char **argv)
     (void)argc;
     (void)argv;
 
-    /* One sample is enough to exercise the model; min==max just means a flat
-     * window, which is a legal input. */
-    tb_vitals_window_reset(&window);
-    tb_vitals_window_add(&window, &v);
-
     t0 = esp_timer_get_time();
     for (int i = 0; i < iterations; i++) {
-        (void)tb_triage_classify(&window, UI_AGE_BAND_18_45, UI_GENDER_M, &conf);
+        (void)tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, &conf, &esi);
     }
     elapsed_us = esp_timer_get_time() - t0;
 
     printf("\n--- inference ---\n");
     printf("tb_triage_classify: %.1f us/call (%d calls in %lld us)\n",
            (double)elapsed_us / iterations, iterations, elapsed_us);
+    /* Two model runs per call, not one -- see the ponytail note in
+     * tb_triage_model.c. The figure above is what the firmware actually pays. */
     printf("called once per patient, so ~%.4f%% of one 60 s measure window\n",
            100.0 * ((double)elapsed_us / iterations) / 60e6);
-    printf("result now: priority=%d confidence=%.2f\n",
-           (int)tb_triage_classify(&window, UI_AGE_BAND_18_45, UI_GENDER_M, &conf),
-           (double)conf);
+    printf("result now: priority=%d esi=%d confidence=%.2f\n",
+           (int)tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, &conf,
+                                   &esi),
+           esi, (double)conf);
 
     printf("\n--- heap ---\n");
     printf("internal free  : %u bytes (min ever %u)\n",

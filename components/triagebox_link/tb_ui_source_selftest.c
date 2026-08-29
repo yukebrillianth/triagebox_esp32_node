@@ -28,24 +28,20 @@ uint32_t tb_link_frames_ok(void) { return 0; }
 esp_err_t tb_link_send_cmd(uint8_t cmd) { (void)cmd; return ESP_OK; }
 
 /* Stand in for the whole ML component: this selftest is about tb_ui_source's
- * plumbing, not the model. */
-void tb_vitals_window_reset(tb_vitals_window_t *w) { (void)w; }
-void tb_vitals_window_add(tb_vitals_window_t *w, const vitals_t *v)
+ * plumbing, not the model. GREEN is what makes the demo-mode test below work --
+ * if demo mode ever fell through to the model, the result would be GREEN
+ * instead of RED and the assert would catch it. */
+ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
+                                 ui_gender_t gender, float *confidence, int *esi)
 {
     (void)v;
-    if (w != NULL) {
-        w->samples++;
-    }
-}
-
-ui_priority_t tb_triage_classify(const tb_vitals_window_t *w, ui_age_band_t age,
-                                 ui_gender_t gender, float *confidence)
-{
-    (void)w;
     (void)age;
     (void)gender;
     if (confidence != NULL) {
         *confidence = 0.5f;
+    }
+    if (esi != NULL) {
+        *esi = 3;
     }
     return UI_PRIORITY_GREEN;
 }
