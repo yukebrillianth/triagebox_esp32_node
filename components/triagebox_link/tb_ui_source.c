@@ -360,14 +360,16 @@ static void infer_once(void)
         int esi = 0;
 
         s_priority = tb_triage_classify(&v, ui_session_get_age(),
-                                        ui_session_get_gender(), &s_confidence,
+                                        ui_session_get_gender(),
+                                        ui_session_get_airway(), &s_confidence,
                                         &esi);
         /* ESI logged alongside the colour because the colour cannot be
-         * un-collapsed: 3, 4 and 5 are all GREEN, so without this a walking
-         * patient and a borderline one leave identical evidence behind. */
-        ESP_LOGI(TAG, "triage: priority=%d esi=%d confidence=%.2f valid=%d "
-                      "hr=%u spo2=%u rr=%u sbp=%u",
-                 (int)s_priority, esi, (double)s_confidence, (int)v.valid,
+         * un-collapsed: 3, 4 and 5 are all GREEN. airway too, because it is what
+         * separates a RED the model chose from a RED the operator forced. */
+        ESP_LOGI(TAG, "triage: priority=%d esi=%d airway=%d confidence=%.2f "
+                      "valid=%d hr=%u spo2=%u rr=%u sbp=%u",
+                 (int)s_priority, esi, (int)ui_session_get_airway(),
+                 (double)s_confidence, (int)v.valid,
                  (unsigned)v.hr, (unsigned)v.spo2, (unsigned)v.rr,
                  (unsigned)v.bp_sys);
     }

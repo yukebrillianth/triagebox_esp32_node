@@ -172,9 +172,30 @@ Pemetaan ini milik sisi ML dan tinggal di `include/tb_classify.h`. Adapter yang 
 
 `ui_priority_t` urutannya `RED=0, YELLOW=1, GREEN=2, BLACK=3` — **bukan** urutan severity untuk BLACK. Cast langsung dari ESI memetakan pasien paling kritis ke warna paling bisa ditunda. Selalu lewat pemetaan di atas.
 
+### Tiga input manual, dan yang ketiga bisa memaksa MERAH
+
+Alur registrasi: **Age → Gender → Airway → Mengukur**.
+
+`airway_problem` adalah satu-satunya input yang bisa **memaksa MERAH sendirian** (`tb_classify.h`), dan tidak ada sensor di alat ini yang bisa melihat jalan napas tersumbat — jadi memang harus dijawab operator. Layarnya `ui/logic/ui_airway.c`.
+
+Aturan yang dipatok selftest, semuanya soal "jangan sampai MERAH ter-set tanpa niat":
+
+- Baris **"Tidak ada" yang pre-highlight**, bukan "Ada". Default yang aman untuk sebuah *highlight* adalah jawaban yang umum, bukan yang paling hati-hati: ia hanya di-commit oleh Select, dan pre-select "Ada" berarti dua tekanan tergesa menandai pasien yang bisa berjalan sebagai MERAH.
+- **Menggeser highlight bukan menjawab.** Sentuhan hanya memindahkan fokus, sama seperti Age dan Gender. Back juga tidak commit — highlight yang tertinggal di "Ada" lalu Back tidak boleh mencatat pasien sebagai tersumbat.
+- **`ui_session_has_airway()` terpisah dari nilainya.** "Belum ditanya" dan "sudah ditanya, jawabnya tidak" tidak boleh terlihat sama.
+- **Tidak menyelamatkan penolakan jadi MERAH.** Tanpa vital sama sekali hasilnya tetap HITAM: alat tidak tahu sedang melihat apa, dan operator yang sudah melihat jalan napas tersumbat tidak butuh izin layar untuk bertindak.
+- Sesi baru mengosongkannya lagi, highlight sekalian — jalan napas tersumbat pasien sebelumnya tidak boleh ikut ke pasien berikutnya.
+
+Log `triage:` membawa `esi` **dan** `airway`, karena itu yang membedakan MERAH pilihan model (`esi=1`) dari MERAH paksaan operator (`airway=1 esi=5`).
+
+#### Kenapa layarnya di-*hand-build*, bukan XML
+
+Layar baru butuh `*_gen.c` **dan** entri di `ui_gen.c` yang di-generate, dua-duanya keluar dari Editor lewat manusia menekan Ctrl+B. Meng-edit file generated adalah satu aturan yang tidak ditawar di repo ini, jadi alternatifnya menunggu. `ui_airway.c` meng-instantiate **komponen generated yang sama** (`status_bar_create()`, `button_bar_create()`) dan menyalin style `gender.xml`, jadi visualnya identik dan **ButtonBar fisiknya bekerja**.
+
+Yang terakhir itu bukan detail: alat ini dioperasikan dari 4 tombol fisik, dan dialog akan jadi touch-only. Kalau nanti layar Airway di-author di Editor: hapus `ui_airway.c`, buang case-nya dari `screen_root()`, sisa wiring-nya (ui_nav, ui_action, session) tidak berubah.
+
 ### Yang belum terhubung
 
-- **`airway_problem`.** Ini satu-satunya input yang bisa memaksa MERAH sendiri (`tb_classify.h`), dan **tidak ada yang mengisinya** — `tb_triage_classify()` hardcode 0. Tidak ada pertanyaan airway di layar registrasi dan tidak ada bit untuk itu di link I²C. Menghubungkannya berarti langkah registrasi baru atau flag STM32 baru.
 - **Tekanan darah.** `bp_pipeline.c` + `lgbm_sbp.c` (estimator SBP dari PPG) ada di build tapi belum dipanggil dari mana pun. Sementara ini `systolic_bp` datang dari snapshot STM32, yang `TB_FLAG_BP_VALID`-nya masih selalu 0 — jadi praktisnya 0, dan gate "menolak menilai" yang menangkapnya.
 - **Age band, bukan umur.** UI hanya mengumpulkan band, jadi `tb_triage_age_years()` memilih titik tengah (12/31/53/70). Error terikat setengah lebar band, bukan selebar band.
 - `reasons` dikirim kosong. Backend memang men-default ke `[]`.

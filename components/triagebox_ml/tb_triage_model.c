@@ -9,8 +9,8 @@
 #include "tb_classify.h" /* pulls in triage_pipeline.h; see the warning there */
 
 ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
-                                 ui_gender_t gender, float *confidence,
-                                 int *esi)
+                                 ui_gender_t gender, bool airway_problem,
+                                 float *confidence, int *esi)
 {
     TriageInput in;
     ui_priority_t priority;
@@ -23,9 +23,16 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
         *esi = 0;
     }
     if (v == NULL || !v->valid) {
-        /* No complete snapshot ever arrived. tb_classify() would refuse anyway
+        /*
+         * No complete snapshot ever arrived. tb_classify() would refuse anyway
          * on the zeroed features, but saying so here keeps the "we never
-         * measured this patient" case from depending on that. */
+         * measured this patient" case from depending on that.
+         *
+         * The airway answer is deliberately NOT allowed to rescue this into RED:
+         * with no vitals at all the box does not know what it is looking at, and
+         * BLACK is the honest answer. An operator who has seen an obstructed
+         * airway does not need the screen's permission to act on it.
+         */
         return UI_PRIORITY_BLACK;
     }
 
@@ -36,13 +43,11 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
     in.spo2 = (float)v->spo2;
     in.systolic_bp = (float)v->bp_sys;
     /*
-     * Hardcoded 0, and this is the one input worth flagging: airway_problem
-     * forces RED on its own, so with nothing ever setting it that override can
-     * never fire. Nothing in the UI collects it -- there is no airway question on
-     * the Age/Gender screens and no bit for it on the I2C link. Wiring it up
-     * means a new registration step or a new STM32 flag, not a change here.
+     * The one input no sensor on this box can produce, so it comes from the
+     * operator: the Airway screen, third of the three manual inputs. Set, it
+     * forces RED regardless of the ESI -- see tb_classify.h.
      */
-    in.airway_problem = 0;
+    in.airway_problem = airway_problem ? 1 : 0;
 
     priority = tb_classify(&in, &predicted);
 

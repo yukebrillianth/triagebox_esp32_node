@@ -11,6 +11,12 @@ void ui_session_new_scan(const rfid_t *rfid);
 
 void ui_session_set_age(ui_age_band_t age);
 void ui_session_set_gender(ui_gender_t gender);
+/*
+ * Airway obstruction, the third and only clinical judgement the operator makes.
+ * The model treats it as RED on its own, so it is a question and not a default:
+ * ui_session_has_airway() stays false until the Airway screen is answered.
+ */
+void ui_session_set_airway(bool problem);
 void ui_session_set_vitals(const vitals_t *vitals);
 void ui_session_set_priority(ui_priority_t priority, float confidence, const char *reasons);
 void ui_session_set_measurement_progress(uint8_t progress);
@@ -23,6 +29,9 @@ ui_age_band_t ui_session_get_age(void);
 
 bool ui_session_has_gender(void);
 ui_gender_t ui_session_get_gender(void);
+
+bool ui_session_has_airway(void);
+bool ui_session_get_airway(void);
 
 const vitals_t *ui_session_get_vitals(void);
 

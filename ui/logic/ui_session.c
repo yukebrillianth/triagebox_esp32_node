@@ -11,6 +11,14 @@ typedef struct {
     bool has_age;
     ui_gender_t gender;
     bool has_gender;
+    /*
+     * Airway obstruction, answered by the operator on its own screen. Two fields
+     * rather than a tri-state because "not asked yet" and "asked, answered no"
+     * must not look alike: the model treats a set airway flag as RED on its own,
+     * so an unanswered question defaulting to false is a silent downgrade.
+     */
+    bool airway_problem;
+    bool has_airway;
     vitals_t vitals;
     ui_priority_t priority;
     bool has_priority;
@@ -48,6 +56,12 @@ void ui_session_set_gender(ui_gender_t gender)
 {
     session.gender = gender;
     session.has_gender = gender != UI_GENDER_U;
+}
+
+void ui_session_set_airway(bool problem)
+{
+    session.airway_problem = problem;
+    session.has_airway = true;
 }
 
 void ui_session_set_vitals(const vitals_t *vitals)
@@ -109,6 +123,16 @@ bool ui_session_has_gender(void)
 ui_gender_t ui_session_get_gender(void)
 {
     return session.gender;
+}
+
+bool ui_session_has_airway(void)
+{
+    return session.has_airway;
+}
+
+bool ui_session_get_airway(void)
+{
+    return session.airway_problem;
 }
 
 const vitals_t *ui_session_get_vitals(void)

@@ -453,7 +453,8 @@ static int cmd_stats(int argc, char **argv)
 
     t0 = esp_timer_get_time();
     for (int i = 0; i < iterations; i++) {
-        (void)tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, &conf, &esi);
+        (void)tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, false,
+                                 &conf, &esi);
     }
     elapsed_us = esp_timer_get_time() - t0;
 
@@ -465,8 +466,8 @@ static int cmd_stats(int argc, char **argv)
     printf("called once per patient, so ~%.4f%% of one 60 s measure window\n",
            100.0 * ((double)elapsed_us / iterations) / 60e6);
     printf("result now: priority=%d esi=%d confidence=%.2f\n",
-           (int)tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, &conf,
-                                   &esi),
+           (int)tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, false,
+                                   &conf, &esi),
            esi, (double)conf);
 
     printf("\n--- heap ---\n");

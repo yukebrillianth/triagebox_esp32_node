@@ -163,16 +163,27 @@ static void test_airway_problem_forces_red(void)
 
     /* The one override: an airway problem is RED whatever the model said. Note
      * the ESI still reports the model's own answer, which is the point of
-     * exposing both -- the colour and the reason for it can differ.
-     *
-     * NOTHING IN THIS FIRMWARE SETS IT. tb_triage_classify() hardcodes 0 because
-     * the UI never asks about the airway, so this path is unreachable on the
-     * device today. Tested anyway: it is one field away from being live, and the
-     * test is what will catch the mapping breaking in the meantime. */
+     * exposing both -- RED with esi=5 is the operator's override, RED with esi=1
+     * is the model, and the log has to be able to tell them apart. */
     in.airway_problem = 1;
     s_next_esi = 5;
     assert(tb_classify(&in, &esi) == UI_PRIORITY_RED);
     assert(esi == 5);
+
+    /* Every ESI, since the override has to win over all of them and not just
+     * over the GREEN band. */
+    for (int e = 1; e <= 5; e++) {
+        s_next_esi = e;
+        assert(tb_classify(&in, NULL) == UI_PRIORITY_RED);
+    }
+
+    /* But it does NOT rescue a refusal into RED. With no vitals the box does not
+     * know what it is looking at, and an operator who has seen an obstructed
+     * airway does not need the screen's permission to act. */
+    in.heart_rate = 0.0f;
+    s_next_esi = 3;
+    assert(tb_classify(&in, &esi) == UI_PRIORITY_BLACK);
+    assert(esi == 0);
 }
 
 static void test_age_bands(void)

@@ -7,6 +7,7 @@
 #include "ui_bindings.h"
 #include "../ui.h"
 #include "ui_action.h"
+#include "ui_airway.h"
 #include "ui_board.h"
 #include "ui_demo.h"
 #include "ui_mock.h"
@@ -20,6 +21,7 @@ static const ui_screen_id_t k_screen_ids[UI_SCREEN_COUNT] = {
     UI_SCREEN_BERHASIL,
     UI_SCREEN_AGE,
     UI_SCREEN_GENDER,
+    UI_SCREEN_AIRWAY,
     UI_SCREEN_MENGUKUR,
     UI_SCREEN_RESULT,
     UI_SCREEN_MONITOR,
@@ -33,6 +35,10 @@ static lv_obj_t *screen_root(ui_screen_id_t id)
     case UI_SCREEN_BERHASIL: return berhasil;
     case UI_SCREEN_AGE:      return age;
     case UI_SCREEN_GENDER:   return gender;
+    /* Not a generated global like the other eight: this screen is built in C,
+     * so ui_airway_screen() both creates and caches it. Safe to call on every
+     * status-bar tick -- the second call onward just returns the cache. */
+    case UI_SCREEN_AIRWAY:   return ui_airway_screen();
     case UI_SCREEN_MENGUKUR: return mengukur;
     case UI_SCREEN_RESULT:   return result;
     case UI_SCREEN_MONITOR:  return monitor;
@@ -89,6 +95,16 @@ static void gender_option_cb(lv_event_t *e)
     ui_gender_t g = (ui_gender_t)(uintptr_t)lv_event_get_user_data(e);
 
     ui_nav_set_pending_gender(g);
+    ui_bindings_sync_selection();
+}
+
+/* Touch only moves the highlight, exactly like Age and Gender. Committing stays
+ * with Select, so a stray tap on "Ada / tersumbat" cannot mark a patient RED. */
+static void airway_option_cb(lv_event_t *e)
+{
+    bool problem = (bool)(uintptr_t)lv_event_get_user_data(e);
+
+    ui_nav_set_pending_airway(problem);
     ui_bindings_sync_selection();
 }
 
@@ -1170,6 +1186,14 @@ void ui_bindings_sync_selection(void)
 
     set_focus(gender, "opt_male",   g == UI_GENDER_M);
     set_focus(gender, "opt_female", g == UI_GENDER_F);
+
+    {
+        lv_obj_t *airway = ui_airway_screen();
+        bool problem = ui_nav_pending_airway();
+
+        set_focus(airway, "opt_airway_no",  !problem);
+        set_focus(airway, "opt_airway_yes",  problem);
+    }
 }
 
 void ui_bindings_init(void)
@@ -1187,6 +1211,13 @@ void ui_bindings_init(void)
 
     bind_option(gender, "opt_male",   gender_option_cb, (uintptr_t)UI_GENDER_M);
     bind_option(gender, "opt_female", gender_option_cb, (uintptr_t)UI_GENDER_F);
+
+    {
+        lv_obj_t *airway = ui_airway_screen();
+
+        bind_option(airway, "opt_airway_no",  airway_option_cb, (uintptr_t)0);
+        bind_option(airway, "opt_airway_yes", airway_option_cb, (uintptr_t)1);
+    }
 
     ui_bindings_sync_selection();
     ui_bindings_start_scan_animation();
