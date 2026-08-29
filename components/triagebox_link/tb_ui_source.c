@@ -71,14 +71,6 @@ static bool s_have_priority;
 static ui_priority_t s_priority;
 static float s_confidence;
 
-/*
- * Running min/max/mean across the measure window. Eight of the model's fifteen
- * features are window aggregates, so a single last-snapshot cannot fill them.
- * Written from the RX task, read once by the LVGL task at the end of the window,
- * so it sits under the same spinlock as the snapshot itself.
- */
-static tb_vitals_window_t s_window;
-
 /* ---------------------------------------------------------------- RX task -- */
 
 void tb_ui_source_on_vital(const vitals_t *v)
@@ -89,9 +81,6 @@ void tb_ui_source_on_vital(const vitals_t *v)
     portENTER_CRITICAL(&s_mux);
     s_vitals = *v;
     s_have_vitals = true;
-    /* Fold every snapshot in, not just the last one -- the aggregate is the
-     * model's actual input. Cheap: four compares and four adds. */
-    tb_vitals_window_add(&s_window, v);
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -286,12 +275,6 @@ void ui_mock_start_measure(void)
     s_measure_start_ms = s_now_ms;
     s_have_priority = false;
 
-    /* Fresh window per patient: leftover extremes from the previous one would
-     * be attributed to this patient's vitals. */
-    portENTER_CRITICAL(&s_mux);
-    tb_vitals_window_reset(&s_window);
-    portEXIT_CRITICAL(&s_mux);
-
     if (tb_link_send_cmd(TB_CMD_START_MEASURE) != ESP_OK) {
         ESP_LOGW(TAG, "START_MEASURE not sent");
     }
@@ -342,24 +325,24 @@ void ui_mock_get_vitals(vitals_t *out)
     }
 }
 
-/* Runs the SVM once per measurement and reports the result to the STM32,
+/* Runs the model once per measurement and reports the result to the STM32,
  * which owns the LoRa TX. ui_runtime.c calls this exactly once via
  * pull_mock_priority_once(). */
 static void infer_once(void)
 {
     vitals_t v;
-    tb_vitals_window_t window;
     char tag[RFID_TAG_CAPACITY];
 
     if (s_have_priority) {
         return;
     }
 
+    /*
+     * The last snapshot, not an aggregate over the window. The model takes seven
+     * instantaneous scalars -- what a triage nurse would have written down once --
+     * so there is nothing for a mean or a min to fill.
+     */
     ui_mock_get_vitals(&v);
-
-    portENTER_CRITICAL(&s_mux);
-    window = s_window;
-    portEXIT_CRITICAL(&s_mux);
 
     if (ui_demo_enabled()) {
         /*
@@ -374,11 +357,19 @@ static void infer_once(void)
         ESP_LOGW(TAG, "DEMO MODE: reporting priority=%d, model not run",
                  (int)s_priority);
     } else {
-        s_priority = tb_triage_classify(&window, ui_session_get_age(),
-                                        ui_session_get_gender(), &s_confidence);
-        ESP_LOGI(TAG, "triage: priority=%d confidence=%.2f samples=%u valid=%d",
-                 (int)s_priority, (double)s_confidence,
-                 (unsigned)window.samples, (int)v.valid);
+        int esi = 0;
+
+        s_priority = tb_triage_classify(&v, ui_session_get_age(),
+                                        ui_session_get_gender(), &s_confidence,
+                                        &esi);
+        /* ESI logged alongside the colour because the colour cannot be
+         * un-collapsed: 3, 4 and 5 are all GREEN, so without this a walking
+         * patient and a borderline one leave identical evidence behind. */
+        ESP_LOGI(TAG, "triage: priority=%d esi=%d confidence=%.2f valid=%d "
+                      "hr=%u spo2=%u rr=%u sbp=%u",
+                 (int)s_priority, esi, (double)s_confidence, (int)v.valid,
+                 (unsigned)v.hr, (unsigned)v.spo2, (unsigned)v.rr,
+                 (unsigned)v.bp_sys);
     }
     s_have_priority = true;
 

@@ -46,8 +46,10 @@ run components/triagebox_link/tb_i2c_codec_selftest.c \
     components/triagebox_link/tb_i2c_codec.c \
     ui/logic/ui_types.c
 
-# tb_triage.c only: tb_triage_model.c pulls in the 49k-line GBM pipeline, and
-# the parts worth pinning (ESI mapping, window aggregates) are not in it.
+# tb_triage.c plus the ML side's ESI->colour mapping. tb_triage_model.c is NOT
+# linked -- it pulls in the 72k-line GBM. Instead the selftest includes
+# tb_classify.h and supplies its own predict_triage(), so the mapping is checked
+# without the model.
 run components/triagebox_ml/tb_triage_selftest.c \
     components/triagebox_ml/tb_triage_selftest.c \
     components/triagebox_ml/tb_triage.c \

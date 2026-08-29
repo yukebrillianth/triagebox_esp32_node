@@ -6,7 +6,7 @@ Repo ini berisi firmware ESP32-S3 lengkap untuk node TriageBox: **display + infe
                 I²C (bus display, 0x42)
   STM32  <─────────────────────────────>  ESP32-S3  ──> LVGL 480×480
   (sensor,btn,      snapshot 50 ms /         │
-   PN532, LoRa)     CMD + RESULT             │  SVM inference
+   PN532, LoRa)     CMD + RESULT             │  GBM inference
   STM32 ──LoRa SX1278──> Station ──Ethernet──> Backend + Dashboard
 ```
 
@@ -18,10 +18,10 @@ LoRa **tidak** ada di ESP32: budget GPIO board ini habis (`AGENTS.md` → GPIO b
 | --- | --- |
 | `main/` | bring-up saja: `app_main.c`, `asset_fs.c` |
 | `ui/` | LVGL Pro project (XML + generated C) |
-| `ui/logic/` | logic layer platform-neutral — **tidak** tahu soal I²C maupun SVM |
+| `ui/logic/` | logic layer platform-neutral — **tidak** tahu soal I²C maupun model |
 | `components/esp32_s3_touch_lcd_4/` | BSP ter-vendor (patch IDF v6 + flip 180° + read touch non-fatal) |
 | `components/triagebox_link/` | link I²C ↔ STM32 (+ `tb_frame.c` untuk payload LoRa) |
-| `components/triagebox_ml/` | inference SVM |
+| `components/triagebox_ml/` | inference GBM (ESI 1..5) + adapter ke warna START |
 | `sim/` | simulator SDL desktop |
 | `tools/run_selftests.sh` | jalankan semua selftest di host |
 
@@ -32,11 +32,11 @@ LoRa **tidak** ada di ESP32: budget GPIO board ini habis (`AGENTS.md` → GPIO b
 | Target | File | Sumber data |
 | --- | --- | --- |
 | `sim/` | `ui/logic/ui_mock.c` | fake deterministik (QA desktop) |
-| `main/` | `components/triagebox_link/tb_ui_source.c` | I²C + SVM |
+| `main/` | `components/triagebox_link/tb_ui_source.c` | I²C + model |
 
 Akibatnya `ui/logic/` tidak berubah satu baris pun saat pindah dari mock ke hardware — dan sim tetap bisa dijalankan tanpa STM32. **Apa pun yang ditambahkan ke `ui_mock.h` wajib diimplementasikan di kedua file.**
 
-Trigger inference sudah ada tanpa kode baru: `ui_runtime.c` memanggil `ui_mock_get_priority()` tepat sekali setelah measure selesai (`pull_mock_priority_once`), jadi `tb_ui_source.c` menjalankan SVM di situ lalu langsung mengirim `RESULT`.
+Trigger inference sudah ada tanpa kode baru: `ui_runtime.c` memanggil `ui_mock_get_priority()` tepat sekali setelah measure selesai (`pull_mock_priority_once`), jadi `tb_ui_source.c` menjalankan model di situ lalu langsung mengirim `RESULT`.
 
 ## Wire ESP32 ↔ STM32: register map I²C
 
@@ -144,33 +144,46 @@ Satu invariant yang mudah dilanggar: snapshot kosong saat gate **terbuka** tidak
 
 Bunyi buzzer sekali saat scan sukses di-arm oleh layar **SCANNING**, bukan oleh "Berhasil sedang tampil": Berhasil juga bisa dicapai mundur dari Age, dan bip di situ berarti "kartu terbaca" padahal tidak ada yang dibaca.
 
-## SVM
+## Model triase
 
-`components/triagebox_ml/` — linear one-vs-rest, 5 fitur (`hr, spo2, rr, bp_sys, bp_dia`), 4 kelas.
+`components/triagebox_ml/` — GBM (LightGBM, di-emit sebagai C) dengan **6 fitur**: `age, sex, systolic_bp, heart_rate, respiratory_rate, spo2`. Output mentahnya **ESI 1..5** plus vektor probabilitas 5 kelas.
 
 ```c
-ui_priority_t tb_svm_classify(const vitals_t *v, float *confidence);
+/* tb_triage.h -- satu-satunya pintu masuk dari UI */
+ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
+                                 ui_gender_t gender, float *confidence,
+                                 int *esi);
 ```
 
-- `z = (x - mean) / std` (StandardScaler), `score[c] = dot(w[c], z) + b[c]`, kelas menang = argmax.
-- `confidence` = softmax atas skor, selalu di `[0,1]` seperti yang backend minta. Perlu dicatat: SVM one-vs-rest **tidak** menghasilkan probabilitas terkalibrasi — ini pemetaan skor→`[0,1]` yang monoton, bukan peluang sebenarnya. Nilai minimumnya 0.25 (semua skor sama).
-- `v->valid == false` → `UI_PRIORITY_BLACK`, confidence 0. Menebak prioritas dari vital yang tidak ada lebih berbahaya daripada mengaku tidak tahu.
-- Age band + gender **bukan** fitur model (proposal hanya menyebut variabel fisiologis). UI tetap mengumpulkannya untuk registrasi korban.
-- `reasons` dikirim kosong: SVM tidak punya jalur aturan untuk dikutip, dan tidak dibuat tabel ambang terpisah. Backend memang men-default `reasons` ke `[]`.
+Modelnya makan **satu bacaan sesaat**, bukan agregat. Ini berubah dari pipeline sebelumnya yang minta mean/min/max sepanjang window — `tb_vitals_window_t` cuma ada untuk itu dan ikut hilang bersamanya. `infer_once()` sekarang mengirim snapshot terakhir apa adanya.
 
-### ⚠️ Model sekarang PLACEHOLDER
+### ESI → warna: 3 kelas, standar START Indonesia
 
-`include/tb_svm_model.h` isinya nol semua. Argmax selalu jatuh ke baris pertama, jadi **setiap** pasien dengan vital valid dikategorikan `RED` dengan confidence 0.25. Firmware link dan flow bisa didemo, tapi **belum melakukan triase.**
-
-Cara mengganti dari notebook training (sklearn `LinearSVC` + `StandardScaler`):
-
-| Konstanta | Dari |
+| ESI | Warna |
 | --- | --- |
-| `K_MEAN` / `K_STD` | `scaler.mean_` / `scaler.scale_` |
-| `K_W` (4×5) | `clf.coef_` |
-| `K_B` (4) | `clf.intercept_` |
+| 1 | 🔴 **MERAH** |
+| 2 | 🟡 **KUNING** |
+| 3, 4, 5 | 🟢 **HIJAU** |
+| fitur ada yang 0 | ⚫ **HITAM** — menolak menilai |
 
-Urutan baris `K_W`/`K_B` **wajib** `RED, YELLOW, GREEN, BLACK` (urutan `ui_priority_t`), bukan urutan wire. Isi juga header komentarnya: tanggal training, ukuran dataset, akurasi, sensitivitas — target PKM akurasi >90%, sensitivitas >95%.
+Pemetaan ini milik sisi ML dan tinggal di `include/tb_classify.h`. Adapter yang memanggilnya; `tb_triage_selftest.c` yang memakunya — dengan `predict_triage()` **versi stub milik selftest sendiri**, sehingga pemetaannya teruji tanpa me-link model 72k baris. Itu sebabnya file itu dulu tidak pernah teruji.
+
+`tb_triage_classify()` juga melaporkan **ESI mentah** karena warnanya tidak bisa dibalik: 3, 4, dan 5 sama-sama HIJAU, jadi log yang cuma membawa warna tidak bisa membedakan pasien yang bisa berjalan dari yang di ambang. Dipakai untuk diagnosa saja — tidak ada yang menampilkannya di layar.
+
+`ui_priority_t` urutannya `RED=0, YELLOW=1, GREEN=2, BLACK=3` — **bukan** urutan severity untuk BLACK. Cast langsung dari ESI memetakan pasien paling kritis ke warna paling bisa ditunda. Selalu lewat pemetaan di atas.
+
+### Yang belum terhubung
+
+- **`airway_problem`.** Ini satu-satunya input yang bisa memaksa MERAH sendiri (`tb_classify.h`), dan **tidak ada yang mengisinya** — `tb_triage_classify()` hardcode 0. Tidak ada pertanyaan airway di layar registrasi dan tidak ada bit untuk itu di link I²C. Menghubungkannya berarti langkah registrasi baru atau flag STM32 baru.
+- **Tekanan darah.** `bp_pipeline.c` + `lgbm_sbp.c` (estimator SBP dari PPG) ada di build tapi belum dipanggil dari mana pun. Sementara ini `systolic_bp` datang dari snapshot STM32, yang `TB_FLAG_BP_VALID`-nya masih selalu 0 — jadi praktisnya 0, dan gate "menolak menilai" yang menangkapnya.
+- **Age band, bukan umur.** UI hanya mengumpulkan band, jadi `tb_triage_age_years()` memilih titik tengah (12/31/53/70). Error terikat setengah lebar band, bukan selebar band.
+- `reasons` dikirim kosong. Backend memang men-default ke `[]`.
+
+### `-mauto-litpools`: kenapa ada flag khusus di CMakeLists
+
+`score_lgbm_multiclass()` adalah **satu fungsi ~67k baris**, dan itu memecahkan build Xtensa: `dangerous relocation: l32r: literal target out of range`. `l32r` hanya menjangkau mundur sejauh tertentu, sedangkan semua literal satu fungsi normalnya ditaruh di satu pool di awal section — ujung jauh kodenya terlalu jauh dari pool itu.
+
+`-mtext-section-literals` **tidak cukup**: errornya hanya pindah dari linker ke assembler (`operand 2 of 'l32r' has out of range value`), karena masih satu pool per section. `-mauto-litpools` membiarkan assembler menyisipkan pool tambahan di tengah fungsi setiap kali jangkauannya habis. Flagnya di-scope ke satu file itu saja. Hilang sendiri kalau modelnya di-emit sebagai tabel data + interpreter kecil, yang sekaligus memotong 72k baris dan waktu compile-nya.
 
 ## Catatan hardware
 
