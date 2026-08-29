@@ -494,6 +494,10 @@ static int cmd_stats(int argc, char **argv)
         printf("tb_rx    : %u of 4096\n",
                (unsigned)(uxTaskGetStackHighWaterMark(rx) * sizeof(StackType_t)));
     }
+    /* Us. Printed because this is the task that ran the model above, and it is
+     * the one that overflowed at the 4096 default -- see tb_debug_start(). */
+    printf("console  : %u of 16384\n",
+           (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
     printf("\n--- link ---\n");
     printf("polls_ok=%u polls_failed=%u btn_dropped=%u\n",
@@ -816,6 +820,18 @@ void tb_debug_console_start(void)
 
     repl_cfg.prompt = "triagebox>";
     repl_cfg.max_cmdline_length = 128;
+    /*
+     * The default is 4096, and `stats` panicked on it: LoadProhibited with
+     * 0xA5A5A5A5 in the argument registers and a CORRUPTED backtrace, which is
+     * FreeRTOS's stack fill pattern read back as data. Commands here run the GBM
+     * triage model in the console task, and score_lgbm_multiclass() plus the
+     * TriageInput/TriageOutput pair does not fit in 4 KB.
+     *
+     * 16 KB rather than a measured minimum because this task only exists in debug
+     * builds, so the RAM is free anyway -- and `stats` now prints its own high
+     * water mark, so the real requirement is on screen instead of in a guess.
+     */
+    repl_cfg.task_stack_size = 16384;
 
     static const esp_console_cmd_t cmds[] = {
         {.command = "rfid",   .help = "Inject RFID frame [tag]",                 .func = cmd_rfid},
