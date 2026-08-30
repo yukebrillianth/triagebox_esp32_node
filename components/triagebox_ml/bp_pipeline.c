@@ -4,23 +4,22 @@
 #include <string.h>
 #include <math.h>
 
-void bp_min_max_normalize(double *buffer, size_t length) {
+void bp_zscore_normalize(double *buffer, size_t length) {
     if (length == 0) return;
-    double min_v = buffer[0];
-    double max_v = buffer[0];
-    for (size_t i = 1; i < length; i++) {
-        if (buffer[i] < min_v) min_v = buffer[i];
-        if (buffer[i] > max_v) max_v = buffer[i];
+    double sum = 0.0;
+    for (size_t i = 0; i < length; i++) {
+        sum += buffer[i];
     }
-    double range = max_v - min_v;
-    if (range > 1e-9) {
-        for (size_t i = 0; i < length; i++) {
-            buffer[i] = (buffer[i] - min_v) / (range + 1e-5);
-        }
-    } else {
-        for (size_t i = 0; i < length; i++) {
-            buffer[i] = 0.0;
-        }
+    double mean = sum / (double)length;
+    double var_sum = 0.0;
+    for (size_t i = 0; i < length; i++) {
+        double diff = buffer[i] - mean;
+        var_sum += diff * diff;
+    }
+    double std_dev = sqrt(var_sum / (double)length);
+    if (std_dev < 1e-9) std_dev = 1.0;
+    for (size_t i = 0; i < length; i++) {
+        buffer[i] = (buffer[i] - mean) / std_dev;
     }
 }
 
@@ -125,6 +124,15 @@ static void compute_morphology_c(
         int pulse_len = v_end - v_start;
         if (pulse_len < 35) continue;
 
+        double p_min = sig[v_start];
+        double p_max = sig[v_start];
+        for (int k = v_start; k < v_end; k++) {
+            if (sig[k] < p_min) p_min = sig[k];
+            if (sig[k] > p_max) p_max = sig[k];
+        }
+        double p_range = p_max - p_min;
+        if (p_range < 1e-6) continue;
+
         int p_peak_rel = 0;
         double max_val = sig[v_start];
         for (int k = v_start; k < v_end; k++) {
@@ -139,8 +147,9 @@ static void compute_morphology_c(
 
         int count_75 = 0, count_50 = 0;
         for (int k = v_start; k < v_end; k++) {
-            if (sig[k] >= 0.75) count_75++;
-            if (sig[k] >= 0.50) count_50++;
+            double norm_val = (sig[k] - p_min) / p_range;
+            if (norm_val >= 0.75) count_75++;
+            if (norm_val >= 0.50) count_50++;
         }
         pw75_sum += (count_75 / BP_SAMPLING_RATE_HZ) * 1000.0;
         pw50_sum += (count_50 / BP_SAMPLING_RATE_HZ) * 1000.0;
@@ -207,12 +216,10 @@ bool bp_extract_features(
     memcpy(ir_norm,  bandpass_ppg_ir,  num_samples * sizeof(double));
     memcpy(ecg_norm, bandpass_ecg,     num_samples * sizeof(double));
 
-    // [1] Min-Max normalize 0.0 to 1.0
-    bp_min_max_normalize(red_norm, num_samples);
-    bp_min_max_normalize(ir_norm,  num_samples);
-    bp_min_max_normalize(ecg_norm, num_samples);
+    bp_zscore_normalize(red_norm, num_samples);
+    bp_zscore_normalize(ir_norm,  num_samples);
+    bp_zscore_normalize(ecg_norm, num_samples);
 
-    // [2] Pan-Tompkins QRS Energy Integration
     double *ecg_diff = (double*)malloc(num_samples * sizeof(double));
     double *ecg_qrs  = (double*)malloc(num_samples * sizeof(double));
     if (!ecg_diff || !ecg_qrs) {
@@ -228,6 +235,7 @@ bool bp_extract_features(
     }
     ecg_diff[num_samples - 1] = ecg_norm[num_samples - 1] - ecg_norm[num_samples - 2];
 
+    double max_qrs = 0.0;
     for (size_t i = 0; i < num_samples; i++) {
         double win_sum = 0.0;
         int count = 0;
@@ -239,14 +247,18 @@ bool bp_extract_features(
             }
         }
         ecg_qrs[i] = (count > 0) ? (win_sum / count) : 0.0;
+        if (ecg_qrs[i] > max_qrs) max_qrs = ecg_qrs[i];
     }
-    bp_min_max_normalize(ecg_qrs, num_samples);
+    if (max_qrs > 1e-9) {
+        for (size_t i = 0; i < num_samples; i++) {
+            ecg_qrs[i] /= max_qrs;
+        }
+    }
 
-    // [3] Peak Detection
     int ecg_peaks[512], ir_peaks[512], red_peaks[512];
     int num_ecg = find_peaks_1d(ecg_qrs, num_samples, 35, 0.10, ecg_peaks, 512);
-    int num_ir  = find_peaks_1d(ir_norm, num_samples, 35, 0.05, ir_peaks,  512);
-    int num_red = find_peaks_1d(red_norm,num_samples, 35, 0.05, red_peaks, 512);
+    int num_ir  = find_peaks_1d(ir_norm, num_samples, 35, 0.25, ir_peaks,  512);
+    int num_red = find_peaks_1d(red_norm,num_samples, 35, 0.25, red_peaks, 512);
 
     free(ecg_diff);
     free(ecg_qrs);
@@ -265,11 +277,16 @@ bool bp_extract_features(
     double *v_red = (double*)malloc(num_samples * sizeof(double));
     double *a_red = (double*)malloc(num_samples * sizeof(double));
     if (!v_ir || !a_ir || !v_red || !a_red) {
-        free(red_norm); free(ir_norm); free(ecg_norm);
         /* No `if (p)` guards: free(NULL) is a no-op by definition, and two
-         * `if`s on one line is what -Werror=misleading-indentation rejected. */
-        free(v_ir); free(a_ir);
-        free(v_red); free(a_red);
+         * `if`s on one line is what -Werror=misleading-indentation rejected.
+         * One statement per line so neither can come back. */
+        free(red_norm);
+        free(ir_norm);
+        free(ecg_norm);
+        free(v_ir);
+        free(a_ir);
+        free(v_red);
+        free(a_red);
         return false;
     }
     bp_compute_derivatives(ir_norm, v_ir, a_ir, num_samples);
@@ -344,7 +361,6 @@ bool bp_extract_features(
     double ptt_d_sq_inv = 1.0 / ((pat_d - pep_est) * (pat_d - pep_est) + 1e-5);
     double ptt_p_sq_inv = 1.0 / (ptt_p_est * ptt_p_est + 1e-5);
 
-    // Valleys
     double *neg_ir  = (double*)malloc(num_samples * sizeof(double));
     double *neg_red = (double*)malloc(num_samples * sizeof(double));
     for (size_t i = 0; i < num_samples; i++) {
@@ -352,8 +368,8 @@ bool bp_extract_features(
         neg_red[i]= -red_norm[i];
     }
     int ir_valleys[512], red_valleys[512];
-    int num_ir_v  = find_peaks_1d(neg_ir,  num_samples, 35, 0.02, ir_valleys,  512);
-    int num_red_v = find_peaks_1d(neg_red, num_samples, 35, 0.02, red_valleys, 512);
+    int num_ir_v  = find_peaks_1d(neg_ir,  num_samples, 35, 0.25, ir_valleys,  512);
+    int num_red_v = find_peaks_1d(neg_red, num_samples, 35, 0.25, red_valleys, 512);
     free(neg_ir);
     free(neg_red);
 
@@ -367,17 +383,17 @@ bool bp_extract_features(
     double k_val = tsys / (t_dia_est + 1e-5);
 
     double ac_ir = 0.0, ac_red = 0.0, dc_ir = 0.0, dc_red = 0.0;
-    double min_raw_i = bandpass_ppg_ir[0], max_raw_i = bandpass_ppg_ir[0], sum_raw_i = 0.0;
-    double min_raw_r = bandpass_ppg_red[0], max_raw_r = bandpass_ppg_red[0], sum_raw_r = 0.0;
+    double min_raw_i = ir_norm[0], max_raw_i = ir_norm[0], sum_raw_i = 0.0;
+    double min_raw_r = red_norm[0], max_raw_r = red_norm[0], sum_raw_r = 0.0;
 
     for (size_t i = 0; i < num_samples; i++) {
-        if (bandpass_ppg_ir[i] < min_raw_i) min_raw_i = bandpass_ppg_ir[i];
-        if (bandpass_ppg_ir[i] > max_raw_i) max_raw_i = bandpass_ppg_ir[i];
-        sum_raw_i += bandpass_ppg_ir[i];
+        if (ir_norm[i] < min_raw_i) min_raw_i = ir_norm[i];
+        if (ir_norm[i] > max_raw_i) max_raw_i = ir_norm[i];
+        sum_raw_i += ir_norm[i];
 
-        if (bandpass_ppg_red[i] < min_raw_r) min_raw_r = bandpass_ppg_red[i];
-        if (bandpass_ppg_red[i] > max_raw_r) max_raw_r = bandpass_ppg_red[i];
-        sum_raw_r += bandpass_ppg_red[i];
+        if (red_norm[i] < min_raw_r) min_raw_r = red_norm[i];
+        if (red_norm[i] > max_raw_r) max_raw_r = red_norm[i];
+        sum_raw_r += red_norm[i];
     }
     ac_ir = max_raw_i - min_raw_i;
     dc_ir = (sum_raw_i / num_samples) + 1e-5;
@@ -390,7 +406,6 @@ bool bp_extract_features(
     free(red_norm); free(ir_norm); free(ecg_norm);
     free(v_ir); free(a_ir); free(v_red); free(a_red);
 
-    // Populate the 23 dedicated features matching FEAT_* defines
     features_out[FEAT_PAT_D]            = pat_d;
     features_out[FEAT_PAT_P]            = pat_p;
     features_out[FEAT_PAT_F_FRIDERICIA] = pat_f_fridericia;

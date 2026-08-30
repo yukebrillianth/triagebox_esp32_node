@@ -13,6 +13,7 @@ static inline double predict_sbp(double *features) {
     return score_sbp(features);
 }
 
+// Feature Index Mapping for double input[NUM_INPUT_FEATURES]
 #define FEAT_PAT_D                     0
 #define FEAT_PAT_P                     1
 #define FEAT_PAT_F_FRIDERICIA          2
