@@ -423,6 +423,19 @@ void ui_mock_cycle_priority(void)
     /* QA-only shortcut in the mock; on hardware the SVM decides. */
 }
 
+void ui_mock_reclassify(void)
+{
+    /*
+     * Drop the latch infer_once() holds, so the next ui_mock_get_priority() scores
+     * the CURRENT snapshot. Called by the monitor re-triage timer.
+     *
+     * That re-send to the STM32 is deliberate, not a side effect: a patient who
+     * deteriorates has to reach the station and the dashboard as the new colour,
+     * and tb_link_send_result() inside infer_once() is the only path there.
+     */
+    s_have_priority = false;
+}
+
 void ui_mock_push_button(uint8_t index, bool pressed)
 {
     tb_ui_source_on_button(index, pressed);
@@ -458,6 +471,8 @@ void ui_mock_get_link_status(link_status_t *out)
     out->link_never_seen = !s_frame_seen;
     out->lora_rssi_dbm = s_rssi_dbm;
     out->lora_rssi_valid = s_rssi_valid;
+    out->polls_ok = tb_link_frames_ok();
+    out->polls_failed = tb_link_crc_errors();
     portEXIT_CRITICAL(&s_mux);
 
     /* Only the sensor dot is faked. The Sistem and LoRa dots stay honest because

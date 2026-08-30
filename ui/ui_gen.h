@@ -206,6 +206,7 @@ extern lv_obj_t * mengukur;
 extern lv_obj_t * monitor;
 extern lv_obj_t * result;
 extern lv_obj_t * scanning;
+extern lv_obj_t * test;
 
 /*----------------
  * Global styles
@@ -592,6 +593,7 @@ void ui_init_gen(const char * asset_path);
 #include "screens/monitor_gen.h"
 #include "screens/result_gen.h"
 #include "screens/scanning_gen.h"
+#include "screens/test_gen.h"
 
 #ifdef __cplusplus
 } /*extern "C"*/

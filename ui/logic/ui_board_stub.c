@@ -29,3 +29,9 @@ bool ui_board_battery(uint8_t *percent, bool *charging)
     (void)charging;
     return false;
 }
+
+bool ui_board_battery_mv(uint16_t *millivolts)
+{
+    (void)millivolts;
+    return false;
+}

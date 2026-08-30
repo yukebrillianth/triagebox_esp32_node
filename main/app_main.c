@@ -32,6 +32,7 @@ static void show_airway(void)   { lv_screen_load(ui_airway_screen()); }
 static void show_mengukur(void) { lv_screen_load(mengukur); }
 static void show_result(void)   { lv_screen_load(result); }
 static void show_monitor(void)  { lv_screen_load(monitor); }
+static void show_test(void)     { lv_screen_load(test); }
 
 static esp_err_t mount_assets(void)
 {
@@ -96,6 +97,7 @@ static void register_triage_screens(void)
     ui_nav_register(UI_SCREEN_MENGUKUR, show_mengukur);
     ui_nav_register(UI_SCREEN_RESULT, show_result);
     ui_nav_register(UI_SCREEN_MONITOR, show_monitor);
+    ui_nav_register(UI_SCREEN_TEST, show_test);
 }
 
 /*

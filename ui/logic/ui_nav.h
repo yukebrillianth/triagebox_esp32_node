@@ -17,6 +17,11 @@ typedef enum {
     UI_SCREEN_MENGUKUR,
     UI_SCREEN_RESULT,
     UI_SCREEN_MONITOR,
+    /* Range test / diagnostics, reached from the Menu and not part of the patient
+     * flow. Appended AFTER Monitor on purpose: the tables indexed by this enum
+     * would otherwise all shift by one, which is the trap the comment above
+     * describes. */
+    UI_SCREEN_TEST,
     UI_SCREEN_COUNT
 } ui_screen_id_t;
 
@@ -25,6 +30,12 @@ typedef void (*ui_screen_show_fn)(void);
 void ui_nav_register(ui_screen_id_t id, ui_screen_show_fn show);
 void ui_nav_go(ui_screen_id_t id);
 ui_screen_id_t ui_nav_current(void);
+
+/*
+ * Return from a screen that is not part of the linear flow (Test). Returns to
+ * whichever screen was showing when Test was opened, or Home as a fallback.
+ */
+void ui_nav_back_from_test(void);
 
 /* List screens update these as focus moves; Select commits them to session. */
 void ui_nav_set_pending_age(ui_age_band_t age);

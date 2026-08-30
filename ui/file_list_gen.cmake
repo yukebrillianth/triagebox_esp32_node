@@ -276,5 +276,6 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/screens/monitor_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/screens/result_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/screens/scanning_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/test_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/ui_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/ui.c)

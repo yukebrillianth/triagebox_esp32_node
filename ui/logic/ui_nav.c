@@ -16,6 +16,14 @@ static ui_gender_t s_pending_gender = UI_GENDER_M;
  */
 static bool s_pending_airway;
 
+/*
+ * Where Back on the Test screen returns to. One slot, recorded when Test is
+ * entered, rather than a general navigation history: the eight flow screens all
+ * name their next screen explicitly, so Test is the only one reachable from
+ * everywhere and therefore the only one that needs a return address.
+ */
+static ui_screen_id_t s_test_return = UI_SCREEN_HOME;
+
 static int screen_is_valid(ui_screen_id_t id)
 {
     return id >= UI_SCREEN_HOME && id < UI_SCREEN_COUNT;
@@ -46,6 +54,10 @@ void ui_nav_go(ui_screen_id_t id)
         reset_pending_selections();
     }
 
+    if (id == UI_SCREEN_TEST && s_current != UI_SCREEN_TEST) {
+        s_test_return = s_current;
+    }
+
     s_current = id;
     if (s_show[id] != NULL) {
         s_show[id]();
@@ -55,6 +67,11 @@ void ui_nav_go(ui_screen_id_t id)
 ui_screen_id_t ui_nav_current(void)
 {
     return s_current;
+}
+
+void ui_nav_back_from_test(void)
+{
+    ui_nav_go(s_test_return);
 }
 
 void ui_nav_set_pending_age(ui_age_band_t age)

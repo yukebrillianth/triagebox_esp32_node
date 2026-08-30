@@ -12,6 +12,7 @@
 #include "ui_demo.h"
 #include "ui_mock.h"
 #include "ui_nav.h"
+#include "ui_runtime.h"
 #include "ui_session.h"
 #include "ui_status.h"
 
@@ -25,6 +26,7 @@ static const ui_screen_id_t k_screen_ids[UI_SCREEN_COUNT] = {
     UI_SCREEN_MENGUKUR,
     UI_SCREEN_RESULT,
     UI_SCREEN_MONITOR,
+    UI_SCREEN_TEST,
 };
 
 static lv_obj_t *screen_root(ui_screen_id_t id)
@@ -42,6 +44,7 @@ static lv_obj_t *screen_root(ui_screen_id_t id)
     case UI_SCREEN_MENGUKUR: return mengukur;
     case UI_SCREEN_RESULT:   return result;
     case UI_SCREEN_MONITOR:  return monitor;
+    case UI_SCREEN_TEST:     return test;
     default:                 return NULL;
     }
 }
@@ -501,25 +504,78 @@ static void menu_demo_cb(lv_event_t *e)
 }
 
 /*
- * One settings row: title + sublabel on the left, a switch on the right.
+ * Re-triage interval: 15 s / 30 s / 60 s / Mati, cycled by one button rather than
+ * offered as four radio rows.
  *
- * A row helper with one caller is deliberate rather than premature. The
- * light/dark toggle is the next entry and the stated reason this screen was
- * redesigned, so the second call is what the shape is for. What was NOT done is
- * putting a dead "Tema" row on screen now: a switch that does nothing teaches
- * the operator the menu is broken, and the theme work is explicitly later.
+ * A cycling button because the value is ordinal and short: four rows would be
+ * two thirds of the card for a setting whose whole state fits in the button's own
+ * label, and a dropdown on a resistive-feeling 480x480 panel is worse than a
+ * button for a gloved finger. The cost is that reaching 60 from 15 takes three
+ * presses, which for a setting changed once per deployment is not a cost.
  *
- * on_color is per row because the switches do not all mean the same kind of
- * thing -- see the demo row's amber below.
+ * "Mati" is last on purpose: cycling forward from the default never lands on
+ * "no monitoring" by one press too many.
  */
-static void menu_row(lv_obj_t *card, const char *sub_name, const char *title,
-                     const char *sub, bool on, lv_color_t on_color,
-                     lv_event_cb_t cb)
+static const uint32_t k_retriage_ms[] = {15000U, 30000U, 60000U, 0U};
+
+static const char *retriage_text(uint32_t ms)
+{
+    switch (ms) {
+    case 15000U: return "15 detik";
+    case 30000U: return "30 detik";
+    case 60000U: return "60 detik";
+    default:     return "Mati";
+    }
+}
+
+static void menu_retriage_cb(lv_event_t *e)
+{
+    lv_obj_t *label = lv_obj_get_child(lv_event_get_target(e), 0);
+    uint32_t now = ui_runtime_retriage_ms();
+    unsigned i;
+
+    /* Find the current value and take the next one. An unrecognised value (only
+     * possible if the default is changed to something not in the list) lands on
+     * index 0, which is a valid interval rather than off. */
+    for (i = 0; i < sizeof(k_retriage_ms) / sizeof(k_retriage_ms[0]); i++) {
+        if (k_retriage_ms[i] == now) {
+            break;
+        }
+    }
+    i = (i + 1U) % (sizeof(k_retriage_ms) / sizeof(k_retriage_ms[0]));
+    ui_runtime_set_retriage_ms(k_retriage_ms[i]);
+
+    if (label != NULL) {
+        lv_label_set_text(label, retriage_text(k_retriage_ms[i]));
+    }
+    menu_set_sub("menu_retriage_sub", k_retriage_ms[i] != 0U
+                 ? "Ulangi klasifikasi saat monitoring"
+                 : "Tidak ada klasifikasi ulang");
+}
+
+static void menu_test_cb(lv_event_t *e)
+{
+    (void)e;
+    /* Close first: the scrim lives on lv_layer_top(), so it would otherwise sit
+     * over the screen it just opened. */
+    dialog_close();
+    ui_nav_go(UI_SCREEN_TEST);
+}
+
+/*
+ * One settings row: title + sublabel on the left, a control on the right.
+ *
+ * Split in two because the controls are not all switches: menu_row_begin() lays
+ * out the row and its two labels and returns the row, so the caller appends
+ * whatever control the setting needs. A switch is right for a boolean; the
+ * re-triage interval has four values and gets a cycling button instead.
+ */
+static lv_obj_t *menu_row_begin(lv_obj_t *card, const char *sub_name,
+                                const char *title, const char *sub)
 {
     lv_obj_t *row = lv_obj_create(card);
     lv_obj_t *texts;
     lv_obj_t *label;
-    lv_obj_t *sw;
 
     lv_obj_remove_style_all(row);
     lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
@@ -550,8 +606,20 @@ static void menu_row(lv_obj_t *card, const char *sub_name, const char *title,
     if (font_inter_regular_13 != NULL) {
         lv_obj_set_style_text_font(label, font_inter_regular_13, 0);
     }
+    return row;
+}
 
-    sw = lv_switch_create(row);
+/*
+ * on_color is per row because the switches do not all mean the same kind of
+ * thing -- see the demo row's amber below.
+ */
+static void menu_row(lv_obj_t *card, const char *sub_name, const char *title,
+                     const char *sub, bool on, lv_color_t on_color,
+                     lv_event_cb_t cb)
+{
+    lv_obj_t *row = menu_row_begin(card, sub_name, title, sub);
+    lv_obj_t *sw = lv_switch_create(row);
+
     /* 60x32 rather than LVGL's default 40x20: this is a gloved finger on a
      * 480x480 panel, not a mouse. */
     lv_obj_set_size(sw, 60, 32);
@@ -564,6 +632,19 @@ static void menu_row(lv_obj_t *card, const char *sub_name, const char *title,
     /* Handler added AFTER the initial state, or setting it would fire the
      * callback and toggle the very flag this row is reflecting. */
     lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+/* Same row, with a button whose label carries the value (or the action). */
+static void menu_button_row(lv_obj_t *card, const char *sub_name,
+                            const char *title, const char *sub,
+                            const char *btn_text, lv_event_cb_t cb)
+{
+    lv_obj_t *row = menu_row_begin(card, sub_name, title, sub);
+    lv_obj_t *btn = dialog_button(row, btn_text, false, cb, NULL);
+
+    /* Narrower than a dialog footer button: it sits beside two lines of text, and
+     * 130 px would push the sublabel into wrapping. */
+    lv_obj_set_size(btn, 110, 40);
 }
 
 static void poll_menu_request(void)
@@ -608,6 +689,16 @@ static void poll_menu_request(void)
     menu_row(card, "menu_demo_sub", "Mode demo",
              on ? "Vital & hasil triase palsu" : "Vital dari sensor",
              on, COLOR_STATUS_WARN, menu_demo_cb);
+
+    menu_button_row(card, "menu_retriage_sub", "Interval Re-triase",
+                    ui_runtime_retriage_ms() != 0U
+                    ? "Ulangi klasifikasi saat monitoring"
+                    : "Tidak ada klasifikasi ulang",
+                    retriage_text(ui_runtime_retriage_ms()), menu_retriage_cb);
+
+    menu_button_row(card, "menu_test_sub", "Uji Jangkauan",
+                    "RSSI, tegangan & link STM32",
+                    "Buka", menu_test_cb);
 
     row = dialog_row(card);
     dialog_button(row, "Tutup", false, menu_close_cb, NULL);
@@ -996,6 +1087,108 @@ static void apply_monitor(void)
     apply_vital_tiles(monitor, v);
 }
 
+/* --------------------------------------------------- Range test screen ----- */
+
+/*
+ * The diagnostics screen, refreshed once per second.
+ *
+ * Faster would be pointless (the STM32 is polled at 20 Hz but the numbers are
+ * counters and a dBm from a 15 s station poll) and slower is unusable: the whole
+ * point is walking the box away from the station and watching RSSI fall.
+ *
+ * The gauge IS re-read every second here, against the 10 s the status bar uses.
+ * That is four extra single-byte I2C reads per second on the bus the GT911 shares,
+ * accepted because this screen is entered deliberately to look at exactly that
+ * number, and left as soon as the answer is known.
+ */
+#define TEST_REFRESH_TICKS 20U /* 20 x 50 ms = 1 s */
+
+static void test_set(const char *name, const char *text)
+{
+    lv_obj_t *label = (test != NULL) ? lv_obj_find_by_name(test, name) : NULL;
+
+    if (label != NULL) {
+        lv_label_set_text(label, text);
+    }
+}
+
+/*
+ * "Is the link alive?" -- decided from the ESP32's own poll counters, because
+ * nothing on this board can see the LoRa packet counters: they live on the STM32
+ * and no register publishes them.
+ *
+ * Alive means polls advanced since the last second AND no new failure arrived. A
+ * stalled counter is as dead as a failing one -- it means the poll task is not
+ * running or the STM32 stopped answering -- and both are what someone holding the
+ * box needs to know before they blame the radio.
+ */
+static bool link_is_alive(const link_status_t *s)
+{
+    static uint32_t s_prev_ok;
+    static uint32_t s_prev_failed;
+    bool alive;
+
+    alive = (s->polls_ok > s_prev_ok) && (s->polls_failed == s_prev_failed);
+    s_prev_ok = s->polls_ok;
+    s_prev_failed = s->polls_failed;
+    return alive;
+}
+
+static void apply_test(void)
+{
+    static uint32_t s_ticks;
+    link_status_t s;
+    uint8_t pct;
+    uint16_t mv;
+    bool chg;
+    bool alive;
+    lv_obj_t *dot;
+    char buf[24];
+
+    if (test == NULL || (s_ticks++ % TEST_REFRESH_TICKS) != 0U) {
+        return;
+    }
+
+    ui_mock_get_link_status(&s);
+
+    if (s.lora_rssi_valid) {
+        lv_snprintf(buf, sizeof(buf), "%d dBm", (int)s.lora_rssi_dbm);
+    } else {
+        /* No poll heard yet is not "0 dBm", which would read as a perfect link. */
+        lv_snprintf(buf, sizeof(buf), "-- dBm");
+    }
+    test_set("test_rssi", buf);
+
+    /* Percentage and voltage in one line, and both "--" when the PMIC is unread:
+     * a gauge that answered while the ADC did not is not a case worth a layout. */
+    if (ui_board_battery(&pct, &chg) && ui_board_battery_mv(&mv)) {
+        lv_snprintf(buf, sizeof(buf), "%u%% / %u,%02u V%s", (unsigned)pct,
+                    (unsigned)(mv / 1000U), (unsigned)((mv % 1000U) / 10U),
+                    chg ? " +" : "");
+    } else {
+        lv_snprintf(buf, sizeof(buf), "--%% / --,-- V");
+    }
+    test_set("test_battery", buf);
+
+    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)s.polls_ok);
+    test_set("test_polls_ok", buf);
+    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)s.polls_failed);
+    test_set("test_polls_failed", buf);
+
+    alive = link_is_alive(&s);
+    test_set("test_alive", alive ? "LINK AKTIF" : "LINK MATI");
+    dot = lv_obj_find_by_name(test, "test_alive");
+    if (dot != NULL) {
+        lv_obj_set_style_text_color(dot, alive ? COLOR_STATUS_OK
+                                               : COLOR_STATUS_ERROR, 0);
+    }
+    dot = lv_obj_find_by_name(test, "test_alive_dot");
+    if (dot != NULL) {
+        lv_obj_set_style_bg_color(dot, alive ? COLOR_STATUS_OK
+                                             : COLOR_STATUS_ERROR, 0);
+    }
+}
+
 /* --------------------------------------------------- Result banner blink -- */
 
 /*
@@ -1004,10 +1197,19 @@ static void apply_monitor(void)
  * an immediate case should not stop asking for attention. The others blink
  * only while their beep pattern plays.
  *
+ * A DEGRADATION also blinks for as long as Result is shown, whatever colour it
+ * landed on. The reason is the same one that makes RED permanent: this Result was
+ * not opened by the operator, it interrupted them, so it has to keep saying so
+ * until they look. Cleared by leaving Result -- pressing Monitor or Reset is the
+ * acknowledgement.
+ *
  * Implemented as opacity on the banner, not a colour swap, so it works for
  * every priority colour without a second palette.
  */
 #define BLINK_DIM LV_OPA_40
+
+/* Set when ui_runtime reports a deterioration; cleared on leaving Result. */
+static bool s_degraded_alert;
 
 static void banner_set_dim(bool dim)
 {
@@ -1029,6 +1231,7 @@ static void blink_tick(void)
     bool want_blink;
 
     if (ui_nav_current() != UI_SCREEN_RESULT || !ui_session_has_priority()) {
+        s_degraded_alert = false;
         if (s_dim) {
             s_dim = false;
             banner_set_dim(false);
@@ -1036,8 +1239,9 @@ static void blink_tick(void)
         return;
     }
 
-    /* RED: never stops. Others: only while the buzzer pattern is running. */
-    want_blink = (ui_session_get_priority() == UI_PRIORITY_RED) ||
+    /* RED and a deterioration: never stop. Others: only while the buzzer runs. */
+    want_blink = s_degraded_alert ||
+                 (ui_session_get_priority() == UI_PRIORITY_RED) ||
                  (s_beep_pulses > 0) || s_beep_is_on;
 
     if (!want_blink) {
@@ -1139,6 +1343,25 @@ static void result_beep_tick(void)
 }
 
 /*
+ * A patient got worse. ui_runtime has already re-scored, updated the session and
+ * navigated here; this is the part that needs LVGL.
+ *
+ * Runs AFTER result_beep_tick() on purpose, so the alarm pattern replaces the
+ * ordinary result announcement that the arrival on Result just started. 5 pulses
+ * of ~100 ms is longer than any of the four result patterns (3 short at most, or
+ * one long) -- a sound the operator has not heard before, for the one event they
+ * did not ask for.
+ */
+static void poll_degraded(void)
+{
+    if (!ui_runtime_take_degraded()) {
+        return;
+    }
+    s_degraded_alert = true;
+    beep_start(5, 2);
+}
+
+/*
  * Beep once when a scan succeeds. The Berhasil screen otherwise announces itself
  * only visually, and the operator is looking at the card reader, not the panel.
  *
@@ -1183,6 +1406,7 @@ static void refresh_current_screen(void)
     case UI_SCREEN_MENGUKUR: apply_mengukur(); break;
     case UI_SCREEN_MONITOR:  apply_monitor(); break;
     case UI_SCREEN_BERHASIL: set_patient_id(berhasil, ""); break;
+    case UI_SCREEN_TEST:     apply_test(); break;
     default: break;
     }
 }
@@ -1199,6 +1423,9 @@ static void selection_timer_cb(lv_timer_t *timer)
     /* A result announcement outranks a button click: start it first so the
      * click beep cannot truncate the pattern. */
     result_beep_tick();
+    /* And a deterioration outranks the announcement: this runs last of the three
+     * so its longer pattern replaces whatever result_beep_tick() just armed. */
+    poll_degraded();
     scan_beep_tick();
     /* Vitals keep arriving, so refresh every tick rather than once. Separate
      * from result_beep_tick() because that one returns early off Result. */

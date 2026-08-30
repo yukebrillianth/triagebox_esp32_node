@@ -15,6 +15,7 @@ static const char *const screen_names[UI_SCREEN_COUNT] = {
     "MENGUKUR",
     "RESULT",
     "MONITOR",
+    "TEST",
 };
 
 static void expect(ui_screen_id_t expected)
@@ -69,11 +70,45 @@ static void test_airway_needs_a_deliberate_select(void)
     assert(!ui_nav_pending_airway());
 }
 
+/*
+ * The Test screen hangs off the Menu, so it is reachable from anywhere -- which
+ * means Back has to land where the operator was, not on a fixed screen. What is
+ * pinned here is that the return address follows the screen it was opened from,
+ * and that visiting it does not disturb the patient in the session.
+ */
+static void test_screen_returns_where_it_came_from(void)
+{
+    rfid_t rfid = { "3021", true };
+
+    ui_nav_go(UI_SCREEN_HOME);
+    ui_nav_go(UI_SCREEN_TEST);
+    ui_action(UI_SCREEN_TEST, 0U);
+    expect(UI_SCREEN_HOME);
+
+    /* From mid-flow, with a patient in the session. */
+    ui_action(UI_SCREEN_HOME, 1U);
+    ui_nav_on_rfid_ready(&rfid);
+    expect(UI_SCREEN_BERHASIL);
+    ui_nav_go(UI_SCREEN_TEST);
+    assert(ui_session_has_rfid()); /* Test is not part of the flow: no reset */
+    ui_action(UI_SCREEN_TEST, 0U);
+    expect(UI_SCREEN_BERHASIL);
+    assert(ui_session_has_rfid());
+
+    /* Opening it twice in a row must not make Back a no-op that traps the
+     * operator on the diagnostics screen. */
+    ui_nav_go(UI_SCREEN_TEST);
+    ui_nav_go(UI_SCREEN_TEST);
+    ui_action(UI_SCREEN_TEST, 0U);
+    expect(UI_SCREEN_BERHASIL);
+}
+
 int main(void)
 {
     rfid_t rfid = { "3021", true };
 
     test_airway_needs_a_deliberate_select();
+    test_screen_returns_where_it_came_from();
 
     ui_nav_go(UI_SCREEN_HOME);
     expect(UI_SCREEN_HOME);

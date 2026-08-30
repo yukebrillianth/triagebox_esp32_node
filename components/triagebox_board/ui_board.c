@@ -69,9 +69,12 @@ static esp_io_expander_handle_t s_io;
  * own register. Nothing below writes.
  */
 #define SW6106_REG_STATUS   0x11U /* [4] charging, [5] discharging */
+#define SW6106_REG_VBAT_L   0x14U /* Vbat [7:0]  */
+#define SW6106_REG_VBAT_H   0x15U /* Vbat [11:8] in [3:0]; [7:4] belong to Vout */
 #define SW6106_REG_SOC      0x4FU /* [6:0] final SoC, 1%/step */
 #define SW6106_STAT_CHARGING 0x10U /* [4] */
 #define SW6106_SOC_MASK     0x7FU
+#define SW6106_VBAT_H_MASK  0x0FU
 
 /*
  * One handle, created on first use and never removed: the status bar reads the
@@ -142,6 +145,30 @@ bool ui_board_battery(uint8_t *percent, bool *charging)
     }
     if (charging != NULL) {
         *charging = (status & SW6106_STAT_CHARGING) != 0U;
+    }
+    return true;
+}
+
+bool ui_board_battery_mv(uint16_t *millivolts)
+{
+    i2c_master_dev_handle_t dev = pmic_dev();
+    uint8_t vl = 0;
+    uint8_t vh = 0;
+    uint32_t raw;
+
+    if (dev == NULL) {
+        return false;
+    }
+    if (sw6106_read(dev, SW6106_REG_VBAT_L, &vl) != ESP_OK) {
+        return false;
+    }
+    if (sw6106_read(dev, SW6106_REG_VBAT_H, &vh) != ESP_OK) {
+        return false;
+    }
+    raw = ((uint32_t)(vh & SW6106_VBAT_H_MASK) << 8) | (uint32_t)vl;
+    /* * 1.2 mV -> * 12 / 10; integer math without float. */
+    if (millivolts != NULL) {
+        *millivolts = (uint16_t)((raw * 12U) / 10U);
     }
     return true;
 }

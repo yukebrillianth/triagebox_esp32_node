@@ -63,6 +63,7 @@ lv_obj_t * mengukur = NULL;
 lv_obj_t * monitor = NULL;
 lv_obj_t * result = NULL;
 lv_obj_t * scanning = NULL;
+lv_obj_t * test = NULL;
 
 /*----------------
  * Fonts
@@ -2403,6 +2404,7 @@ void ui_init_gen(const char * asset_path)
     monitor = lv_obj_create(NULL);
     result = lv_obj_create(NULL);
     scanning = lv_obj_create(NULL);
+    test = lv_obj_create(NULL);
 
     age_create();
     berhasil_create();
@@ -2412,6 +2414,7 @@ void ui_init_gen(const char * asset_path)
     monitor_create();
     result_create();
     scanning_create();
+    test_create();
 #endif
 }
 

@@ -37,6 +37,7 @@
 #include "screens/mengukur_gen.h"
 #include "screens/result_gen.h"
 #include "screens/monitor_gen.h"
+#include "screens/test_gen.h"
 #endif
 
 #ifdef _WIN32
@@ -69,6 +70,7 @@ static void runtime_timer_cb(lv_timer_t *t)
  *   Mengukur: (auto after UI_MEASURE_MS) | 1=Abort
  *   Result:   1=Monitor  2=Reset
  *   Monitor:  1=Back  2=Stop
+ *   Test:     1=Back (opened from the Menu dialog)
  */
 static void show_home(void)
 {
@@ -117,6 +119,11 @@ static void show_monitor(void)
     LV_LOG_USER("nav → MONITOR");
     lv_screen_load(monitor);
 }
+static void show_test(void)
+{
+    LV_LOG_USER("nav → TEST");
+    lv_screen_load(test);
+}
 
 static void register_triage_screens(void)
 {
@@ -131,6 +138,7 @@ static void register_triage_screens(void)
         mengukur_create();
         result_create();
         monitor_create();
+        test_create();
     }
 
     ui_nav_register(UI_SCREEN_HOME, show_home);
@@ -142,7 +150,7 @@ static void register_triage_screens(void)
     ui_nav_register(UI_SCREEN_MENGUKUR, show_mengukur);
     ui_nav_register(UI_SCREEN_RESULT, show_result);
     ui_nav_register(UI_SCREEN_MONITOR, show_monitor);
-
+    ui_nav_register(UI_SCREEN_TEST, show_test);
     if(home == NULL) {
         LV_LOG_ERROR("home still NULL after create — cannot load");
         return;

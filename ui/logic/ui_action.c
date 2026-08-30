@@ -263,6 +263,25 @@ static void monitor_action(uint8_t btn_id)
     }
 }
 
+static void test_action(uint8_t btn_id)
+{
+    switch (btn_id) {
+    case 0: /* Back → Previous screen */
+        ui_nav_back_from_test();
+        break;
+    case 2: /* Power */
+        action_power(btn_id);
+        break;
+    case 3: /* Menu -- kept in its usual slot so the re-triage setting is
+              * reachable without leaving the range test. */
+        action_menu(btn_id);
+        break;
+    default: /* 1 empty */
+        action_noop();
+        break;
+    }
+}
+
 typedef void (*ui_screen_action_fn)(uint8_t btn_id);
 
 /* Positional: index == ui_screen_id_t. Adding a screen mid-enum without adding
@@ -277,6 +296,7 @@ static const ui_screen_action_fn s_tables[UI_SCREEN_COUNT] = {
     mengukur_action,
     result_action,
     monitor_action,
+    test_action,
 };
 
 void ui_action(ui_screen_id_t screen, uint8_t btn_id)

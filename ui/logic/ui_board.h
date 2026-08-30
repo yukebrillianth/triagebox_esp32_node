@@ -39,6 +39,24 @@ void ui_board_buzzer(bool on);
 bool ui_board_battery(uint8_t *percent, bool *charging);
 
 /*
+ * Pack voltage in millivolts, or false when the PMIC could not be read (and then
+ * *millivolts is left untouched, same contract as above).
+ *
+ * Separate call rather than a third output on ui_board_battery(): it costs two
+ * more I2C reads on the bus the touch controller shares, and only the range-test
+ * screen wants it. The status bar wants a percentage, and for that the gauge's own
+ * SoC is the better number -- deriving one from this voltage would need a
+ * discharge curve for a pack nobody has characterised.
+ *
+ * Worth showing on a diagnostics screen anyway: a fuel gauge is an estimate, and
+ * a pack sagging under LoRa TX shows up here before the percentage moves.
+ *
+ * Vbat = ((0x15[3:0] << 8) | 0x14) * 1.2 mV, from the SW6106 I2C Register List
+ * RG006_1_v1.2 §2.15 -- the same decode the `pmic` console command prints.
+ */
+bool ui_board_battery_mv(uint16_t *millivolts);
+
+/*
  * Cut the board's own power via the SW6106 PMIC on the shared I2C bus.
  *
  * This is a real shutdown, not a request: on board V3.0 the battery and the
