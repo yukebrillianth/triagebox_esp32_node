@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "soc/i2c_struct.h" /* link_bus_wedged(): the register IDF never clears */
 
 #include "tb_frame.h" /* tb_frame_priority_to_wire() only -- see below */
 #include "tb_i2c_codec.h"
@@ -30,8 +31,45 @@ static const char *TAG = "tb_link_i2c";
  * the alternative to waiting is a spurious "link down". */
 #define TB_I2C_TIMEOUT  100
 
+/*
+ * The peripheral register block for the BSP's I2C port. BSP_I2C_NUM is fixed at
+ * build time (CONFIG_BSP_I2C_NUM), so this is a compile-time constant address,
+ * not a runtime branch on every access.
+ */
+#define TB_I2C_HW (BSP_I2C_NUM == 0 ? &I2C0 : &I2C1)
+
 static i2c_master_dev_handle_t s_dev;
-static SemaphoreHandle_t s_lock; /* serialises our own reads vs writes */
+
+/*
+ * Detect and clear the ESP32-S3 I2C master's own permanent-wedge state.
+ *
+ * The root cause is in IDF v6.0.2, not this project: on any transaction error
+ * the master driver calls i2c_ll_master_clr_bus(), which on the S3 sets
+ * scl_sp_conf.scl_rst_slv_en = 1 to emit 9 recovery pulses -- but the "clear
+ * done" poll (i2c_ll_master_is_bus_clear_done) hardcodes false on the S3, so the
+ * driver's disarm write (clr_bus(..,false)) is never reached and the bit stays 1
+ * forever. From then on every transaction re-arms it, SCL never actually moves,
+ * and each attempt fails with a ~26 ms timeout. The bus is dead until reboot.
+ *
+ * link_bus_wedged() reads that stuck bit directly -- no transaction, so it is
+ * safe to call every poll and cannot itself hang. link_bus_unwedge() resets the
+ * peripheral FSM (which also runs the clear-bus that the driver leaves armed),
+ * clears the bit by hand, and commits it via the shadow-register update bit.
+ * Must be called holding bsp_i2c_lock(): it pokes the same peripheral a
+ * concurrent transaction would be using.
+ */
+static bool link_bus_wedged(void)
+{
+    return TB_I2C_HW->scl_sp_conf.scl_rst_slv_en != 0;
+}
+
+static void link_bus_unwedge(void)
+{
+    (void)i2c_master_bus_reset(bsp_i2c_get_handle());
+    TB_I2C_HW->scl_sp_conf.scl_rst_slv_en = 0;
+    TB_I2C_HW->ctr.conf_upgate = 1; /* commit the shadowed scl_sp_conf write */
+    ESP_LOGW(TAG, "I2C master un-wedged (cleared scl_rst_slv_en)");
+}
 
 static uint32_t s_polls_ok;
 static uint32_t s_polls_failed;
@@ -68,11 +106,11 @@ static void poll_once(void)
     esp_err_t err;
     uint8_t seq;
 
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(TB_I2C_TIMEOUT)) != pdTRUE) {
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
         return;
     }
     err = read_block(TB_REG_PROTO_VER, raw, sizeof(raw));
-    xSemaphoreGive(s_lock);
+    bsp_i2c_unlock();
 
     if (err != ESP_OK) {
         ++s_polls_failed;
@@ -197,7 +235,7 @@ static void push_battery_if_due(void)
         pct = 0xFFU;
     }
 
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(TB_I2C_TIMEOUT)) != pdTRUE) {
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
         return;
     }
     if (write_reg(TB_REG_HOST_BATTERY, pct) != ESP_OK) {
@@ -206,7 +244,7 @@ static void push_battery_if_due(void)
          * symptom of a dead link, and the status dots already show that. */
         ESP_LOGD(TAG, "battery %u not delivered", (unsigned)pct);
     }
-    xSemaphoreGive(s_lock);
+    bsp_i2c_unlock();
 }
 
 /*
@@ -232,7 +270,7 @@ static void poll_rssi_if_due(void)
         return; /* first pass runs, so the bar has a value within a poll of boot */
     }
 
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(TB_I2C_TIMEOUT)) != pdTRUE) {
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
         return;
     }
     /*
@@ -245,11 +283,11 @@ static void poll_rssi_if_due(void)
      * link_never_seen path in the status dots.
      */
     if (read_block(TB_REG_LORA_RSSI, &raw, 1U) == ESP_OK) {
-        xSemaphoreGive(s_lock);
+        bsp_i2c_unlock();
         tb_ui_source_on_rssi((int8_t)raw);
         return;
     }
-    xSemaphoreGive(s_lock);
+    bsp_i2c_unlock();
     ESP_LOGD(TAG, "rssi read failed");
 }
 
@@ -257,6 +295,16 @@ static void poll_task(void *arg)
 {
     (void)arg;
     for (;;) {
+        /*
+         * Before anything else, because everything else is a transaction and a
+         * wedged master fails all of them at ~26 ms a go. This task polls at
+         * 20 Hz, so it is the natural place to notice: one poll after the fault
+         * the bus is back, without the reboot that used to be the only cure.
+         */
+        if (link_bus_wedged() && bsp_i2c_lock(TB_I2C_TIMEOUT)) {
+            link_bus_unwedge();
+            bsp_i2c_unlock();
+        }
         poll_once();
         poll_rssi_if_due();
         push_battery_if_due();
@@ -282,11 +330,6 @@ esp_err_t tb_link_start(void)
          * a wiring-order bug in app_main, not a runtime condition. */
         ESP_LOGE(TAG, "I2C bus not up yet -- call after bsp_display_start()");
         return ESP_ERR_INVALID_STATE;
-    }
-
-    s_lock = xSemaphoreCreateMutex();
-    if (s_lock == NULL) {
-        return ESP_ERR_NO_MEM;
     }
 
     err = i2c_master_bus_add_device(bus, &cfg, &s_dev);
@@ -322,11 +365,11 @@ esp_err_t tb_link_send_cmd(uint8_t cmd)
     if (s_dev == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(TB_I2C_TIMEOUT)) != pdTRUE) {
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
         return ESP_ERR_TIMEOUT;
     }
     err = write_reg(TB_REG_CMD, cmd);
-    xSemaphoreGive(s_lock);
+    bsp_i2c_unlock();
 
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "cmd 0x%02x not delivered: %s", (unsigned)cmd,
@@ -353,7 +396,7 @@ esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
     }
     pct = (uint8_t)((confidence * 100.0f) + 0.5f);
 
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(TB_I2C_TIMEOUT)) != pdTRUE) {
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
         return ESP_ERR_TIMEOUT;
     }
     /*
@@ -371,7 +414,7 @@ esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
     if (err == ESP_OK) {
         err = write_reg(TB_REG_CONFIDENCE, pct);
     }
-    xSemaphoreGive(s_lock);
+    bsp_i2c_unlock();
 
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "RESULT not delivered: %s -- station will miss this "
