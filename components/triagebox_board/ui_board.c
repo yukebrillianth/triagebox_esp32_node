@@ -77,6 +77,21 @@ static esp_io_expander_handle_t s_io;
 #define SW6106_VBAT_H_MASK  0x0FU
 
 /*
+ * Every function here shares SDA GPIO15 / SCL GPIO7 with the GT911, the RTC and
+ * the STM32 polled at 20 Hz, so each public entry point takes bsp_i2c_lock()
+ * around its whole register sequence -- not per transfer. A single
+ * transmit_receive is already indivisible inside the IDF driver; what is not is
+ * the SW6106's three-write unlock-then-shutdown, and holding the lock across it
+ * is free.
+ *
+ * 100 ms: longer than any 100 kHz transfer plus one competing sequence, short
+ * enough that a wedged bus makes the caller skip a turn instead of hanging.
+ * Never portMAX_DELAY -- ui_board_backlight() and ui_board_buzzer() run on the
+ * LVGL task, and that is exactly the freeze this lock exists to prevent.
+ */
+#define UI_BOARD_I2C_TIMEOUT 100
+
+/*
  * One handle, created on first use and never removed: the status bar reads the
  * gauge periodically, and add/remove per read would churn the bus driver's
  * device list for no benefit.
@@ -123,19 +138,31 @@ bool ui_board_battery(uint8_t *percent, bool *charging)
     i2c_master_dev_handle_t dev = pmic_dev();
     uint8_t soc = 0;
     uint8_t status = 0;
+    esp_err_t err;
 
     if (dev == NULL) {
         return false;
     }
-    if (sw6106_read(dev, SW6106_REG_SOC, &soc) != ESP_OK) {
+    if (!bsp_i2c_lock(UI_BOARD_I2C_TIMEOUT)) {
+        /* Same outcome as an unreadable gauge, deliberately: the caller renders
+         * "--%" rather than a stale percentage. See the 0xFF rule in
+         * tb_link_i2c.c's push_battery_if_due(). */
+        ESP_LOGD(TAG, "battery read skipped: I2C bus busy");
         return false;
     }
-    /* Charge state is a nice-to-have: losing it must not also lose a percentage
-     * we did read. */
-    if (sw6106_read(dev, SW6106_REG_STATUS, &status) != ESP_OK) {
-        status = 0;
+    err = sw6106_read(dev, SW6106_REG_SOC, &soc);
+    if (err == ESP_OK) {
+        /* Charge state is a nice-to-have: losing it must not also lose a
+         * percentage we did read. */
+        if (sw6106_read(dev, SW6106_REG_STATUS, &status) != ESP_OK) {
+            status = 0;
+        }
     }
+    bsp_i2c_unlock();
 
+    if (err != ESP_OK) {
+        return false;
+    }
     soc &= SW6106_SOC_MASK;
     if (soc > 100U) {
         soc = 100U; /* 0x4F is spec'd 0-100; anything else is a bad read. */
@@ -175,10 +202,24 @@ bool ui_board_battery_mv(uint16_t *millivolts)
 
 void ui_board_init(void)
 {
+    /*
+     * bsp_i2c_get_handle() purely to force bsp_i2c_init(): the lock is created
+     * there, and esp_io_expander_new_i2c_tca9554() below does its own I2C
+     * transactions that have to be inside it. app_main calls this AFTER
+     * bsp_display_start(), so the LVGL task is already polling touch on this bus
+     * -- an unlocked collision here leaves the backlight off, which reads as a
+     * dead panel (AGENTS.md hardware trap 2).
+     */
+    if (bsp_i2c_get_handle() == NULL || !bsp_i2c_lock(UI_BOARD_I2C_TIMEOUT)) {
+        ESP_LOGE(TAG, "no I2C bus, or bus busy; backlight/buzzer stay untouched");
+        return;
+    }
+
     /* bsp_io_expander_init() exists in the BSP but nothing ever called it,
      * which is why bsp_display_brightness_set() has always been a no-op. */
     s_io = bsp_io_expander_init();
     if (s_io == NULL) {
+        bsp_i2c_unlock();
         ESP_LOGE(TAG, "TCA9554 init failed; backlight/buzzer stay untouched");
         return;
     }
@@ -189,6 +230,7 @@ void ui_board_init(void)
                                             IO_EXPANDER_OUTPUT));
     ESP_ERROR_CHECK(esp_io_expander_set_level(s_io, PIN_BEE_EN, !BEE_ON_LEVEL));
     ESP_ERROR_CHECK(esp_io_expander_set_level(s_io, PIN_BL_EN, BL_ON_LEVEL));
+    bsp_i2c_unlock();
     ESP_LOGI(TAG, "expander up: BL_EN=EXIO2 BEE_EN=EXIO6");
 }
 
@@ -197,7 +239,12 @@ void ui_board_backlight(bool on)
     if (s_io == NULL) {
         return;
     }
+    if (!bsp_i2c_lock(UI_BOARD_I2C_TIMEOUT)) {
+        ESP_LOGW(TAG, "backlight %s skipped: I2C bus busy", on ? "on" : "off");
+        return;
+    }
     esp_io_expander_set_level(s_io, PIN_BL_EN, on ? BL_ON_LEVEL : !BL_ON_LEVEL);
+    bsp_i2c_unlock();
 }
 
 void ui_board_buzzer(bool on)
@@ -207,7 +254,12 @@ void ui_board_buzzer(bool on)
     }
     /* Active buzzer: it self-oscillates. It has to be — BEE_EN is behind an I2C
      * expander, so there is no way to toggle it at an audio frequency. */
+    if (!bsp_i2c_lock(UI_BOARD_I2C_TIMEOUT)) {
+        ESP_LOGW(TAG, "buzzer %s skipped: I2C bus busy", on ? "on" : "off");
+        return;
+    }
     esp_io_expander_set_level(s_io, PIN_BEE_EN, on ? BEE_ON_LEVEL : !BEE_ON_LEVEL);
+    bsp_i2c_unlock();
 }
 
 /* One register write to the PMIC. Kept tiny so the power-off sequence below
@@ -238,6 +290,21 @@ void ui_board_power_off(void)
     }
     if (i2c_master_bus_add_device(bus, &cfg, &dev) != ESP_OK) {
         ESP_LOGE(TAG, "could not address the PMIC at 0x%02x", SW6106_ADDR);
+        return;
+    }
+    /*
+     * Held across the gauge read AND all three writes, and not released until
+     * `out`. Unlike everything else in this file the sequence is genuinely
+     * stateful -- the chip latches "unlock step 1 seen, step 2 seen" and a
+     * foreign transaction in between is the one thing that could make the
+     * shutdown write land on an unlocked register and silently do nothing.
+     *
+     * Failure aborts rather than proceeding unlocked: refusing to power off is
+     * recoverable (press the button again), a half-unlocked PMIC is not.
+     */
+    if (!bsp_i2c_lock(UI_BOARD_I2C_TIMEOUT)) {
+        ESP_LOGE(TAG, "I2C bus busy; power-off not attempted");
+        (void)i2c_master_bus_rm_device(dev);
         return;
     }
 
@@ -273,10 +340,16 @@ void ui_board_power_off(void)
 
     /* The rails go before this returns -- verified on hardware 2026-08-14, and
      * it cuts even with USB attached, so there is no "safe" way to test it. If
-     * we are still here, say so: silence would look like a dead button. */
+     * we are still here, say so: silence would look like a dead button.
+     *
+     * The bus lock stays held through the wait. Handing it back so the touch
+     * poll can run for a board that is meant to be dead in the next few ms is
+     * not worth the extra exit path; touch and the STM32 poll both already
+     * tolerate a skipped turn. */
     vTaskDelay(pdMS_TO_TICKS(500));
     ESP_LOGE(TAG, "still running 500ms after power-off; PMIC ignored it");
 
 out:
+    bsp_i2c_unlock();
     (void)i2c_master_bus_rm_device(dev);
 }
