@@ -118,6 +118,32 @@ esp_err_t bsp_i2c_deinit(void);
  */
 i2c_master_bus_handle_t bsp_i2c_get_handle(void);
 
+/**
+ * @brief Take the shared I2C bus lock, with a deadline.
+ *
+ * Five devices share SDA GPIO15 / SCL GPIO7 (GT911, TCA9554, SW6106, PCF85063A
+ * and the STM32 at 0x42), and several of them need a write-pointer/read pair to
+ * stay one indivisible sequence. The IDF driver locks per transaction, not per
+ * sequence, so that has to be arranged here.
+ *
+ * ALWAYS BOUNDED -- there is deliberately no portMAX_DELAY option. A wedged bus
+ * is a real state on this board (see `i2cstate` in the debug console), and a
+ * caller that waits forever on it takes its task down: that is how one GT911
+ * read used to freeze the whole LVGL task. Every caller must have something
+ * sensible to do when this returns false -- hold the last touch state, skip a
+ * poll, print "busy" -- rather than blocking.
+ *
+ * @param timeout_ms How long to wait for the bus.
+ * @return true when the lock is held (release it with bsp_i2c_unlock()), false
+ *         on timeout or before bsp_i2c_init() has run.
+ */
+bool bsp_i2c_lock(uint32_t timeout_ms);
+
+/**
+ * @brief Release the lock taken by bsp_i2c_lock(). Only call after a true.
+ */
+void bsp_i2c_unlock(void);
+
 /**************************************************************************************************
  *
  * SPIFFS

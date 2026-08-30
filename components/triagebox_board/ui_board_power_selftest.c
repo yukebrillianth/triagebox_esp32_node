@@ -32,9 +32,24 @@ static bool s_add_ok;
 static bool s_removed;
 static bool s_waited;
 static bool s_wrong_addr;
+static bool s_lock_ok;          /* bsp_i2c_lock() result */
+static int s_locks;             /* takes, to prove every path locks */
+static int s_unlocks;           /* gives, to prove every path unlocks */
 
 const char *esp_err_to_name(esp_err_t err) { (void)err; return "ESP_ERR_FAKE"; }
 void vTaskDelay(int ticks) { (void)ticks; s_waited = true; }
+
+bool bsp_i2c_lock(uint32_t timeout_ms)
+{
+    (void)timeout_ms;
+    if (!s_lock_ok) {
+        return false;
+    }
+    s_locks++;
+    return true;
+}
+
+void bsp_i2c_unlock(void) { s_unlocks++; }
 
 esp_io_expander_handle_t bsp_io_expander_init(void) { return NULL; }
 esp_err_t esp_io_expander_set_dir(esp_io_expander_handle_t h, uint32_t m, int d)
@@ -119,6 +134,9 @@ static void reset(uint8_t gauge, int fail_at)
     s_removed = false;
     s_waited = false;
     s_wrong_addr = false;
+    s_lock_ok = true;
+    s_locks = 0;
+    s_unlocks = 0;
 }
 
 /*
@@ -143,6 +161,20 @@ static void test_battery(void)
     s_add_ok = false;
     assert(!ui_board_battery(&pct, &chg));
     assert(pct == 7 && chg);
+
+    /*
+     * Bus wedged or held by another task: same answer as an unreadable gauge --
+     * false, outputs untouched -- and NOT a block. A stale percentage on a
+     * draining pack is the one failure mode this must never produce, and a
+     * portMAX_DELAY here would freeze whichever task asked.
+     */
+    reset(0xfaU, 0);
+    s_lock_ok = false;
+    s_soc = 55U;
+    assert(!ui_board_battery(&pct, &chg));
+    assert(pct == 7 && chg);
+    assert(s_txn == 0);         /* refused before touching the bus */
+    assert(s_unlocks == 0);     /* nothing taken, so nothing to give back */
 
     /* Gauge unreadable: no percentage at all. */
     reset(0xfaU, 1);
@@ -188,6 +220,9 @@ static void test_battery(void)
     reset(0xfaU, 0);
     s_soc = 30U;
     assert(ui_board_battery(NULL, NULL));
+    /* Balanced: a leaked take would wedge the bus for every other user, which is
+     * the fault this lock was added to fix. */
+    assert(s_locks == 1 && s_unlocks == 1);
 }
 
 int main(void)
@@ -204,6 +239,20 @@ int main(void)
     assert(s_reg[2] == 0x03U && s_val[2] == 0x10U);  /* key evt [4]   = 1 */
     assert(s_waited);       /* gives the rail time to drop before complaining */
     assert(s_removed);      /* no leaked device handle */
+    assert(s_locks == 1 && s_unlocks == 1); /* one balanced lock spans it all */
+
+    /*
+     * Bus wedged/held before the sequence starts: must NOT power off, must not
+     * leave the device handle behind, must not leak a lock it never took.
+     * Refusing is recoverable (press again); a half-unlocked PMIC is not.
+     */
+    reset(0xfaU, 0);
+    s_lock_ok = false;
+    ui_board_power_off();
+    assert(s_writes == 0);
+    assert(s_txn == 0);
+    assert(s_removed);          /* handle added before the lock, so freed here */
+    assert(s_unlocks == 0);
 
     /*
      * Gate closed (REG 0x49[3] == 0): must not write at all. Writing the event
@@ -246,9 +295,11 @@ int main(void)
     s_add_ok = false;
     ui_board_power_off();
     assert(s_writes == 0 && !s_removed);
+    assert(s_locks == 0 && s_unlocks == 0);
 
-    printf("ui_board_power_off: 0x01<-0x40, 0x01<-0x80, 0x03<-0x10; "
-           "every failure path leaves the rail up\n");
-    printf("ui_board_battery: 0x4F[6:0] + 0x11[4], reads only, no unlock\n");
+    printf("ui_board_power_off: 0x01<-0x40, 0x01<-0x80, 0x03<-0x10 under one "
+           "bus lock; every failure path leaves the rail up and the lock free\n");
+    printf("ui_board_battery: 0x4F[6:0] + 0x11[4], reads only, no unlock; a busy "
+           "bus reads as no reading, never a stale one\n");
     return 0;
 }

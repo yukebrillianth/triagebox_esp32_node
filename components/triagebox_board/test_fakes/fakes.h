@@ -6,6 +6,7 @@
 #ifndef TB_TEST_FAKES_H
 #define TB_TEST_FAKES_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -15,6 +16,7 @@ typedef int esp_err_t;
 
 /* --- esp_log.h --- */
 #define ESP_LOGI(t, ...) do { (void)(t); printf("I: " __VA_ARGS__); printf("\n"); } while (0)
+#define ESP_LOGD(t, ...) do { (void)(t); printf("D: " __VA_ARGS__); printf("\n"); } while (0)
 #define ESP_LOGW(t, ...) do { (void)(t); printf("W: " __VA_ARGS__); printf("\n"); } while (0)
 #define ESP_LOGE(t, ...) do { (void)(t); printf("E: " __VA_ARGS__); printf("\n"); } while (0)
 const char *esp_err_to_name(esp_err_t err);
@@ -61,6 +63,10 @@ esp_err_t esp_io_expander_set_level(esp_io_expander_handle_t h, uint32_t mask, u
 /* --- bsp --- */
 esp_io_expander_handle_t bsp_io_expander_init(void);
 i2c_master_bus_handle_t bsp_i2c_get_handle(void);
+/* The shared bus mutex. The selftest's fake returns true by default and can be
+ * made to fail, because "bus busy" is now a branch in every function here. */
+bool bsp_i2c_lock(uint32_t timeout_ms);
+void bsp_i2c_unlock(void);
 #define ESP_ERROR_CHECK(x) ((void)(x))
 
 #endif /* TB_TEST_FAKES_H */
