@@ -21,6 +21,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "soc/i2c_struct.h" /* `i2cstate`: a hang-free register peek */
 
 #include "tb_i2c_codec.h"
 #include "tb_link_i2c.h"
@@ -193,6 +194,69 @@ static int cmd_i2c(int argc, char **argv)
                "  soft reset (AGENTS.md item 20 wants bus recovery for exactly this)\n");
     }
     printf("\n");
+    return 0;
+}
+
+/*
+ * Direct, register-level dump of the I2C peripheral. This is the one command
+ * that can be typed while the bus is dead and still answer: it reads
+ * memory-mapped registers only -- no lock, no transaction -- so it cannot hang
+ * and cannot make anything worse. It exists because the usual "is the bus
+ * wedged?" sequence (scan, read a device) is exactly what fails when the bus is
+ * wedged, in silence, for 26 ms per device.
+ *
+ * The headline number is scl_sp_conf.scl_rst_slv_en: IDF v6.0.2's S3 clear-bus
+ * leaves it set on every transaction error (see tb_link_i2c.c's
+ * link_bus_wedged()). When it is 1, every future transaction re-arms recovery
+ * that never runs, SCL never moves, and the master times out forever. The
+ * `tb_link` task clears it on the next poll -- if that is not happening, the
+ * numbers here are the evidence.
+ *
+ * 0x42 is I2C0; with the standard sdkconfig it is CONFIG_BSP_I2C_NUM=1 (I2C1),
+ * because the BSP lives on the S3's second peripheral.
+ */
+static int cmd_i2cstate(int argc, char **argv)
+{
+    i2c_dev_t *hw = (BSP_I2C_NUM == 0) ? &I2C0 : &I2C1;
+
+    (void)argc;
+    (void)argv;
+
+    printf("I2C%d peripheral register dump (memory-mapped, no bus traffic):\n",
+           BSP_I2C_NUM);
+    printf("  scl_rst_slv_en    = %u   %s\n",
+           hw->scl_sp_conf.scl_rst_slv_en,
+           hw->scl_sp_conf.scl_rst_slv_en
+               ? "WEDGED -- recovery armed forever; `tb_link` should clear it "
+                 "next poll"
+               : "(clear)");
+    printf("  scl_rst_slv_num   = %u\n", hw->scl_sp_conf.scl_rst_slv_num);
+    printf("  bus_busy          = %u   %s\n", hw->sr.bus_busy,
+           hw->sr.bus_busy ? "transfer in flight or SDA/SCL held low"
+                           : "idle");
+    printf("  arb_lost          = %u\n", hw->sr.arb_lost);
+    printf("  slave_addressed   = %u\n", hw->sr.slave_addressed);
+    printf("  txfifo_cnt        = %u\n", hw->sr.txfifo_cnt);
+    printf("  rxfifo_cnt        = %u\n", hw->sr.rxfifo_cnt);
+    printf("  scl_main_state    = %u   (0=idle 1=addr 2=ack-addr 3=rx 4=tx "
+           "5=ack 6=wait-ack)\n",
+           hw->sr.scl_main_state_last);
+    printf("  scl_state         = %u   (0=idle 1=start 2=neg-edge 3=low "
+           "4=pos-edge 5=high 6=stop)\n",
+           hw->sr.scl_state_last);
+    printf("  time_out_en       = %u   (master bit timeout -- 0 means every "
+           "transfer can wait forever)\n",
+           hw->to.time_out_en);
+    printf("  time_out_value    = %u\n", hw->to.time_out_value);
+    printf("  int_raw.time_out_int_raw    = %u\n", hw->int_raw.time_out_int_raw);
+    printf("  int_raw.arb_lost_int_raw    = %u\n", hw->int_raw.arbitration_lost_int_raw);
+    printf("  int_raw.trans_complete_int_raw = %u\n", hw->int_raw.trans_complete_int_raw);
+    printf("\n"
+           "  Reading this costs no bus time, so it is the one command that "
+           "works\n"
+           "  while the bus is wedged. If scl_rst_slv_en=1, a transaction error\n"
+           "  happened and the IDF S3 driver never cleared it; the tb_link poll\n"
+           "  task should clear it within one poll (50 ms).\n");
     return 0;
 }
 
@@ -509,7 +573,10 @@ static int cmd_stats(int argc, char **argv)
  * hand is exactly where mistakes happen -- and this also proves the ESP32's
  * decode path agrees with the STM32's layout, which raw hex cannot.
  *
- * Read-only, like every other I2C command here.
+ * Read-only, like every other I2C command here, and behind the shared bus lock
+ * so it cannot land between the poll task's own pointer-write and read. 100 ms
+ * rather than a block: if the bus is wedged this must SAY so, not join the queue
+ * of tasks waiting on it -- use `i2cstate` when it does.
  */
 static int cmd_i2clink(int argc, char **argv)
 {
@@ -539,9 +606,16 @@ static int cmd_i2clink(int argc, char **argv)
         printf("add_device failed: %s\n", esp_err_to_name(err));
         return 1;
     }
+    if (!bsp_i2c_lock(100)) {
+        printf("i2c bus busy (lock timeout) -- try `i2cstate`; if "
+               "scl_rst_slv_en=1 the master is wedged\n");
+        (void)i2c_master_bus_rm_device(dev);
+        return 1;
+    }
 
     err = i2c_master_transmit_receive(dev, &reg, 1, raw, TB_REG_READ_END, 200);
     if (err != ESP_OK) {
+        bsp_i2c_unlock();
         printf("read failed: %s\n", esp_err_to_name(err));
         printf("  check SDA=GPIO15->PB3, SCL=GPIO7->PB10, and that the STM32\n"
                "  is running (not halted at a breakpoint).\n");
@@ -565,6 +639,8 @@ static int cmd_i2clink(int argc, char **argv)
             raw[TB_REG_LORA_RSSI] = 0xFFU;
         }
     }
+    /* Both transactions done; the printing below touches no bus. */
+    bsp_i2c_unlock();
 
     printf("proto_ver : 0x%02x %s\n", raw[TB_REG_PROTO_VER],
            (raw[TB_REG_PROTO_VER] == TB_PROTO_VER) ? "(ok)"
@@ -698,21 +774,30 @@ static int cmd_i2clink(int argc, char **argv)
 
 static esp_err_t pmic_reg(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t *val)
 {
-    /* One retry, because this bus is shared with the GT911, the TCA9554 and the
-     * STM32 poll and loses transactions under contention -- the same fault
-     * touch_read_tolerant() absorbs on the touch side. Ten registers per sample
-     * means a per-read failure rate that is invisible elsewhere still makes the
-     * whole command fail most of the time. A retry is right HERE and would be
-     * wrong in ui_board_battery(): this is an idempotent debug read that the
-     * operator is waiting on, not a 10s periodic poll that can skip a turn.
+    esp_err_t err;
+
+    /* The shared bus lock now removes the contention this used to retry around;
+     * the retry stays for the transactions it cannot help with (a NACK from the
+     * part itself). A retry is right HERE and would be wrong in
+     * ui_board_battery(): this is an idempotent debug read that the operator is
+     * waiting on, not a 10s periodic poll that can skip a turn.
      *
-     * Deliberately not a fix for the contention itself, which needs a bus-level
-     * mutex in the BSP (see docs/firmware-architecture.md). */
-    esp_err_t err = i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
+     * Per register rather than per sample, because between registers the poll
+     * task must get its turn -- ten registers behind one lock at 100 kHz would
+     * stall the STM32 link for longer than its own poll period. */
+    if (!bsp_i2c_lock(100)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    err = i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
+    bsp_i2c_unlock();
 
     if (err != ESP_OK) {
         vTaskDelay(pdMS_TO_TICKS(5));
+        if (!bsp_i2c_lock(100)) {
+            return ESP_ERR_TIMEOUT;
+        }
         err = i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
+        bsp_i2c_unlock();
     }
     return err;
 }
@@ -828,6 +913,7 @@ void tb_debug_console_start(void)
         {.command = "i2craw", .help = "Read with no reg pointer: i2craw <addr> [count]", .func = cmd_i2craw},
         {.command = "i2cdump", .help = "Dump reg space: i2cdump <addr> [start] [end]", .func = cmd_i2cdump},
         {.command = "i2clink", .help = "Read + decode the STM32 snapshot at 0x42", .func = cmd_i2clink},
+        {.command = "i2cstate", .help = "I2C peripheral registers (works while wedged)", .func = cmd_i2cstate},
         {.command = "pmic",   .help = "Power telemetry: pmic [samples] [period_ms]", .func = cmd_pmic},
         {.command = "stats",  .help = "CPU/heap/stack report",                   .func = cmd_stats},
     };
