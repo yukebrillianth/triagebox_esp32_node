@@ -896,6 +896,17 @@ void tb_debug_console_start(void)
 {
     esp_console_repl_t *repl = NULL;
     esp_console_repl_config_t repl_cfg = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    /*
+     * 16384, not the default 4096. `stats` panicked on 4096 every time:
+     * Guru Meditation LoadProhibited with 0xA5A5A5A5 in the argument
+     * registers and a CORRUPTED backtrace -- 0xA5A5A5A5 being the FreeRTOS
+     * stack-fill pattern read back as data, i.e. a stack overflow rather
+     * than a wild pointer. `stats` runs the GBM triage model in the console
+     * task, and the measured high-water mark is 13,344 bytes -- so 8192
+     * would still have crashed. `stats` prints the mark so the number stays
+     * observable rather than remembered.
+     */
+    repl_cfg.task_stack_size = 16384;
     esp_console_dev_usb_serial_jtag_config_t dev_cfg =
         ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
 
