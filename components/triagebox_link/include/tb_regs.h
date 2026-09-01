@@ -95,11 +95,12 @@
  * and published in its node status JSON. That one cannot reach this screen
  * without a second downlink field, and it would tell you the same thing.
  *
- * int8_t dBm, so -128..-20 covers everything a real LoRa receiver reports:
- * SF7/125k sensitivity is about -123 dBm, and closer than a metre saturates
- * around -20. tb_rssi_valid() below is what a consumer must use rather than
- * testing for a sentinel, because there are two different "no reading" values in
- * play (see it for why).
+ * int8_t dBm, so -128..-2 covers everything a real LoRa receiver reports:
+ * SF7/125k sensitivity is about -123 dBm at the weak end, and the strong end is
+ * bounded by the two sentinels below rather than by physics. With an antenna
+ * fitted and the station on the same desk this measured -12. tb_rssi_valid()
+ * below is what a consumer must use rather than testing for a sentinel, because
+ * there are two different "no reading" values in play (see it for why).
  *
  * DELIBERATELY OUTSIDE TB_REG_READ_END. The 50 ms vitals poll still reads
  * exactly 0x30 bytes, so an STM32 built before this field existed answers that
@@ -128,8 +129,16 @@
  *   0xFF  an old STM32, or any address it does not decode: its AddrCallback
  *         feeds 0xFF rather than leaking adjacent memory
  *
- * Both are ABOVE the strongest real signal, so the upper bound alone rejects
- * both and no special case is needed.
+ * They are adjacent (-1 and 0), so a single upper bound at -2 rejects both and
+ * no special case is needed.
+ *
+ * THAT BOUND IS SET BY THE SENTINELS, NOT BY SATURATION. It was -20 until
+ * 2026-08-29, on the theory that anything stronger had to be front-end overload
+ * at arm's length. The first range test with an antenna fitted read -12, which
+ * is a true measurement, and the status bar dropped back to "LoRa siap" and
+ * stayed there -- tb_ui_source_on_rssi() never latches a rejected value, so a
+ * link that was working looked like a link with no radio. A guard must reject
+ * only what cannot be true; how strong a real reading gets is not its business.
  *
  * Only the upper bound is tested. TB_RSSI_MIN_DBM is exactly INT8_MIN, so an
  * int8_t cannot carry anything below it -- the type is the lower bound, and
@@ -138,7 +147,7 @@
  * would need to grow that test back if the field ever widened.
  */
 #define TB_RSSI_MIN_DBM (-128) /* == INT8_MIN: structural, not checked below */
-#define TB_RSSI_MAX_DBM (-20)  /* closer than ~1 m saturates around here */
+#define TB_RSSI_MAX_DBM (-2)   /* one below the 0xFF sentinel, not a signal limit */
 
 static inline int tb_rssi_valid(int8_t rssi)
 {
