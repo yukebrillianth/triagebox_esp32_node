@@ -29,7 +29,8 @@ bool bp_predict(
     const double *bandpass_ecg,
     size_t num_samples,
     double is_male,
-    double *result_sbp
+    double *result_sbp,
+    double *result_dbp
 );
 
 #ifdef __cplusplus

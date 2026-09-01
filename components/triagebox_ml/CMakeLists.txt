@@ -13,6 +13,7 @@ idf_component_register(
        triage_pipeline.c
        bp_pipeline.c
        lgbm_sbp.c
+       lgbm_dbp.c
     INCLUDE_DIRS
         "include"
         # ui_types.h: vitals_t and ui_priority_t are the model's in/out contract.

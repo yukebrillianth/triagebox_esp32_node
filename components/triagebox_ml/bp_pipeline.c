@@ -216,10 +216,12 @@ bool bp_extract_features(
     memcpy(ir_norm,  bandpass_ppg_ir,  num_samples * sizeof(double));
     memcpy(ecg_norm, bandpass_ecg,     num_samples * sizeof(double));
 
+    // [1] Z-Score normalize input signals
     bp_zscore_normalize(red_norm, num_samples);
     bp_zscore_normalize(ir_norm,  num_samples);
     bp_zscore_normalize(ecg_norm, num_samples);
 
+    // [2] Pan-Tompkins QRS Energy Integration
     double *ecg_diff = (double*)malloc(num_samples * sizeof(double));
     double *ecg_qrs  = (double*)malloc(num_samples * sizeof(double));
     if (!ecg_diff || !ecg_qrs) {
@@ -255,6 +257,7 @@ bool bp_extract_features(
         }
     }
 
+    // [3] Peak Detection (Z-score standardized prominence)
     int ecg_peaks[512], ir_peaks[512], red_peaks[512];
     int num_ecg = find_peaks_1d(ecg_qrs, num_samples, 35, 0.10, ecg_peaks, 512);
     int num_ir  = find_peaks_1d(ir_norm, num_samples, 35, 0.25, ir_peaks,  512);
@@ -277,16 +280,13 @@ bool bp_extract_features(
     double *v_red = (double*)malloc(num_samples * sizeof(double));
     double *a_red = (double*)malloc(num_samples * sizeof(double));
     if (!v_ir || !a_ir || !v_red || !a_red) {
-        /* No `if (p)` guards: free(NULL) is a no-op by definition, and two
-         * `if`s on one line is what -Werror=misleading-indentation rejected.
-         * One statement per line so neither can come back. */
         free(red_norm);
         free(ir_norm);
         free(ecg_norm);
-        free(v_ir);
-        free(a_ir);
-        free(v_red);
-        free(a_red);
+        if (v_ir) free(v_ir);
+        if (a_ir) free(a_ir);
+        if (v_red) free(v_red);
+        if (a_red) free(a_red);
         return false;
     }
     bp_compute_derivatives(ir_norm, v_ir, a_ir, num_samples);
@@ -361,6 +361,7 @@ bool bp_extract_features(
     double ptt_d_sq_inv = 1.0 / ((pat_d - pep_est) * (pat_d - pep_est) + 1e-5);
     double ptt_p_sq_inv = 1.0 / (ptt_p_est * ptt_p_est + 1e-5);
 
+    // Valleys
     double *neg_ir  = (double*)malloc(num_samples * sizeof(double));
     double *neg_red = (double*)malloc(num_samples * sizeof(double));
     for (size_t i = 0; i < num_samples; i++) {
@@ -439,15 +440,17 @@ bool bp_predict(
     const double *bandpass_ecg,
     size_t num_samples,
     double is_male,
-    double *result_sbp
+    double *result_sbp,
+    double *result_dbp
 ) {
-    if (!result_sbp) return false;
+    if (!result_sbp && !result_dbp) return false;
 
     double features[NUM_INPUT_FEATURES];
     bool ok = bp_extract_features(bandpass_ppg_red, bandpass_ppg_ir, bandpass_ecg, num_samples, is_male, features);
     if (!ok) return false;
 
-    *result_sbp = predict_sbp(features);
+    if (result_sbp) *result_sbp = predict_sbp(features);
+    if (result_dbp) *result_dbp = predict_dbp(features);
 
     return true;
 }
