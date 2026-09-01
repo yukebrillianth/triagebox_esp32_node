@@ -43,16 +43,27 @@ static void test_golden_vector(void)
      * the bug this golden run exists to catch (measured: the swap reads
      * 126.4/68.0 against the 134.9/79.4 pinned below).
      *
-     * Pinned against the PORT'S OWN OUTPUT, not the cuff label. The models are
-     * deterministic, so this C chain has exactly one right answer per input --
-     * but that answer is NOT the subject's 148/90 cuff reading: this ensemble
-     * under-predicts hypertensive tails, and the label was never the expected
-     * output of the port. Asserting the label would test model accuracy, which
-     * is Aslam's training question, not whether this wiring is right. The
-     * measured deltas to the cuff (sbp -13.1, dbp -10.6) are recorded here so
-     * the accuracy conversation has its numbers in-tree. Re-pinning is the
-     * right response to a model retrain; widening to absorb a wiring bug is
-     * not.
+     * Pinned against the PORT'S OWN OUTPUT, not the cuff label, and the reason
+     * is not "close enough". Three measurements, all on this same vector:
+     *
+     *   - 21 of the 23 features land inside the range the trees actually split
+     *     on, so the model is being fed values of the kind it was trained on.
+     *     The two that do not (pi_ir, ac_dc_ratio) are computed AC/DC after a
+     *     z-score, so their denominator is the 1e-5 epsilon; moving them
+     *     anywhere in the training range changes the answer by under 1 mmHg.
+     *   - The chain is chaotic at the scale of the delta it is being judged by:
+     *     re-sampling this record onto a grid shifted half a millisecond reads
+     *     120.8 instead of 134.9, and the eleven 40 s sub-windows of this same
+     *     60 s capture span 117.1..137.8.
+     *   - The file's own SAMPLE_TRUE_HR says 103 bpm while its waveform beats
+     *     69.7 (see test_input_time_base). The cuff 148/90 was recorded with
+     *     that 103 bpm, i.e. not during the seconds stored here.
+     *
+     * So the cuff label is not this vector's expected output, and a +-2 mmHg
+     * assert against it would be measuring the label, not the wiring. What this
+     * pin does catch is a transposed FEAT_* macro, a swapped channel, or a
+     * model file replaced by mistake. Re-pinning is the right response to a
+     * retrain or a re-exported sample; widening to absorb a wiring bug is not.
      */
 #define PORT_SBP 134.88
 #define PORT_DBP 79.42
@@ -98,8 +109,58 @@ static void test_short_window_above_the_gate(void)
                      1000, SAMPLE_IS_MALE, &sbp, &dbp);
 }
 
+/*
+ * The pinned numbers above are only meaningful for the exact bytes in
+ * sample_signals.h, and the one property of those bytes that decides every
+ * timing feature is how many samples a heartbeat takes. Measured here by plain
+ * autocorrelation -- no shared code with the pipeline's peak detector, so this
+ * still holds if that detector changes.
+ *
+ * 87 samples at the declared 100 Hz is 69 bpm, and the file's own
+ * SAMPLE_TRUE_HR says 103. The ratio is 1.48, close enough to a skipped
+ * 150 -> 100 Hz resample to be worth Aslam's attention; the models themselves
+ * vote for 100 Hz being right (their split thresholds imply a corpus median of
+ * 77-79 bpm, which is a normal heart rate, and 1.48x that would be 118).
+ * Either way the label and the waveform disagree, so if the sample file is ever
+ * re-exported this assert fires and PORT_SBP/PORT_DBP have to be re-measured
+ * rather than silently drifting.
+ */
+static void test_input_time_base(void)
+{
+    double mean = 0.0;
+    double best = -1e300;
+    int best_lag = 0;
+    int lag;
+    size_t i;
+
+    for (i = 0; i < SAMPLE_SIGNAL_LEN; i++) {
+        mean += SAMPLE_PPG_IR[i];
+    }
+    mean /= (double)SAMPLE_SIGNAL_LEN;
+
+    for (lag = 40; lag <= 200; lag++) { /* 30..150 bpm at 100 Hz */
+        double acc = 0.0;
+        for (i = 0; i + (size_t)lag < SAMPLE_SIGNAL_LEN; i++) {
+            acc += (SAMPLE_PPG_IR[i] - mean) *
+                   (SAMPLE_PPG_IR[i + (size_t)lag] - mean);
+        }
+        acc /= (double)(SAMPLE_SIGNAL_LEN - (size_t)lag);
+        if (acc > best) {
+            best = acc;
+            best_lag = lag;
+        }
+    }
+
+    printf("  input: %d samples/beat -> %.1f bpm at the declared %.0f Hz "
+           "(file label says %.0f)\n", best_lag,
+           60.0 * BP_SAMPLING_RATE_HZ / best_lag, BP_SAMPLING_RATE_HZ,
+           SAMPLE_TRUE_HR);
+    assert(best_lag == 87);
+}
+
 int main(void)
 {
+    test_input_time_base();
     test_golden_vector();
     test_rejects_short_window();
     test_short_window_above_the_gate();
