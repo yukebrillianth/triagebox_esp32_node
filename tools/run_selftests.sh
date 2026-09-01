@@ -106,5 +106,14 @@ run components/triagebox_link/tb_ui_source_selftest.c \
     ui/logic/ui_demo.c \
     ui/logic/ui_types.c
 
+# bp_capture's pure parts against the real file: biquad frequency response
+# (re-derived independently in the test), the ECG heart-rate estimator, and
+# the publish gate. The task/FreeRTOS side is stubbed away (xTaskCreate fails,
+# so s_task stays NULL) -- it is hardware-only.
+run components/triagebox_link/bp_capture_selftest.c \
+    components/triagebox_link/bp_capture_selftest.c \
+    components/triagebox_link/bp_capture.c \
+    ui/logic/ui_types.c
+
 [ "$fail" -eq 0 ] && echo "all selftests OK"
 exit "$fail"

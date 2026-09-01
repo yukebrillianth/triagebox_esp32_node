@@ -25,6 +25,20 @@ const char *esp_err_to_name(esp_err_t err);
 #define pdMS_TO_TICKS(ms) (ms)
 void vTaskDelay(int ticks);
 
+/* bp_capture.c's task plumbing. The selftest never starts the task: it links
+ * the file for bp_biquad_f32/bp_hr_from_ecg/bp_plausible and stubs xTaskCreate
+ * to report failure, so s_task stays NULL and the notify path is inert. */
+typedef int BaseType_t;
+typedef void *TaskHandle_t;
+typedef void (*TaskFunction_t)(void *);
+#define pdPASS 1
+#define pdTRUE 1
+#define portMAX_DELAY 0xFFFFFFFFU
+BaseType_t xTaskCreate(TaskFunction_t fn, const char *name, unsigned stack,
+                       void *arg, unsigned prio, TaskHandle_t *out);
+uint32_t ulTaskNotifyTake(int clear, unsigned wait);
+void xTaskNotifyGive(TaskHandle_t h);
+
 /* Single-threaded on the host, so the critical sections that protect the RX-task
  * copies in tb_ui_source.c are nothing to enter. Kept as no-ops rather than
  * #ifdef'd out of that file: the point is to test the shipped code. */

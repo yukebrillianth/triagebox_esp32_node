@@ -330,6 +330,17 @@ static void test_rssi_is_outside_the_vitals_block(void)
      * decodes by address range. */
     assert(TB_REG_SNAPSHOT_END <= TB_REG_CMD);
     assert(TB_REG_SNAPSHOT_END <= TB_REG_PPG_BASE);
+
+    /* PROTO 0x03 wave block: the I2C register pointer is ONE byte, so the
+     * read block must stop under 0x100; the write block must stop before it
+     * starts; and the master's 124-byte read must match the STM32's layout
+     * exactly -- a size drift between the two copies of tb_regs.h would
+     * misread every sample after the first, and only the struct pins it. */
+    assert(TB_REG_PPG_END <= 0x100U);
+    assert(TB_REG_WRITE_END <= TB_REG_PPG_BASE);
+    assert(sizeof(tb_wave_block_t) == (4U + TB_PPG_RING * 6U));
+    assert(sizeof(tb_wave_block_t) ==
+           (TB_REG_PPG_END - TB_REG_PPG_BASE));
 }
 
 static void test_rssi_validity_window(void)

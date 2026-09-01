@@ -27,6 +27,15 @@ void ui_board_power_off(void) {}
 uint32_t tb_link_frames_ok(void) { return 0; }
 uint32_t tb_link_crc_errors(void) { return 0; }
 esp_err_t tb_link_send_cmd(uint8_t cmd) { (void)cmd; return ESP_OK; }
+esp_err_t tb_link_send_bp(uint16_t sys, uint16_t dia)
+{
+    (void)sys; (void)dia;
+    return ESP_OK;
+}
+
+/* bp_capture hooks are host-inert here: no capture runs in this test. */
+void bp_capture_start(void) {}
+void bp_capture_measure_done(void) {}
 
 /* Stand in for the whole ML component: this selftest is about tb_ui_source's
  * plumbing, not the model. GREEN is what makes the demo-mode test below work --
