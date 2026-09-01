@@ -157,7 +157,7 @@ lv_obj_t * berhasil_create(void)
         lv_obj_add_style(lv_label_0, &style_ok_title, 0);
 
         lv_obj_t * row_0 = row_create(column_0, 0, 12, 0, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-        lv_obj_set_width(row_0, 212);
+        lv_obj_set_width(row_0, LV_SIZE_CONTENT);
         lv_obj_set_style_pad_hor(row_0, 16, 0);
         lv_obj_set_style_pad_ver(row_0, 8, 0);
         lv_obj_add_style(row_0, &style_ok_id_card, 0);

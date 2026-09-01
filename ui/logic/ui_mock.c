@@ -216,6 +216,12 @@ void ui_mock_cycle_priority(void)
     s_cycle_idx = (uint8_t)((s_cycle_idx + 1u) % 4u);
 }
 
+void ui_mock_reclassify(void)
+{
+    /* Nothing is cached here: ui_mock_get_priority() reads the cycle every call.
+     * The device implementation is the one with an inference to invalidate. */
+}
+
 void ui_mock_push_button(uint8_t index, bool pressed)
 {
     s_btn.index = (uint8_t)(index & 0x03u);
@@ -254,6 +260,11 @@ void ui_mock_get_link_status(link_status_t *out)
      * look at on the desktop is the one that is not green. */
     out->lora_rssi_dbm = -97;
     out->lora_rssi_valid = true;
+    /* One poll per 50 ms, which is the device's real cadence, so the range-test
+     * screen's "link alive" check sees a counter that advances here too. Failures
+     * stay at 0: there is no bus to fail on. */
+    out->polls_ok = s_now_ms / 50U;
+    out->polls_failed = 0;
 }
 
 void ui_mock_power_off(void)

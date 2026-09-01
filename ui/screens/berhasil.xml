@@ -91,8 +91,15 @@
 					<style name="style_ok_title" />
 				</lv_label>
 
+				<!-- width="content", not a fixed 212: the ID gained the "TB-" prefix
+				     (UI_PATIENT_ID_PREFIX in ui_bindings.c) and a real card UID is 8-10
+				     hex digits, so "TB-0D39D1D0" at semibold 20, plus "ID Pasien:" at
+				     regular 12, plus the 12px gap and 16px of padding each side, needs
+				     about 220px against the 212 that was authored -- so it clipped.
+				     Sizing to content means no UID length can clip, rather than picking
+				     a new fixed number that the next longer tag breaks again. -->
 				<row
-					width="212"
+					width="content"
 					gap="12"
 					style_pad_hor="16"
 					style_pad_ver="8"

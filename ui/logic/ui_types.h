@@ -71,6 +71,16 @@ typedef struct {
      */
     int8_t lora_rssi_dbm;
     bool lora_rssi_valid;
+    /*
+     * Poll counters, for the range-test screen. These are the ESP32's own view of
+     * the I2C link -- successful snapshot polls and failed ones -- not the STM32's
+     * LoRa packet counters, which no register exposes. They ride in this struct
+     * because it is already the "what does the ESP32 know about the link" carrier
+     * and both ui_mock.h implementations fill it; a separate accessor would have
+     * to be a tb_link_* call, which the sim cannot link.
+     */
+    uint32_t polls_ok;
+    uint32_t polls_failed;
 } link_status_t;
 
 typedef enum {
@@ -83,6 +93,19 @@ typedef enum {
 /* RED: "MERAH - IMMEDIATE"; YELLOW: "KUNING - DELAYED";
  * GREEN: "HIJAU - MINOR"; BLACK: "HITAM - EXPECTANT". */
 const char *ui_priority_display_label(ui_priority_t value);
+
+/*
+ * Did the patient get worse? True when `to` is more severe than `from`.
+ *
+ * A separate function and not `to < from`, because ui_priority_t's numbering is
+ * NOT severity order -- RED is 0 and BLACK is 3 (tb_triage.h says the same about
+ * casting ESI). The rank used here is GREEN < YELLOW < RED < BLACK, so every move
+ * toward BLACK counts as a degradation: HITAM is where a patient who stopped
+ * breathing lands, which is the one transition an alarm must never miss.
+ *
+ * Equal is not degraded, so a re-triage that agrees with the last one is silent.
+ */
+bool ui_priority_degraded(ui_priority_t from, ui_priority_t to);
 
 typedef enum {
     UI_AGE_BAND_6_17,

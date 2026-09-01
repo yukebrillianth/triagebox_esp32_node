@@ -68,6 +68,16 @@ int ui_mock_get_esi(void);
 /* GREEN → YELLOW → RED → BLACK → GREEN … */
 void ui_mock_cycle_priority(void);
 
+/*
+ * Re-run classification against the latest snapshot.
+ *
+ * In the sim: no-op (ui_mock_get_priority() already returns the current cycle
+ * colour, and ui_runtime_debug_cycle_priority() advances it).
+ * On hardware (tb_ui_source.c): clears the "inference done" latch and runs the
+ * SVM against the latest vitals, then transmits the new verdict to the STM32.
+ */
+void ui_mock_reclassify(void);
+
 /* Single-slot button buffer for keypad indev / host tests. */
 void ui_mock_push_button(uint8_t index, bool pressed);
 bool ui_mock_pop_button(btn_event_t *out);

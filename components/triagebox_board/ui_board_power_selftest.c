@@ -22,6 +22,8 @@
 static uint8_t s_gauge;        /* what REG 0x49 reads back */
 static uint8_t s_soc;          /* REG 0x4F */
 static uint8_t s_stat;         /* REG 0x11 */
+static uint8_t s_vbat_l;       /* REG 0x14 */
+static uint8_t s_vbat_h;       /* REG 0x15 */
 static int s_fail_at;          /* fail the Nth transaction (0 = never) */
 static int s_txn;
 static uint8_t s_reg[MAX_LOG];
@@ -95,9 +97,11 @@ esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t dev, const uint8_t
         return -1;
     }
     switch (w[0]) {
-    case 0x49U: *r = s_gauge; break; /* power-off gate */
-    case 0x4FU: *r = s_soc;   break; /* fuel gauge     */
-    case 0x11U: *r = s_stat;  break; /* charge state   */
+    case 0x49U: *r = s_gauge;  break; /* power-off gate */
+    case 0x4FU: *r = s_soc;    break; /* fuel gauge     */
+    case 0x11U: *r = s_stat;   break; /* charge state   */
+    case 0x14U: *r = s_vbat_l; break; /* Vbat [7:0]     */
+    case 0x15U: *r = s_vbat_h; break; /* Vbat [11:8]    */
     /* Anything else means new code is poking a 4 A charger's registers. */
     default: assert(0); return -1;
     }
@@ -124,6 +128,8 @@ static void reset(uint8_t gauge, int fail_at)
     s_gauge = gauge;
     s_soc = 0;
     s_stat = 0;
+    s_vbat_l = 0;
+    s_vbat_h = 0;
     s_fail_at = fail_at;
     s_txn = 0;
     s_writes = 0;
@@ -225,9 +231,47 @@ static void test_battery(void)
     assert(s_locks == 1 && s_unlocks == 1);
 }
 
+/*
+ * Vbat, for the range-test screen. The decode is worth pinning because a wrong
+ * mask or a wrong scale produces a number that still looks like a battery
+ * voltage: 0x15's high nibble belongs to Vout, and the LSB is 1.2 mV, not 1.
+ */
+static void test_battery_mv(void)
+{
+    uint16_t mv = 1234U;
+
+    /* 3.70 V: raw 0xC0A = 3082 counts x 1.2 mV = 3698 mV. The high nibble is
+     * loaded with Vout bits that must not leak into the result. */
+    reset(0xfaU, 0);
+    s_vbat_l = 0x0AU;
+    s_vbat_h = 0xFCU; /* [3:0] = 0xC is Vbat; [7:4] = 0xF is Vout's */
+    assert(ui_board_battery_mv(&mv));
+    assert(mv == 3698U);
+
+    /* A flat-ish pack, and the scale is not 1:1. */
+    reset(0xfaU, 0);
+    s_vbat_l = 0xB0U;
+    s_vbat_h = 0x0AU; /* raw 0xAB0 = 2736 -> 3283 mV */
+    assert(ui_board_battery_mv(&mv));
+    assert(mv == 3283U);
+
+    /* Either half unreadable: no voltage at all rather than half a number. */
+    reset(0xfaU, 1);
+    assert(!ui_board_battery_mv(&mv));
+    assert(mv == 3283U); /* output untouched, so the screen keeps showing "--" */
+    reset(0xfaU, 2);
+    assert(!ui_board_battery_mv(&mv));
+    assert(mv == 3283U);
+
+    /* NULL is accepted, same as ui_board_battery(). */
+    reset(0xfaU, 0);
+    assert(ui_board_battery_mv(NULL));
+}
+
 int main(void)
 {
     test_battery();
+    test_battery_mv();
 
     /* Happy path: unlock 1, unlock 2, then the power-off event -- in order. */
     reset(0xfaU, 0);
@@ -301,5 +345,6 @@ int main(void)
            "bus lock; every failure path leaves the rail up and the lock free\n");
     printf("ui_board_battery: 0x4F[6:0] + 0x11[4], reads only, no unlock; a busy "
            "bus reads as no reading, never a stale one\n");
+    printf("ui_board_battery_mv: ((0x15[3:0]<<8)|0x14) * 1.2mV\n");
     return 0;
 }

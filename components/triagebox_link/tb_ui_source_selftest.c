@@ -25,6 +25,7 @@ const char *esp_err_to_name(esp_err_t err) { (void)err; return "ESP_ERR_FAKE"; }
 void vTaskDelay(int ticks) { (void)ticks; }
 void ui_board_power_off(void) {}
 uint32_t tb_link_frames_ok(void) { return 0; }
+uint32_t tb_link_crc_errors(void) { return 0; }
 esp_err_t tb_link_send_cmd(uint8_t cmd) { (void)cmd; return ESP_OK; }
 
 /* Stand in for the whole ML component: this selftest is about tb_ui_source's

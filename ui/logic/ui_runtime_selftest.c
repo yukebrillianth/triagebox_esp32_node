@@ -11,13 +11,87 @@
 
 static const char *const screen_names[UI_SCREEN_COUNT] = {
     "HOME", "SCANNING", "BERHASIL", "AGE",
-    "GENDER", "AIRWAY", "MENGUKUR", "RESULT", "MONITOR",
+    "GENDER", "AIRWAY", "MENGUKUR", "RESULT", "MONITOR", "TEST",
 };
 
 static void expect(ui_screen_id_t expected)
 {
     assert(ui_nav_current() == expected);
     printf("%s\n", screen_names[expected]);
+}
+
+/*
+ * ui_priority_degraded() is the whole point of the re-triage feature, so its
+ * ordering is pinned directly: GREEN < YELLOW < RED < BLACK, in severity, NOT in
+ * the enum's own numbering (RED=0). A cast-based "to < from" would get every one
+ * of these backwards.
+ */
+static void test_severity_order(void)
+{
+    assert(ui_priority_degraded(UI_PRIORITY_GREEN, UI_PRIORITY_YELLOW));
+    assert(ui_priority_degraded(UI_PRIORITY_YELLOW, UI_PRIORITY_RED));
+    assert(ui_priority_degraded(UI_PRIORITY_RED, UI_PRIORITY_BLACK));
+    assert(ui_priority_degraded(UI_PRIORITY_GREEN, UI_PRIORITY_BLACK));
+
+    /* Improvement and no-change are not degradations. */
+    assert(!ui_priority_degraded(UI_PRIORITY_RED, UI_PRIORITY_GREEN));
+    assert(!ui_priority_degraded(UI_PRIORITY_BLACK, UI_PRIORITY_RED));
+    assert(!ui_priority_degraded(UI_PRIORITY_RED, UI_PRIORITY_RED));
+
+    /* The trap the function exists to avoid: RED (enum 0) is MORE severe than
+     * YELLOW (enum 1), so a numeric compare would call YELLOW->RED an
+     * improvement and stay silent on the one transition that matters most. */
+    assert((int)UI_PRIORITY_RED < (int)UI_PRIORITY_YELLOW);
+    printf("severity_order OK\n");
+}
+
+/*
+ * Monitor re-triage: on a tick past the interval, a MORE severe verdict jumps to
+ * Result and raises the degraded flag; an equal one is silent. Driven through the
+ * mock's priority cycle, which is what a desktop can steer.
+ */
+static void test_monitor_retriage(void)
+{
+    /* Walk a fresh patient to Monitor. */
+    ui_runtime_init();
+    ui_runtime_set_retriage_ms(15000U);
+    ui_action(UI_SCREEN_HOME, 1U);
+    ui_runtime_tick(500);           /* scan completes -> BERHASIL */
+    ui_action(UI_SCREEN_BERHASIL, 0U);
+    ui_action(UI_SCREEN_AGE, 3U);
+    ui_action(UI_SCREEN_GENDER, 3U);
+    ui_action(UI_SCREEN_AIRWAY, 3U);
+    ui_runtime_tick(1000);          /* measure starts */
+    ui_runtime_tick(3500);          /* window (2000) ends -> RESULT, GREEN */
+    expect(UI_SCREEN_RESULT);
+    assert(ui_session_get_priority() == UI_PRIORITY_GREEN);
+    ui_action(UI_SCREEN_RESULT, 0U);
+    expect(UI_SCREEN_MONITOR);
+
+    /* Before the interval elapses: nothing fires even if the colour would move. */
+    ui_mock_cycle_priority();       /* mock now offers YELLOW */
+    ui_runtime_tick(4000);          /* only 500 ms into the 15 s interval */
+    expect(UI_SCREEN_MONITOR);
+    assert(!ui_runtime_take_degraded());
+
+    /* Past the interval, with a worse colour on offer: jump + flag. The session
+     * entered Monitor as GREEN; the mock now classifies YELLOW. */
+    ui_runtime_tick(20000);
+    expect(UI_SCREEN_RESULT);
+    assert(ui_session_get_priority() == UI_PRIORITY_YELLOW);
+    assert(ui_runtime_take_degraded());
+    assert(!ui_runtime_take_degraded()); /* take-once */
+
+    /* Off (interval 0): no re-triage even long past any interval. */
+    ui_runtime_set_retriage_ms(0U);
+    ui_action(UI_SCREEN_RESULT, 0U);
+    expect(UI_SCREEN_MONITOR);
+    ui_mock_cycle_priority();       /* would be RED next */
+    ui_runtime_tick(60000);
+    expect(UI_SCREEN_MONITOR);
+    assert(!ui_runtime_take_degraded());
+
+    printf("monitor_retriage OK\n");
 }
 
 int main(void)
@@ -109,6 +183,9 @@ int main(void)
     ui_runtime_tick(3500);
     assert(!ui_session_has_priority());
     assert(!ui_session_has_rfid());
+
+    test_severity_order();
+    test_monitor_retriage();
 
     printf("ALL_PASS measure_ms=%u\n", (unsigned)UI_MEASURE_MS);
     return 0;
