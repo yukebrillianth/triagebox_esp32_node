@@ -9,6 +9,7 @@
 #include "asset_fs.h"
 #include "tb_debug.h"
 #include "tb_link_i2c.h"
+#include "bp_capture.h"
 #include "ui_board.h"
 
 #include "ui.h"
@@ -186,6 +187,10 @@ void app_main(void)
     if (tb_link_start() != ESP_OK) {
         ESP_LOGW(TAG, "STM32 link did not start -- UI will run without vitals");
     }
+
+    /* The BP task feeds off the poll task's wave reads; it must exist before
+     * the first measure-done (which notifies it) and is idle until then. */
+    bp_capture_init();
 
 
     asset_fs_init();

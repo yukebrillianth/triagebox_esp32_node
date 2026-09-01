@@ -16,6 +16,7 @@ idf_component_register(
         "tb_i2c_codec.c"
         "tb_link_i2c.c"
         "tb_ui_source.c"
+        "bp_capture.c"
     INCLUDE_DIRS
         "include"
         # ui_types.h / ui_mock.h: the contract this component implements.

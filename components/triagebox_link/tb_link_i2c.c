@@ -12,6 +12,7 @@
 #include "tb_frame.h" /* tb_frame_priority_to_wire() only -- see below */
 #include "tb_i2c_codec.h"
 #include "tb_ui_source.h"
+#include "bp_capture.h" /* the wave block feeds this board's BP inference */
 #include "ui_board.h" /* ui_board_battery(): the gauge lives on our side */
 
 static const char *TAG = "tb_link_i2c";
@@ -291,6 +292,80 @@ static void poll_rssi_if_due(void)
     ESP_LOGD(TAG, "rssi read failed");
 }
 
+/*
+ * The waveform block (TB_REG_PPG_BASE, 124 bytes): the raw material for this
+ * board's own BP inference, bp_capture.c.
+ *
+ * Every poll, not every Nth: the ring holds 20 samples = 200 ms, and the poll
+ * is 50 ms, so 4 reads per turnover is already the slowest safe cadence. The
+ * transaction is ~25 ms of the 50 kHz bus, which is why it only runs while a
+ * capture is active -- bp_capture_capturing() -- plus one drain after the
+ * freeze, so the tail of the window is not stranded in the ring.
+ *
+ * A GAP POISONS THE MODEL, not just the plot: the features are inter-beat
+ * timing statistics, so a hole shifts every PAT/PTT after it. `dropped` from
+ * tb_wave_take() nonzero, or a read failure, resets the capture; the model
+ * then sees a short window and refuses, and the triage imputes 129.7. Restart
+ * beats inventing.
+ */
+static void poll_wave_if_due(void)
+{
+    static tb_wave_block_t s_wave; /* 124 B in BSS: poll stack is 3072 bytes */
+    static uint32_t s_last_total;
+    static bool s_was_capturing;
+
+    const bool capturing = bp_capture_capturing();
+    if (!capturing && !s_was_capturing) {
+        return;
+    }
+    /* One drain pass after the freeze: the last samples before measure-done
+     * are still in the ring, and the accumulator deserves them. */
+    const bool last_pass = !capturing && s_was_capturing;
+    s_was_capturing = capturing;
+
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
+        return;
+    }
+    const esp_err_t err =
+        read_block(TB_REG_PPG_BASE, (uint8_t *) &s_wave, sizeof(s_wave));
+    bsp_i2c_unlock();
+
+    if ((err != ESP_OK) || last_pass) {
+        if (err != ESP_OK) {
+            ESP_LOGD(TAG, "wave read failed");
+            if (capturing) {
+                /* Same cure as a turnover: restart rather than leave a hole.
+                 * The tail-end read failure after freeze needs no restart --
+                 * the window is already closed. */
+                ESP_LOGW(TAG, "wave read failed -- BP capture restarting");
+                bp_capture_start();
+                s_last_total = 0U;
+            }
+        }
+        return;
+    }
+
+    tb_wave_sample_t out[TB_PPG_RING];
+    uint32_t dropped = 0U;
+    const uint32_t n = tb_wave_take(&s_wave, &s_last_total, out, &dropped);
+
+    if (dropped != 0U) {
+        ESP_LOGW(TAG, "wave gap (%u lost) -- BP capture restarting",
+                 (unsigned) dropped);
+        bp_capture_start(); /* reset accumulator + filters, keep capturing */
+        s_last_total = s_wave.total;
+        return;
+    }
+
+    for (uint32_t i = 0U; i < n; ++i) {
+        /* Take order is oldest first. ir/red are wire values (>>2) -- unpack
+         * to counts; ecg is already raw. bp_capture_wave_push() drops the
+         * samples after the last read because the freeze landed first. */
+        bp_capture_wave_push(tb_ppg_unpack(out[i].ir),
+                             tb_ppg_unpack(out[i].red), out[i].ecg);
+    }
+}
+
 static void poll_task(void *arg)
 {
     (void)arg;
@@ -307,6 +382,7 @@ static void poll_task(void *arg)
         }
         poll_once();
         poll_rssi_if_due();
+        poll_wave_if_due();
         push_battery_if_due();
         vTaskDelay(pdMS_TO_TICKS(TB_POLL_MS));
     }
@@ -459,6 +535,45 @@ esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "RESULT not delivered: %s -- station will miss this "
                       "triage", esp_err_to_name(err));
+    }
+    return err;
+}
+
+/*
+ * The BP result travels to the STM32 so its LoRa packet can carry it -- the
+ * same "measured here, transmitted there" handoff as TB_REG_HOST_BATTERY.
+ * SYS first, DIA last: the slave latches the pair on DIA's final byte
+ * (tb_regs.h), so this order is load-bearing exactly like
+ * tb_link_send_result()'s PRIORITY-then-CONFIDENCE.
+ *
+ * Each value is two write_reg() calls (register pointer + one byte), so the
+ * u16s go out little-endian by construction: low byte at 0x44, high at 0x45.
+ */
+esp_err_t tb_link_send_bp(uint16_t sys, uint16_t dia)
+{
+    esp_err_t err;
+
+    if (s_dev == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    err = write_reg(TB_REG_HOST_BP_SYS, (uint8_t) (sys & 0xFFU));
+    if (err == ESP_OK) {
+        err = write_reg(TB_REG_HOST_BP_SYS + 1U, (uint8_t) (sys >> 8));
+    }
+    if (err == ESP_OK) {
+        err = write_reg(TB_REG_HOST_BP_DIA, (uint8_t) (dia & 0xFFU));
+    }
+    if (err == ESP_OK) {
+        err = write_reg(TB_REG_HOST_BP_DIA + 1U, (uint8_t) (dia >> 8));
+    }
+    bsp_i2c_unlock();
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "BP not delivered: %s -- the packet will omit it",
+                 esp_err_to_name(err));
     }
     return err;
 }

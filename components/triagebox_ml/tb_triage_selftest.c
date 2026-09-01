@@ -8,10 +8,17 @@
  *
  * 2. The ESI -> START colour mapping in the ML side's tb_classify.h. That is the
  *    highest-consequence arithmetic in the firmware: get it wrong and the most
- *    critical patient is shown as the least urgent. It is tested by including
- *    tb_classify.h and supplying our OWN predict_triage(), so the mapping is
- *    checked without linking the 72k-line model -- the reason it went untested
- *    before. The stub is scripted through s_next_esi.
+ *    critical patient is shown as the least urgent. It is tested against our OWN
+ *    stubbed predict_triage(), so the mapping is checked without linking the
+ *    72k-line model -- the reason it went untested before. The stub is scripted
+ *    through s_next_esi and also CAPTURES the TriageInput it is handed, which is
+ *    how test 3 reads back what the adapter actually built.
+ *
+ * 3. The adapter's BP imputation. Nothing on the box measures pressure, so
+ *    tb_triage_model.c substitutes the model's training mean for an absent BP;
+ *    a mis-typed mask bit or a wrong constant would turn every real patient
+ *    into either a refusal or a fabricated reading, so the value reaching the
+ *    model is pinned through the capture above.
  *
  * Nothing here tests the model's accuracy. That is a training question and no
  * amount of C can answer it.
@@ -25,15 +32,18 @@
 
 /* Scripted stand-in for the 72k-line GBM, so the mapping above it is testable.
  * Defined here rather than linked, which is the whole trick: tb_classify.h calls
- * predict_triage() and does not care that the real one is not in this binary. */
+ * predict_triage() and does not care that the real one is not in this binary.
+ * It also captures the input, so tests can assert on what the adapter BUILT
+ * rather than only on what came back out. */
 static int s_next_esi = 3;
 static int s_predict_calls;
+static TriageInput s_last_input;
 
 TriageOutput predict_triage(const TriageInput *in)
 {
     TriageOutput out;
 
-    (void)in;
+    s_last_input = *in;
     ++s_predict_calls;
     memset(&out, 0, sizeof(out));
     out.predicted_esi = s_next_esi;
@@ -46,7 +56,13 @@ TriageOutput predict_triage(const TriageInput *in)
     return out;
 }
 
-#include "tb_classify.h" /* the mapping under test, body and all */
+/* The mapping under test now arrives LINKED, from tb_triage_model.c -- the one
+ * translation unit allowed to include tb_classify.h, since a header defining a
+ * non-static function cannot be included twice in one binary (see the warning
+ * there). This file used to include it instead, which meant it could not also
+ * link the adapter whose TriageInput it wants to observe. Hence a bare
+ * prototype: same signature as tb_classify.h's definition, no second body. */
+ui_priority_t tb_classify(const TriageInput *input, int *predicted_esi);
 
 static TriageInput healthy(void)
 {
@@ -226,6 +242,64 @@ static void test_sex(void)
     assert(tb_triage_sex(UI_GENDER_U) < tb_triage_sex(UI_GENDER_M));
 }
 
+static vitals_t measured(void)
+{
+    vitals_t v;
+
+    memset(&v, 0, sizeof(v));
+    v.hr = 80;
+    v.spo2 = 98;
+    v.rr = 16;
+    v.valid = true; /* the SVM gate: a complete snapshot arrived */
+    v.valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR; /* no BP source */
+    return v;
+}
+
+static void test_bp_imputation(void)
+{
+    vitals_t v = measured();
+    int esi = -1;
+    int before;
+
+    /*
+     * The case that is EVERY real patient today: no BP sensor, so the codec
+     * leaves bp_sys 0 and the BP bit clear. tb_classify.h refuses on
+     * systolic_bp <= 0, so without the imputation this returned BLACK/esi 0 for
+     * a patient with three good vitals. 129.7 is the model's own training mean
+     * (triage_pipeline.c:72317), so the absent feature contributes nothing --
+     * it lands exactly on the z-score centre. The literal is repeated here on
+     * purpose: this test's job is to fail if the constant in the adapter drifts
+     * away from the one in the model.
+     */
+    s_next_esi = 3;
+    before = s_predict_calls;
+    assert(tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, false, NULL,
+                              &esi) == UI_PRIORITY_GREEN);
+    assert(s_predict_calls > before); /* it scored, rather than refusing */
+    assert(s_last_input.systolic_bp == 129.7f);
+    assert(esi == 3);
+
+    /* And a real reading is passed through untouched -- the imputation must not
+     * outlive the arrival of an actual cuff. */
+    v.bp_sys = 110;
+    v.valid_mask |= UI_VITAL_BP;
+    s_next_esi = 2;
+    assert(tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, false, NULL,
+                              &esi) == UI_PRIORITY_YELLOW);
+    assert(s_last_input.systolic_bp == 110.0f);
+
+    /* A set bit with a 0 reading is a bug upstream, not an average patient: the
+     * mask says measured, so the gate's refusal is the honest answer and the
+     * imputation must not paper over it. */
+    v.bp_sys = 0;
+    before = s_predict_calls;
+    s_next_esi = 1;
+    assert(tb_triage_classify(&v, UI_AGE_BAND_18_45, UI_GENDER_M, false, NULL,
+                              &esi) == UI_PRIORITY_BLACK);
+    assert(esi == 0);
+    assert(s_predict_calls == before);
+}
+
 int main(void)
 {
     test_esi_mapping();
@@ -234,6 +308,7 @@ int main(void)
     test_airway_problem_forces_red();
     test_age_bands();
     test_sex();
+    test_bp_imputation();
     printf("tb_triage_selftest: OK\n");
     return 0;
 }

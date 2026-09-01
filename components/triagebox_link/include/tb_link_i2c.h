@@ -46,6 +46,14 @@ esp_err_t tb_link_send_cmd(uint8_t cmd);
 esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
                               const char *tag);
 
+/*
+ * Hand the BP prediction (mmHg) to the STM32 so the LoRa packet carries it.
+ * DIA's final byte latches the pair, so call only with a COMPLETE result;
+ * an invalid/absent BP is simply not sent, and the STM32 keeps
+ * TB_FLAG_BP_VALID clear so the station omits the keys.
+ */
+esp_err_t tb_link_send_bp(uint16_t sys, uint16_t dia);
+
 /* Diagnostics for the `stats` console command. */
 uint32_t tb_link_frames_ok(void);   /* successful snapshot polls */
 uint32_t tb_link_crc_errors(void);  /* failed polls + version rejects */

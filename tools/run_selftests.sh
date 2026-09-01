@@ -50,14 +50,26 @@ run components/triagebox_link/tb_i2c_codec_selftest.c \
     components/triagebox_link/tb_i2c_codec.c \
     ui/logic/ui_types.c
 
-# tb_triage.c plus the ML side's ESI->colour mapping. tb_triage_model.c is NOT
-# linked -- it pulls in the 72k-line GBM. Instead the selftest includes
-# tb_classify.h and supplies its own predict_triage(), so the mapping is checked
-# without the model.
+# tb_triage.c plus the ML side's ESI->colour mapping AND the adapter that builds
+# TriageInput. triage_pipeline.c is NOT linked -- the 72k-line GBM. The selftest
+# supplies its own predict_triage(), which captures the input the adapter built
+# (the BP imputation) and scripts the ESI the mapping is checked against.
+# tb_triage_model.c is the one unit allowed to include tb_classify.h, so the
+# mapping now arrives linked through it rather than included by the selftest.
 run components/triagebox_ml/tb_triage_selftest.c \
     components/triagebox_ml/tb_triage_selftest.c \
     components/triagebox_ml/tb_triage.c \
+    components/triagebox_ml/tb_triage_model.c \
     ui/logic/ui_types.c
+
+# BP pipeline golden vector: the real feature extraction plus both LightGBM
+# models, scored against subject 001's labelled 148/90. ~37k-line model files,
+# slow to compile on the host -- expected.
+run components/triagebox_ml/bp_pipeline_selftest.c \
+    components/triagebox_ml/bp_pipeline_selftest.c \
+    components/triagebox_ml/bp_pipeline.c \
+    components/triagebox_ml/lgbm_sbp.c \
+    components/triagebox_ml/lgbm_dbp.c
 
 # Pre-existing UI logic selftests. ui_bindings/ui_input need LVGL, so the ones
 # listed here are the LVGL-free modules only.
@@ -92,6 +104,15 @@ run components/triagebox_link/tb_ui_source_selftest.c \
     components/triagebox_link/tb_ui_source_selftest.c \
     components/triagebox_link/tb_ui_source.c \
     ui/logic/ui_demo.c \
+    ui/logic/ui_types.c
+
+# bp_capture's pure parts against the real file: biquad frequency response
+# (re-derived independently in the test), the ECG heart-rate estimator, and
+# the publish gate. The task/FreeRTOS side is stubbed away (xTaskCreate fails,
+# so s_task stays NULL) -- it is hardware-only.
+run components/triagebox_link/bp_capture_selftest.c \
+    components/triagebox_link/bp_capture_selftest.c \
+    components/triagebox_link/bp_capture.c \
     ui/logic/ui_types.c
 
 [ "$fail" -eq 0 ] && echo "all selftests OK"

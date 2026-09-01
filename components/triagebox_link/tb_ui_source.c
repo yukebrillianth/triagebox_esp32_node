@@ -16,6 +16,7 @@
 #include "tb_ui_source.h"
 #include "ui_board.h"
 #include "ui_mock.h"
+#include "bp_capture.h"
 
 static const char *TAG = "tb_ui_src";
 
@@ -25,6 +26,35 @@ static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static vitals_t s_vitals;
 static bool s_have_vitals;
+
+/*
+ * The BP overlay: this board's own ML result, written by the BP task
+ * (bp_capture.c) and folded into every snapshot tb_ui_source_on_vital()
+ * publishes. The STM32's vitals block carries bp_sys/bp_dia too -- it echoes
+ * what we wrote it -- but the round trip is slow and races the display; the
+ * overlay is the source of truth for the UI, and re-applying it after every
+ * incoming snapshot means a poll can never momentarily blank the tile.
+ *
+ * s_bp_seen is the "this measurement's BP is settled" flag infer_once() waits
+ * on: set by the first on_bp() after tb_ui_source_bp_arm() at measure-start,
+ * valid or not, so a failed inference can't hang the triage.
+ */
+static bool s_bp_valid;
+static uint16_t s_bp_sys;
+static uint16_t s_bp_dia;
+static bool s_bp_seen;
+
+/* Caller holds s_mux. */
+static void bp_apply_overlay_locked(void)
+{
+    if (s_bp_valid) {
+        s_vitals.bp_sys = s_bp_sys;
+        s_vitals.bp_dia = s_bp_dia;
+        s_vitals.valid_mask |= UI_VITAL_BP;
+    } else {
+        s_vitals.valid_mask &= (uint8_t) ~UI_VITAL_BP;
+    }
+}
 
 static rfid_t s_rfid;
 static bool s_rfid_ready;
@@ -84,6 +114,47 @@ void tb_ui_source_on_vital(const vitals_t *v)
     portENTER_CRITICAL(&s_mux);
     s_vitals = *v;
     s_have_vitals = true;
+    bp_apply_overlay_locked();
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void tb_ui_source_on_bp(bool valid, uint16_t sys, uint16_t dia)
+{
+    /* Outside the lock: a failed write logs, it does not spin. Sending only a
+     * valid pair is what keeps TB_FLAG_BP_VALID honest on the STM32. */
+    if (valid) {
+        (void)tb_link_send_bp(sys, dia);
+    }
+
+    portENTER_CRITICAL(&s_mux);
+    s_bp_valid = valid;
+    s_bp_sys = sys;
+    s_bp_dia = dia;
+    s_bp_seen = true; /* settled, whatever the verdict: infer_once() unblocks */
+    /* Publish into the current snapshot too: between the BP task's publish
+     * and the next 50 ms poll, Result would otherwise keep showing the tile
+     * as "--" for up to one poll. apply_vital_tiles reads the snapshot. */
+    if (s_have_vitals) {
+        bp_apply_overlay_locked();
+    }
+    portEXIT_CRITICAL(&s_mux);
+}
+
+bool tb_ui_source_bp_ready(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    const bool ready = s_bp_seen;
+    portEXIT_CRITICAL(&s_mux);
+    return ready;
+}
+
+void tb_ui_source_bp_arm(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_bp_seen = false;
+    s_bp_valid = false;
+    s_bp_sys = 0U;
+    s_bp_dia = 0U;
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -204,6 +275,10 @@ void ui_mock_init(void)
     s_rssi_valid = false;
     s_last_frame_ms = 0;
     s_frame_seen = false;
+    s_bp_valid = false;
+    s_bp_sys = 0U;
+    s_bp_dia = 0U;
+    s_bp_seen = false;
     portEXIT_CRITICAL(&s_mux);
 
     s_now_ms = 0;
@@ -224,6 +299,12 @@ void ui_mock_tick(uint32_t now_ms)
         if ((now_ms - s_measure_start_ms) >= UI_MEASURE_MS) {
             s_measure_done = true;
             s_measure_active = false;
+            /* Freeze the waveform and wake the BP task. Same task as this
+             * tick (LVGL), so no ordering hazard: bp_capture_publish-wait in
+             * infer_once() comes later in this same task's timeline. The BP
+             * task runs concurrently and publishes via on_bp(); infer_once
+             * polls tb_ui_source_bp_ready() with a bounded wait. */
+            bp_capture_measure_done();
         }
     }
 }
@@ -278,6 +359,13 @@ void ui_mock_start_measure(void)
     s_measure_done = false;
     s_measure_start_ms = s_now_ms;
     s_have_priority = false;
+
+    /* Fresh BP for this measurement: clear the overlay AND arm the "settled"
+     * flag infer_once() waits on. Ordering with the capture start does not
+     * matter (both are this task); ordering with the poll task's pushes does,
+     * and bp_capture_start() is what makes bp_capture_capturing() true. */
+    tb_ui_source_bp_arm();
+    bp_capture_start();
 
     if (tb_link_send_cmd(TB_CMD_START_MEASURE) != ESP_OK) {
         ESP_LOGW(TAG, "START_MEASURE not sent");
@@ -339,6 +427,23 @@ static void infer_once(void)
 
     if (s_have_priority) {
         return;
+    }
+
+    /*
+     * Wait for this measurement's BP to settle before classifying: the BP task
+     * was woken at measure-done (ui_mock_tick, this same task) and publishes
+     * through on_bp() under the same spinlock the snapshot uses. Bounded at
+     * 2 s -- a hung or slow inference must delay the triage verdict, not hang
+     * the UI, and a missed BP is exactly what the model's 129.7 imputation is
+     * for. 50 ms steps because that is the poll cadence the BP task's inputs
+     * ran on; there is nothing finer to react to.
+     */
+    for (unsigned waited = 0U; !tb_ui_source_bp_ready() && (waited < 2000U);
+         waited += 50U) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    if (!tb_ui_source_bp_ready()) {
+        ESP_LOGW(TAG, "BP not settled in 2s -- classifying without it");
     }
 
     /*
