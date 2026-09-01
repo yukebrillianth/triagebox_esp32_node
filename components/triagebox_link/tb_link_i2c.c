@@ -318,10 +318,50 @@ esp_err_t tb_link_start(void)
     const i2c_device_config_t cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = TB_I2C_SLAVE_ADDR,
-        /* Matches the STM32's I2C2 (Standard mode) and the rest of this bus.
-         * A slave follows the master's clock, so this is the only place the
-         * speed is decided. */
-        .scl_speed_hz = 100000,
+        /*
+         * 50 kHz to the STM32, while the GT911 and the expander keep their
+         * 400 kHz -- the driver reprograms the bus timing per transaction from
+         * the device handle, so the two coexist on one bus.
+         *
+         * Not a protocol requirement, an ANALOG one. This bus was laid out for
+         * three chips on one PCB, and the pull-ups on the display board are all
+         * there is: a WeAct Black Pill has no I2C pull-ups of its own on PB3 or
+         * PB10. Adding jumper wires and a second board adds bus capacitance that
+         * those pull-ups were never sized for, and the rise time goes out of the
+         * 1000 ns the standard allows. A slow edge is read as the wrong level,
+         * which is where the misplaced STARTs, the BERRs and the latched BUSY
+         * flag come from -- F411 erratum 2.8.7 is literally about the analog
+         * filter mis-sampling an edge.
+         *
+         * Halving the clock does not fix the rise time; it gives the line twice
+         * as long to finish rising before the bit is sampled. That is enough to
+         * turn a marginal link into a working one, and it costs 4.9 ms per poll
+         * instead of 2.5 -- still 10% of the 50 ms period.
+         *
+         * THIS IS A CRUTCH, NOT THE FIX. The fix is 2.2k-4.7k pull-ups on SDA and
+         * SCL and a short dedicated ground between the two boards. Put those in
+         * and this can go back to 100000.
+         */
+        .scl_speed_hz = 50000,
+        /*
+         * 20 ms of clock-stretch tolerance, not the 2 ms default.
+         *
+         * The default is 2000 us, and on this SoC that is 2000 us of XTAL at
+         * 40 MHz rounded up to the next power of two -- 3.28 ms, measured from
+         * the register the driver writes. The STM32 stretches SCL from its I2C2
+         * ISR, which sits at the same NVIC preempt priority as its 497.5 Hz ADC
+         * ISR, its DMA and its EXTI, so it cannot preempt any of them; a stretch
+         * of several ms is normal there and not a fault. Exceeding this budget is
+         * what logs "I2C hardware timeout detected", and each expiry costs an FSM
+         * reset plus a fire-and-forget 9-pulse bus clear -- on a bus the GT911
+         * touch controller shares and waits on with portMAX_DELAY.
+         *
+         * 20000 is the figure the one worked example of this exact pairing
+         * (ESP32-S3 master, STM32 slave) settled on upstream, and the IDF I2C
+         * guide warns a slave "can even stretch for 12 ms". A longer ceiling
+         * costs nothing when nothing is stretching: it is a deadline, not a delay.
+         */
+        .scl_wait_us = 20000,
     };
     esp_err_t err;
 
