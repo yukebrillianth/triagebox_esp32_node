@@ -1,7 +1,7 @@
 #ifndef TB_REGS_H
 #define TB_REGS_H
 
-#include <stddef.h> /* NULL, for tb_ppg_take's optional out-parameter */
+#include <stddef.h> /* NULL, for tb_wave_take's optional out-parameter */
 #include <stdint.h>
 
 /*
@@ -59,8 +59,14 @@
 
 /* Bump on ANY layout change. The ESP32 reads this first and refuses to parse
  * a block it does not recognise, rather than trusting shifted offsets.
- * 0x02 added the PPG waveform block at TB_REG_PPG_BASE. */
-#define TB_PROTO_VER 0x02U
+ * 0x02 added the PPG waveform block at TB_REG_PPG_BASE.
+ * 0x03 put ECG into that block alongside IR/RED (so a sample is 6 bytes, not 4)
+ *      and shrank the ring to 20 samples to keep the block inside the one-byte
+ *      register pointer. Both the stride and the count moved, so every offset
+ *      past the first sample moved with them -- an 0x02 reader parsing an 0x03
+ *      block would find RED where IR is and drift by two bytes per sample. This
+ *      is exactly the case the version byte exists to stop. */
+#define TB_PROTO_VER 0x03U
 
 /* ---- Read block (STM32 -> ESP32) ---------------------------------------- */
 
@@ -161,16 +167,26 @@ static inline int tb_rssi_valid(int8_t rssi)
  * ESP32 only compares for inequality, never for ordering.
  */
 
-/* ---- PPG waveform block (STM32 -> ESP32) -------------------------------- */
+/* ---- Waveform block (STM32 -> ESP32) ------------------------------------ */
 
 /*
- * The smoothed MAX30102 waveform, so the ESP32 can run its own PPG processing.
- * The STM32 does not analyse it beyond SpO2; it low-passes it (31-tap
- * linear-phase FIR, 10Hz at 100Hz -- see DSP_PPG_LP_TAPS) and hands it over.
+ * The three sampled signals the ESP32 needs to do its own processing: the
+ * smoothed MAX30102 IR and RED channels and the boxcar-averaged ECG, one
+ * time-aligned triple per sample slot. The STM32 does not analyse any of it
+ * beyond SpO2 and heart rate; it low-passes the PPG (31-tap linear-phase FIR,
+ * 10Hz at 100Hz -- see DSP_PPG_LP_TAPS) and hands all three over.
+ *
+ * WHY ONE BLOCK AND NOT TWO: the ESP32's blood-pressure model is fed pulse
+ * transit time -- the delay between the R wave on the ECG and the foot of the
+ * pulse at the finger -- so its inputs are only as good as the alignment
+ * between the two channels. One struct with one sample counter makes that
+ * alignment structural. Two blocks with two counters would need the ESP32 to
+ * correlate them, and any read that caught the two at different heads would
+ * shift PTT by whole samples, i.e. by tens of mmHg of predicted pressure.
  *
  * WHY A SEPARATE BASE ADDRESS AND NOT AN EXTENSION OF tb_snapshot_t: I2C2 runs
- * at 100kHz, so a byte costs ~90us. Appending 128 bytes of waveform to the
- * vitals snapshot would turn a 4ms poll into a 16ms one, on a bus the ESP32
+ * at 100kHz, so a byte costs ~90us. Appending 124 bytes of waveform to the
+ * vitals snapshot would turn a 4ms poll into a 15ms one, on a bus the ESP32
  * also shares with the GT911 touch controller and the TCA9554. Two base
  * addresses means the ESP32 polls vitals as often as it likes and pulls the
  * waveform only when something wants it.
@@ -179,25 +195,41 @@ static inline int tb_rssi_valid(int8_t rssi)
  * master actually took -- a read ends when the master NACKs, which the F4 HAL
  * surfaces as an error, not a count. So nothing is consumed here. The ESP32
  * diffs `total` against the value it saw last time and reads that many samples
- * backwards from the head; tb_ppg_take() below does exactly that, so neither
+ * backwards from the head; tb_wave_take() below does exactly that, so neither
  * side has to re-derive the wrap. Same reasoning as the button bitmask: state,
  * not events, so a missed poll costs nothing and there is no queue to overflow.
  *
  * The overrun is detectable rather than silent, which is the point: at
- * TB_PPG_FS_HZ the ring holds TB_PPG_RING/TB_PPG_FS_HZ = 320ms, so the ESP32
- * must read at better than ~3Hz. Slower than that is not corruption, it is a
- * gap tb_ppg_take() reports.
+ * TB_PPG_FS_HZ the ring holds TB_PPG_RING/TB_PPG_FS_HZ = 200ms, so the ESP32
+ * must read at better than ~5Hz. Slower than that is not corruption, it is a
+ * gap tb_wave_take() reports.
  */
 
-/* 0x50 and not 0x80: the register pointer is ONE byte, and this block is 132
- * bytes, so a base of 0x80 would run off the end of the address space at 0x104
- * and the tail would be unreachable. 0x50 sits clear of both the read block
- * (ends 0x30) and the write block (0x40..0x43) and ends at 0xD4. */
+/*
+ * 0x50 still, and the ceiling is still the ONE-BYTE register pointer: the block
+ * must end at or before 0x100, which at 6 bytes a sample plus the 4-byte counter
+ * leaves room for at most (0x100 - 0x50 - 4) / 6 = 28 samples from here.
+ *
+ * It cannot move down -- 0x50 already sits clear of the read block (ends 0x31)
+ * and the write block (0x40..0x47), and the ESP32's codec asserts
+ * TB_REG_SNAPSHOT_END <= TB_REG_PPG_BASE. Moving it up only costs samples.
+ */
 #define TB_REG_PPG_BASE 0x50U
-/* Power of two so the index wrap is a mask, not a divide. 32 samples = 320ms
- * at 100Hz, and 128 bytes = ~12ms of a 100kHz bus per read. Raising it buys
- * slack for a slower poller at the cost of a longer transaction. */
-#define TB_PPG_RING     32U
+/*
+ * NOT a power of two any more, and that is the 6-byte sample talking: 32 samples
+ * would be 196 bytes and end at 0x114, past the one-byte pointer, so the ring had
+ * to shrink and the obvious replacement -- 16, to keep the wrap a mask -- is only
+ * 160 ms of history. 20 samples is 200 ms at 100 Hz, so the index wrap below is a
+ * divide rather than a mask. On a Cortex-M4 that is a single UDIV once per push at
+ * 100 Hz, which is not measurable.
+ *
+ * 20 and not the 28 the address space would allow, because the number that
+ * matters is the poll budget, not the maximum: the ESP32 polls the snapshot every
+ * 50 ms, so 200 ms is 4 reads per turnover -- it may miss three polls in a row and
+ * still lose no sample. 124 bytes is ~11 ms of a 100 kHz bus per read, and the
+ * bigger ring would spend 30% more bus time on history nothing asks for.
+ */
+#define TB_PPG_RING     20U
 /* Sample rate of what is in the ring, from DSP_PPG_FS_HZ. A constant, not a
  * wire field: the ESP32 needs it to interpret the waveform, but it never
  * changes at runtime, so putting it on the bus 100 times a second would be
@@ -214,10 +246,22 @@ static inline int tb_rssi_valid(int8_t rssi)
 #define TB_PPG_SHIFT      2U
 #define TB_PPG_MAX_COUNTS 0x3FFFFU /* 18-bit MAX30102 FIFO word */
 
+/*
+ * ONE SAMPLE INSTANT, THREE SIGNALS. ir/red are MAX30102 counts >> TB_PPG_SHIFT
+ * (above); ecg is NOT shifted and NOT packed -- it is the raw ADC word.
+ *
+ * The asymmetry is the two sensors' resolutions, not an oversight. The MAX30102
+ * FIFO is 18-bit, so it needs the shift to fit a uint16_t at all. The F411's ADC
+ * is 12-bit, so an ECG sample fits with four bits to spare and shifting it would
+ * throw away resolution that is already scarce: the AD8232 delivers an R wave of
+ * a few hundred counts on a ~2000-count baseline, and >>2 would quantise the R
+ * peak the ESP32 has to time the pulse transit from.
+ */
 typedef struct TB_PACKED {
     uint16_t ir;  /**< tb_ppg_unpack() -> raw counts */
     uint16_t red;
-} tb_ppg_sample_t;
+    uint16_t ecg; /**< raw 12-bit ADC counts, use as-is */
+} tb_wave_sample_t;
 
 /*
  * `total` deliberately carries the head position too: head == total %
@@ -228,13 +272,22 @@ typedef struct TB_PACKED {
  * sides can cast this over the received bytes instead of unpacking by hand.
  * It wraps after 497 days at 100Hz; the ESP32 subtracts, so the wrap is
  * harmless as long as it uses uint32_t arithmetic.
+ *
+ * The modulo survives that wrap because both sides apply `% TB_PPG_RING` to the
+ * same uint32_t counter values, so the reader derives exactly the slots the writer
+ * used -- tb_link_selftest.c pins that. The one imperfection: 2^32 % 20 == 16, so
+ * across the rollover slot 0 is reused after 16 samples rather than 20, and a read
+ * that is 17-20 samples behind at exactly that instant gets one slot the writer
+ * had already overwritten, with no drop reported. One sample, in one read, once per
+ * 497 days of uptime -- against a mask, which would have cost 4 samples of history
+ * on every read forever.
  */
 typedef struct TB_PACKED {
     uint32_t total;                     /**< samples ever pushed, never reset */
-    tb_ppg_sample_t s[TB_PPG_RING];
-} tb_ppg_block_t;
+    tb_wave_sample_t s[TB_PPG_RING];
+} tb_wave_block_t;
 
-#define TB_REG_PPG_END (TB_REG_PPG_BASE + 0x84U) /* one past end */
+#define TB_REG_PPG_END (TB_REG_PPG_BASE + 0x7CU) /* 0xCC, one past end */
 
 /**
  * Pack one smoothed channel for the wire. Only the STM32 calls this; it lives
@@ -263,9 +316,9 @@ static inline uint32_t tb_ppg_unpack(uint16_t v)
 }
 
 /**
- * Append one sample, in raw counts. STM32 side; wrapped by
- * tb_slave_ppg_push(). @p blk is volatile because the I2C ISR reads it
- * concurrently, and that is load-bearing:
+ * Append one sample: PPG in raw counts, ECG in raw ADC counts. STM32 side;
+ * wrapped by tb_slave_wave_push(). @p blk is volatile because the I2C ISR reads
+ * it concurrently, and that is load-bearing:
  *
  * total is stored LAST, and that is the whole synchronisation scheme -- there
  * is no lock and none is needed. The reader treats total as "samples you may
@@ -273,34 +326,37 @@ static inline uint32_t tb_ppg_unpack(uint16_t v)
  * landing mid-push sees either the old count, and picks this sample up next
  * time, or the new count with the sample already in place. Never a count that
  * promises a slot not yet written. The volatile qualifier is what stops the
- * compiler hoisting that store above the two below; on Cortex-M4 that is
+ * compiler hoisting that store above the three below; on Cortex-M4 that is
  * sufficient, since the core sees its own stores in program order.
  */
-static inline void tb_ppg_push(volatile tb_ppg_block_t *blk, float ir, float red)
+static inline void tb_wave_push(volatile tb_wave_block_t *blk, float ir,
+                                float red, uint16_t ecg)
 {
     uint32_t t = blk->total;
-    uint32_t i = t & (TB_PPG_RING - 1U); /* power of two, so a mask */
+    uint32_t i = t % TB_PPG_RING; /* not a power of two, so a divide */
 
     blk->s[i].ir = tb_ppg_pack(ir);
     blk->s[i].red = tb_ppg_pack(red);
+    blk->s[i].ecg = ecg;
     blk->total = t + 1U; /* last, deliberately */
 }
 
 /**
  * ESP32 side: pull everything new out of a block just read over I2C.
  *
- * @param blk         the 132 bytes read from TB_REG_PPG_BASE
+ * @param blk         the 124 bytes read from TB_REG_PPG_BASE
  * @param last_total  in/out; keep it between calls, start it at 0
  * @param out         receives up to TB_PPG_RING samples, OLDEST FIRST
  * @param dropped     may be NULL; else set to the count lost to the ring
  *                    turning over, i.e. this read came too late
  * @return            how many samples were written to @p out
  *
- * Samples still hold wire values -- run tb_ppg_unpack() for counts.
+ * ir/red still hold wire values -- run tb_ppg_unpack() for counts. ecg is
+ * already raw ADC counts and must not be unpacked.
  */
-static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
-                                   uint32_t *last_total,
-                                   tb_ppg_sample_t *out, uint32_t *dropped)
+static inline uint32_t tb_wave_take(const tb_wave_block_t *blk,
+                                    uint32_t *last_total,
+                                    tb_wave_sample_t *out, uint32_t *dropped)
 {
     uint32_t total = blk->total;
     uint32_t n = total - *last_total; /* u32 subtraction, so the wrap is fine */
@@ -313,7 +369,7 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
         n = TB_PPG_RING; /* the rest are already overwritten */
     }
     for (i = 0U; i < n; ++i) {
-        out[i] = blk->s[(total - n + i) & (TB_PPG_RING - 1U)];
+        out[i] = blk->s[(total - n + i) % TB_PPG_RING];
     }
     *last_total = total;
     return n;
@@ -325,7 +381,9 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
 #define TB_REG_PRIORITY     0x41U /* u8   LoRa order: 0=BLACK 1=RED 2=YELLOW 3=GREEN */
 #define TB_REG_CONFIDENCE   0x42U /* u8   0..100 */
 #define TB_REG_HOST_BATTERY 0x43U /* u8   percent, 0xFF = ESP32 has no reading */
-#define TB_REG_WRITE_END    0x44U
+#define TB_REG_HOST_BP_SYS  0x44U /* u16  mmHg, ESP32's ML prediction */
+#define TB_REG_HOST_BP_DIA  0x46U /* u16  mmHg; its LAST byte latches the pair */
+#define TB_REG_WRITE_END    0x48U
 
 /*
  * PRIORITY uses the LoRa numeric alias, NOT ui_priority_t's declaration order
@@ -362,6 +420,68 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
  * exactly. The two boards can be flashed independently, in either order.
  */
 
+/*
+ * HOST_BP_SYS / HOST_BP_DIA: the blood pressure the ESP32's model PREDICTED,
+ * travelling backwards across this link for the same reason HOST_BATTERY does --
+ * the board that computes it is not the board that transmits it.
+ *
+ * The STM32 does not compute blood pressure and there is no cuff on this node.
+ * The ESP32 runs the ML model over the waveform block above (pulse transit time
+ * between the ECG R wave and the finger pulse, plus PPG morphology) and writes
+ * the result here in mmHg; the STM32's only job is to stamp the pair into the
+ * LoRa packet and echo it in the snapshot, so the station and the ESP32 report
+ * the same number rather than two independently-derived ones.
+ *
+ * HOST_ IN THE NAME IS NOT DECORATION. TB_REG_BP_SYS (0x0A) and TB_REG_BP_DIA
+ * (0x0C) already exist in the READ block and are what every consumer reads;
+ * these are the write-side inlet for the same value, exactly as HOST_BATTERY
+ * (0x43) is the inlet for BATTERY (0x0E). Two registers, two directions, one
+ * value -- and they must not be the same address or the ESP32's write would land
+ * on top of what it is about to read.
+ *
+ * THE PAIR LATCHES ON THE LAST BYTE OF DIA, mirroring the "confidence is written
+ * last" rule at TB_REG_CONFIDENCE, and for the same reason: the register pointer
+ * auto-increments, so one transaction starting at 0x44 delivers sys-lo, sys-hi,
+ * dia-lo, dia-hi in that order, and only after the fourth byte is there a pair
+ * to believe. Latching earlier would publish a systolic from this model run
+ * beside a diastolic from the last one. The ESP32 must therefore write all four
+ * bytes in one transaction, DIA last -- writing DIA alone latches it against a
+ * stale systolic.
+ *
+ * The STM32 validates before latching (tb_bp_pair_valid below) and discards BOTH
+ * values on a failure, counting it in mon_bp_writes_rejected. This is not
+ * defensive tidiness: an ML model asked to extrapolate outside its training set
+ * returns a number, not an error, and a garbage 300/250 stamped into a LoRa
+ * packet becomes a triage input at the station with no way back to its source.
+ * A rejected pair leaves the previous good one standing, so the failure mode is
+ * a stale reading rather than an invented one.
+ */
+#define TB_BP_SYS_MIN 40U  /* below this is not a perfusing patient */
+#define TB_BP_SYS_MAX 260U /* above this is not a reading a cuff would give */
+#define TB_BP_DIA_MIN 20U
+#define TB_BP_DIA_MAX 180U
+
+/**
+ * Is this a pair worth putting on the wire? Range plus the one relation that
+ * makes them a pair at all: diastolic is the pressure between beats, so
+ * dia >= sys is not a hypertensive patient, it is a broken prediction.
+ *
+ * Strictly less, not <=: dia == sys means zero pulse pressure, which is cardiac
+ * arrest with a pulse oximeter still reading -- physically incoherent rather
+ * than merely alarming.
+ *
+ * In the header so the STM32's write path and the ESP32's model wrapper cannot
+ * hold two different opinions about what a plausible reading is; returns int
+ * rather than bool for the same reason tb_rssi_valid() does -- this header is
+ * included in places that have not pulled in <stdbool.h>.
+ */
+static inline int tb_bp_pair_valid(uint16_t sys, uint16_t dia)
+{
+    return (sys >= TB_BP_SYS_MIN) && (sys <= TB_BP_SYS_MAX)
+        && (dia >= TB_BP_DIA_MIN) && (dia <= TB_BP_DIA_MAX)
+        && (dia < sys);
+}
+
 /* Commands. This is the single definition -- the ESP32's tb_frame.h used to
  * carry an equivalent tb_cmd_t enum and no longer does, because macros and an
  * enum with the same names cannot coexist in one translation unit. */
@@ -397,12 +517,16 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
 #define TB_FLAG_SPO2_VALID 0x02U
 #define TB_FLAG_RR_VALID   0x04U
 /*
- * BP has no source yet: the MPX5010 was the old respiratory method and PA2 is
- * now the breathing microphone, so nothing measures pressure. This bit stays 0
- * and BP_SYS/BP_DIA stay 0 until a BP method is chosen. It is a separate bit
- * rather than "0 means absent" so the ESP32's SVM can tell a missing feature
- * from a genuine reading and refuse to score instead of inventing one -- BP is
- * 2 of its 5 features.
+ * BP comes from the ESP32's ML model, not from a cuff on this node: it is
+ * written back at TB_REG_HOST_BP_SYS/DIA and echoed in the read block. This bit
+ * is set only while a validated pair is standing, so it is clear from boot until
+ * the first prediction arrives, and clear again for any pair the range test
+ * rejected.
+ *
+ * It is a separate bit rather than "0 means absent" because the ESP32's SVM uses
+ * BP as 2 of its 5 features and must be able to tell a missing feature from a
+ * genuine reading -- and it consumes its own prediction back through this block,
+ * so the bit is also how it learns the STM32 accepted the write.
  */
 #define TB_FLAG_BP_VALID   0x08U
 #define TB_FLAG_MEASURING  0x10U /* a measure window is running */
@@ -419,11 +543,13 @@ static inline uint32_t tb_ppg_take(const tb_ppg_block_t *blk,
  *
  * Clear means: draw the trace as no-contact, or draw nothing. It does NOT mean
  * the sensor is broken -- that is TB_SENSOR_MAX30102, which stays set for an
- * idle-but-answering sensor.
+ * idle-but-answering sensor. It says nothing about the ECG channel in the same
+ * block either: chest electrodes and a finger clip come off independently, so
+ * that one is TB_SENSOR_ECG.
  *
- * Deliberately in this byte rather than in the PPG block: the snapshot is polled
- * far more often than the 132-byte waveform, so contact loss is visible without
- * paying for a waveform read that is going to be discarded.
+ * Deliberately in this byte rather than in the waveform block: the snapshot is
+ * polled far more often than the 124-byte waveform, so contact loss is visible
+ * without paying for a waveform read that is going to be discarded.
  *
  * NOT part of the UI_VITAL_* mapping in tb_i2c_codec.c -- it gates the waveform,
  * not any displayed number.
