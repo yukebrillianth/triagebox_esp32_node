@@ -2,12 +2,17 @@
  * Host selftest for the BP pipeline against its golden vector. Build+run:
  * tools/run_selftests.sh
  *
- * sample_signals.h carries one real labelled capture (subject 001: 60 s @
- * 100 Hz, true cuff 148/90) and the LightGBM pair lgbm_sbp.c/lgbm_dbp.c are
- * deterministic, so the whole feature-extraction + scoring chain has an exact
- * right answer on the host. This file pins it: unlike the triage selftest,
- * which stubs the model away, there is nothing to stub here -- the point IS
- * that the models and the feature order they are fed agree end to end.
+ * sample_signals.h carries one fixed waveform and the LightGBM pair
+ * lgbm_sbp.c/lgbm_dbp.c are deterministic, so the whole feature-extraction +
+ * scoring chain has an exact right answer on the host. This file pins it:
+ * unlike the triage selftest, which stubs the model away, there is nothing to
+ * stub here -- the point IS that the models and the feature order they are fed
+ * agree end to end.
+ *
+ * The waveform is real-looking (measured 50 ms of beat-to-beat variability,
+ * no repeated stretches) but its LABELS are dummy placeholders -- Aslam
+ * confirmed the 148/90 cuff and 103 bpm are not from these seconds. So this is
+ * a wiring pin only; read nothing about accuracy from it.
  *
  * What that guards, concretely: bp_extract_features writes 23 features into a
  * plain array indexed by the FEAT_* macros, and nothing in the C type system
@@ -56,8 +61,8 @@ static void test_golden_vector(void)
      *     120.8 instead of 134.9, and the eleven 40 s sub-windows of this same
      *     60 s capture span 117.1..137.8.
      *   - The file's own SAMPLE_TRUE_HR says 103 bpm while its waveform beats
-     *     69.7 (see test_input_time_base). The cuff 148/90 was recorded with
-     *     that 103 bpm, i.e. not during the seconds stored here.
+     *     69.7 (see test_input_time_base), so the 148/90 beside it describes
+     *     some other seconds. Aslam's answer: those labels are placeholders.
      *
      * So the cuff label is not this vector's expected output, and a +-2 mmHg
      * assert against it would be measuring the label, not the wiring. What this
@@ -116,14 +121,12 @@ static void test_short_window_above_the_gate(void)
  * autocorrelation -- no shared code with the pipeline's peak detector, so this
  * still holds if that detector changes.
  *
- * 87 samples at the declared 100 Hz is 69 bpm, and the file's own
- * SAMPLE_TRUE_HR says 103. The ratio is 1.48, close enough to a skipped
- * 150 -> 100 Hz resample to be worth Aslam's attention; the models themselves
- * vote for 100 Hz being right (their split thresholds imply a corpus median of
- * 77-79 bpm, which is a normal heart rate, and 1.48x that would be 118).
- * Either way the label and the waveform disagree, so if the sample file is ever
- * re-exported this assert fires and PORT_SBP/PORT_DBP have to be re-measured
- * rather than silently drifting.
+ * 87 samples at the declared 100 Hz is 69 bpm, while the file's own
+ * SAMPLE_TRUE_HR says 103 -- that is the placeholder-label contradiction, not
+ * a resample bug worth chasing. What the assert itself protects is the exact
+ * byte identity of the file: if it is ever replaced (a real labelled capture,
+ * a corrected export), the beat spacing moves, this fires, and
+ * PORT_SBP/PORT_DBP have to be re-measured rather than silently drifting.
  */
 static void test_input_time_base(void)
 {
