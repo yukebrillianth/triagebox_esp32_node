@@ -42,3 +42,23 @@ idf_component_register(
 # 72k lines and the compile time that goes with them.
 set_source_files_properties(triage_pipeline.c PROPERTIES
     COMPILE_OPTIONS "-mauto-litpools")
+
+# The BP pair is the same shape of problem plus a size problem. Together
+# lgbm_sbp.c and lgbm_dbp.c are ~37k lines each of fully unrolled if/else
+# regression trees, and until something called bp_predict() they were gc-sectioned
+# out of the image entirely -- so wiring BP up is what makes their code size
+# appear, all at once, against roughly 1.0 MB of remaining app-partition
+# headroom. At the default -Og that is ~450-500 KB of .text; -Os roughly halves
+# it, and there is nothing here for -Og to help debug: the files are generated,
+# have no readable control flow to step through, and are pure double arithmetic.
+#
+# -mauto-litpools for the same reason as triage_pipeline.c above: every one of
+# those comparisons is against a distinct double literal, so the literal pool
+# outgrows l32r's reach long before the end of the function. Cheaper to carry the
+# flag than to rediscover "dangerous relocation: l32r" from the linker.
+#
+# bp_pipeline.c is in the list because it is the only caller of both scorers and
+# is itself unremarkable numeric loops -- optimising it for size costs nothing
+# and keeps one flag set for the whole BP path rather than two to keep in sync.
+set_source_files_properties(lgbm_sbp.c lgbm_dbp.c bp_pipeline.c PROPERTIES
+    COMPILE_OPTIONS "-Os;-mauto-litpools")
