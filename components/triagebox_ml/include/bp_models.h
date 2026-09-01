@@ -2,6 +2,7 @@
 #define BP_MODELS_H
 
 #include "lgbm_sbp.h"
+#include "lgbm_dbp.h"
 
 #define NUM_INPUT_FEATURES 23
 
@@ -13,7 +14,10 @@ static inline double predict_sbp(double *features) {
     return score_sbp(features);
 }
 
-// Feature Index Mapping for double input[NUM_INPUT_FEATURES]
+static inline double predict_dbp(double *features) {
+    return score_dbp(features);
+}
+
 #define FEAT_PAT_D                     0
 #define FEAT_PAT_P                     1
 #define FEAT_PAT_F_FRIDERICIA          2
