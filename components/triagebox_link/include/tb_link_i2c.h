@@ -18,7 +18,9 @@
  *
  * Shares the BSP I2C bus (SDA GPIO15 / SCL GPIO7) with the touch panel, the
  * TCA9554 expander, the RTC and the SW6106 PMIC. The IDF master driver
- * serialises transactions per bus, so no extra locking is needed here.
+ * serialises single transactions per bus, but a register-pointer write and its
+ * following read must stay one sequence, so every user of this bus takes the
+ * shared bsp_i2c_lock() -- see tb_link_i2c.c.
  */
 
 /*

@@ -236,7 +236,7 @@ Board V3.0 **tidak punya `SYS_EN`**. Baterai dan rail 5 V/3V3 dipegang **SW6106 
 
 `ui_mock_power_off()` mengirim `TB_CMD_POWER_OFF` ke STM32 dulu, tunggu 150 ms, baru cut rail — STM32 tidak memegang rail tapi memegang sensor dan LoRa yang menempel di rail itu, jadi ia butuh waktu untuk parkir. Frame-nya fire-and-forget: STM32 yang tidak ada tidak boleh menghalangi shutdown.
 
-Urutan write ini dipatok di `components/triagebox_board/ui_board_power_selftest.c`, yang meng-compile `ui_board.c` asli di host lewat `components/triagebox_board/test_fakes/`.
+Urutan write ini dipatok di `components/triagebox_board/ui_board_power_selftest.c`, yang meng-compile `ui_board.c` asli di host lewat `components/triagebox_board/test_fakes/`. Selftest itu juga memastikan lock bus diambil dan dilepas berimbang di setiap jalur — termasuk yang gagal — karena lock yang bocor akan mematikan bus buat semua pengguna lain.
 
 ## Blackscreen: penyebab sudah dipastikan
 
@@ -259,9 +259,30 @@ Ini juga menjelaskan timeout GT911 di ~84 s dan ~157 s yang sebelumnya tidak jel
 
 **Perbaikan** (`components/esp32_s3_touch_lcd_4/esp32_s3_touch_lcd_4.c`, `touch_read_tolerant()`): BSP memasang read callback sendiri lewat `lv_indev_set_read_cb()` sesudah `lvgl_port_add_touch()`, membaca touch tanpa `ESP_ERROR_CHECK`, dan **menahan state terakhir** kalau read gagal (bukan memaksa RELEASED — release palsu di tengah tekanan asli = klik hantu, dan di layar ini klik memulai/membatalkan pengukuran). Errornya di-log WARN dengan counter supaya glitch bus tetap kelihatan sekarang setelah tidak lagi bikin panic. Scale port-nya 1:1 di board ini, jadi tidak ada yang hilang.
 
-Yang **belum** diperbaiki: penyebab timeout-nya sendiri. Bus itu dipakai bareng TCA9554, SW6106, PCF85063A, GT911, dan STM32 (poll 50 ms) **tanpa lock lintas komponen dan tanpa recovery SDA yang nyangkut**. Sekarang efeknya turun dari reboot jadi satu sample touch hilang, jadi urutannya benar: hilangkan yang fatal dulu, kurangi kontensinya nanti dengan data dari counter itu. Kandidat kalau counternya ternyata tinggi: retry di `touch_read_tolerant()`, perlebar interval poll STM32, atau satu mutex bus di level BSP.
+Penyebab timeout-nya sendiri **sekarang sudah ditangani**, dua lapis, lihat subbab berikut. Sebelumnya bus ini dipakai bareng TCA9554, SW6106, PCF85063A, GT911, dan STM32 (poll 50 ms) tanpa lock lintas komponen — `touch_read_tolerant()` menurunkan akibatnya dari reboot jadi satu sample touch hilang, dan itu memang urutan yang benar: hilangkan yang fatal dulu, kurangi kontensinya setelah ada data dari counter.
 
 Dua kandidat lain **sudah dieliminasi lewat baca kode**, bukan lewat dugaan, dan tetap dicatat supaya tidak dikejar lagi: (1) TCA9554 re-init yang membuat `LCD_RST` floating — mustahil, `BSP_LCD_RST` = `GPIO_NUM_NC` (panel ini tidak punya jalur reset yang digerakkan) dan jalur display memakai `.io_expander = NULL`; (2) read SPIFFS runtime untuk font/gambar yang mematikan cache dan membuat bounce buffer RGB underrun — gambar adalah array C yang di-compile, dan `asset_fs.c` sudah menyalin tiap font ke blob PSRAM sekali lalu melayani semua read/seek dari RAM.
+
+### Lock bus bersama: `bsp_i2c_lock()`
+
+Satu mutex di BSP (`bsp_i2c_lock()` / `bsp_i2c_unlock()`, dibuat di `bsp_i2c_init()` sebelum bus-nya sendiri ada) dipakai **semua** pengguna bus: `touch_read_tolerant()` (30 ms), `ui_board.c` (100 ms), poll STM32 di `tb_link_i2c.c` (100 ms), dan tiap perintah I²C di console.
+
+**Selalu ada batas waktunya, tidak pernah `portMAX_DELAY`.** Ini bukan detail gaya — justru itu inti masalahnya: `esp_lcd_panel_io_i2c` mengirim timeout `-1` ke driver, jadi sebelum ada lock ini satu transaksi yang mandek ikut menyeret task LVGL. Tiap pemegang lock punya tenggat dan punya rencana kalau tenggatnya lewat: touch menahan state terakhir, poll melewatkan satu putaran, `i2clink` mencetak "bus busy" dan menyarankan `i2cstate`.
+
+Yang di-lock adalah **urutan register**, bukan satu transfer. Satu `i2c_master_transmit_receive()` sudah tak terbagi di dalam driver IDF; yang tidak adalah urutan tiga tulis unlock-lalu-matikan SW6106 di `ui_board_power_off()`, jadi di situ lock dipegang utuh dari baca gate sampai tulis terakhir. Kalau lock gagal diambil, power-off **dibatalkan** — menolak mati masih bisa diulang (tekan lagi), PMIC yang setengah ter-unlock tidak.
+
+### Master I²C bisa nyangkut sendiri (bug IDF v6.0.2 di S3)
+
+Terpisah dari SCL yang ditahan slave di subbab bawah: **master-nya sendiri** bisa masuk kondisi mati permanen, dan penyebabnya ada di IDF, bukan di kode ini.
+
+Di `esp_hal_i2c/esp32s3/include/hal/i2c_ll.h`, `i2c_ll_master_clr_bus()` **mengabaikan argumen `enable`** dan selalu menulis `scl_sp_conf.scl_rst_slv_en = 1`. Sementara `i2c_ll_master_is_bus_clear_done()` di S3 di-hardcode `return false`. Akibatnya loop tunggu di `s_i2c_master_clear_bus()` (`esp_driver_i2c/i2c_master.c`) tidak pernah berjalan, jadi tulis penonaktifannya (`i2c_ll_master_clr_bus(dev, 0, false)`) **tidak pernah tercapai**. Sekali ada satu error transaksi, bit itu tinggal `1` selamanya: tiap transaksi berikutnya melihat status TIMEOUT/bus_busy, mereset peripheral, mengarmed ulang recovery yang tidak pernah menggerakkan SCL, lalu gagal dengan timeout ~26 ms. Bus mati sampai reboot.
+
+Penanganannya di `tb_link_i2c.c`, di puncak `for(;;)` poll task:
+
+- `link_bus_wedged()` membaca bit itu langsung dari register. **Tanpa transaksi**, jadi aman dipanggil 20×/detik dan tidak mungkin ikut menggantung.
+- `link_bus_unwedge()` — dipanggil sambil memegang `bsp_i2c_lock()` — menjalankan `i2c_master_bus_reset()`, membersihkan `scl_rst_slv_en` dengan tangan, lalu commit lewat `ctr.conf_upgate`.
+
+Jadi pemulihannya satu poll (50 ms), bukan satu reboot. Untuk mendiagnosanya ada perintah console **`i2cstate`**: ia mencetak register peripheral apa adanya — tanpa lock, tanpa transaksi — sehingga tetap menjawab justru saat semua perintah I²C lain gagal. Kalau `scl_rst_slv_en = 1` bertahan di dua kali `i2cstate` berturut-turut, berarti poll task tidak jalan.
 
 ### Boot hang setelah soft reset: STM32 menahan SCL (terukur)
 
@@ -375,6 +396,7 @@ Kalau STM32 menjawab tapi `seq` tidak berubah, link mencetak `seq frozen` — it
 | `i2craw <addr> [count]` | Baca tanpa write pointer register |
 | `i2cdump <addr> [start] [end]` | Dump ruang register, hanya yang non-zero yang ditandai |
 | `i2clink` | Baca + decode snapshot STM32 di `0x42` (proto ver, seq, vital, tombol, RFID) |
+| `i2cstate` | Register peripheral I²C apa adanya — **satu-satunya yang tetap jawab saat bus wedged** |
 | `pmic [samples] [period_ms]` | Telemetri daya SW6106: SoC, Vbat, Vout, Ichg, **Idischg**, Tdie |
 | `stats` | CPU/heap/stack + `frames_ok`/`crc_errors` |
 

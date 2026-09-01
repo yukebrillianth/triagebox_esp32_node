@@ -11,6 +11,7 @@
 #include "driver/ledc.h"
 #include "esp_rom_sys.h" /* esp_rom_delay_us() for the I2C bus recovery below */
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 
@@ -29,6 +30,21 @@ static const char *TAG = "ESP32-S3-Touch-LCD-4";
 static i2c_master_bus_handle_t i2c_handle = NULL;  // I2C Handle
 static bool i2c_initialized = false;
 static esp_io_expander_handle_t io_expander = NULL; // IO expander tca9554 handle
+
+/*
+ * One mutex for every user of this bus, because there are five (GT911, TCA9554,
+ * SW6106, PCF85063A and the STM32 polled at 20 Hz) and the IDF driver's own lock
+ * is per-transaction, not per-sequence: a write-pointer/read pair from one caller
+ * can be split by another caller's transaction, and the SW6106's pointer does not
+ * auto-increment, so the second read returns the wrong register entirely.
+ *
+ * Bounded, never portMAX_DELAY. That is the whole point: esp_lcd_panel_io_i2c
+ * passes -1 as its timeout, so before this existed a wedged bus (see
+ * bsp_i2c_lock()'s callers in triagebox_link) took the LVGL task down with it and
+ * the screen froze. Every holder here has a deadline and a defined thing to do
+ * when it expires.
+ */
+static SemaphoreHandle_t s_i2c_mux;
 
 static lv_display_t *disp;
 static lv_indev_t *disp_indev = NULL;
@@ -189,6 +205,12 @@ esp_err_t bsp_i2c_init(void)
         return ESP_OK;
     }
 
+    /* Before the bus exists, so no caller can ever see a NULL mutex. */
+    if (s_i2c_mux == NULL) {
+        s_i2c_mux = xSemaphoreCreateMutex();
+        BSP_NULL_CHECK(s_i2c_mux, ESP_ERR_NO_MEM);
+    }
+
     /* Before i2c_new_master_bus() takes the pins: see bsp_i2c_bus_recover(). */
     bsp_i2c_bus_recover();
 
@@ -216,6 +238,23 @@ i2c_master_bus_handle_t bsp_i2c_get_handle(void)
 {
     bsp_i2c_init();
     return i2c_handle;
+}
+
+bool bsp_i2c_lock(uint32_t timeout_ms)
+{
+    /*
+     * False when the mutex does not exist yet, i.e. bsp_i2c_init() has not run.
+     * Refusing is right: a caller that got here first has no bus to talk to
+     * either, and returning true would hand it an unserialised one.
+     */
+    return s_i2c_mux && xSemaphoreTake(s_i2c_mux, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+}
+
+void bsp_i2c_unlock(void)
+{
+    if (s_i2c_mux) {
+        xSemaphoreGive(s_i2c_mux);
+    }
 }
 
 esp_err_t bsp_spiffs_mount(void)
@@ -579,9 +618,10 @@ static lv_display_t *bsp_display_lcd_init()
  *   i2c.master: I2C transaction timeout detected
  *   panel_io_i2c_rx_buffer(145) -> GT911 read error -> 0x108 -> abort()
  * on a bus shared by five devices (TCA9554, SW6106, PCF85063A, GT911 and the
- * STM32 polled every 50 ms) with no cross-component lock, so the occasional
- * timeout is expected. Dropping one touch sample is the right trade; rebooting
- * mid-measurement on a triage device is not.
+ * STM32 polled every 50 ms). bsp_i2c_lock() serialises them now, but a timeout
+ * is still possible -- the STM32 clock-stretches, and the master itself can wedge
+ * (see link_bus_wedged() in tb_link_i2c.c) -- so this stays. Dropping one touch
+ * sample is the right trade; rebooting mid-measurement on a triage device is not.
  *
  * The last state is held rather than forced to RELEASED: a synthetic release in
  * the middle of a real press is a phantom click, and on these screens a click
@@ -600,7 +640,29 @@ static void touch_read_tolerant(lv_indev_t *indev, lv_indev_data_t *data)
 
     (void)indev;
 
+    /*
+     * 30 ms, and never portMAX_DELAY: LVGL calls this from its own task, so a
+     * caller that waits out a wedged bus freezes the screen -- which is the bug
+     * this lock exists to prevent, not one to reintroduce here. 30 ms is longer
+     * than any single transaction on a 100 kHz bus and shorter than the LVGL
+     * read period, so a lost sample stays a lost sample.
+     *
+     * Same fallback as a failed read below, for the same reason: holding the
+     * last state cannot invent a click, and a synthetic release in the middle of
+     * a real press would.
+     */
+    if (!bsp_i2c_lock(30)) {
+        ESP_LOGW(TAG, "touch skipped (I2C bus busy), holding last state, errors=%u",
+                 (unsigned)++errors);
+        data->point = last_point;
+        data->state = last_state;
+        return;
+    }
     err = esp_lcd_touch_read_data(tp);
+    bsp_i2c_unlock();
+
+    /* Outside the lock on purpose: get_data only copies out of the driver's own
+     * buffer under its own spinlock, so it touches no I2C. */
     if (err == ESP_OK) {
         err = esp_lcd_touch_get_data(tp, pts, &cnt, CONFIG_ESP_LCD_TOUCH_MAX_POINTS);
     }
