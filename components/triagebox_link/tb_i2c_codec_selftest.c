@@ -173,6 +173,34 @@ static void test_decode_valid_mask_is_per_field(void)
     assert(v.valid_mask == UI_VITAL_SPO2);
 }
 
+/*
+ * TB_FLAG_HR_FROM_PPG is provenance, not freshness: it must reach
+ * vitals_t.hr_from_ppg and must NOT touch valid_mask or valid. Pinned because
+ * tb_ui_source.c's ECG-first hold reads that field to decide whether to keep a
+ * previous rate -- decode it into the mask instead and every PPG-sourced poll
+ * would look like a missing HR, blanking the tile and refusing the triage.
+ */
+static void test_decode_hr_provenance(void)
+{
+    uint8_t raw[TB_REG_READ_END];
+    vitals_t v;
+
+    make_snapshot(raw);
+    raw[TB_REG_FLAGS] = TB_FLAG_HR_VALID | TB_FLAG_SPO2_VALID;
+    assert(tb_i2c_decode_vitals(raw, &v));
+    assert(!v.hr_from_ppg); /* the ECG won: default reading of a clear bit */
+    assert(v.hr == 78U);
+
+    raw[TB_REG_FLAGS] = TB_FLAG_HR_VALID | TB_FLAG_SPO2_VALID |
+                        TB_FLAG_HR_FROM_PPG;
+    assert(tb_i2c_decode_vitals(raw, &v));
+    assert(v.hr_from_ppg);
+    /* Same number, same validity: only the label changed. */
+    assert(v.hr == 78U);
+    assert(v.valid_mask == (UI_VITAL_HR | UI_VITAL_SPO2));
+    assert(v.valid);
+}
+
 static void test_decode_null_safe(void)
 {
     uint8_t raw[TB_REG_READ_END];
@@ -321,11 +349,16 @@ static void test_rssi_is_outside_the_vitals_block(void)
      * register existed answers exactly TB_REG_READ_END bytes. */
     assert(TB_REG_READ_END == 0x30U);
     assert(TB_REG_LORA_RSSI == TB_REG_READ_END);
-    assert(TB_REG_SNAPSHOT_END == TB_REG_READ_END + 1U);
-    /* The struct is what sizes the slave's staging buffer, so 0x30 is only
-     * readable if the member is in it. */
+    /* The UID block extends the snapshot the same way, and for the same reason
+     * an old slave must keep answering the vitals poll byte-for-byte: read in
+     * its OWN 12-byte transaction, never folded into the vitals block. */
+    assert(TB_REG_UID == TB_REG_LORA_RSSI + 1U);
+    assert(TB_REG_SNAPSHOT_END == TB_REG_UID + TB_REG_UID_LEN);
+    /* The struct is what sizes the slave's staging buffer, so 0x30 and the UID
+     * above it are only readable if the members are in it. */
     assert(sizeof(tb_snapshot_t) == TB_REG_SNAPSHOT_END);
     assert(offsetof(tb_snapshot_t, lora_rssi) == TB_REG_LORA_RSSI);
+    assert(offsetof(tb_snapshot_t, uid) == TB_REG_UID);
     /* Clear of the PPG block and the write block, both of which the slave
      * decodes by address range. */
     assert(TB_REG_SNAPSHOT_END <= TB_REG_CMD);
@@ -341,6 +374,50 @@ static void test_rssi_is_outside_the_vitals_block(void)
     assert(sizeof(tb_wave_block_t) == (4U + TB_PPG_RING * 6U));
     assert(sizeof(tb_wave_block_t) ==
            (TB_REG_PPG_END - TB_REG_PPG_BASE));
+}
+
+/*
+ * tb_wave_take()'s delta contract, and the caller mistake it cannot catch on
+ * its own. The counter never stops -- the STM32 pushes at 100 Hz whether or not
+ * a measurement is running -- so a last_total left over from the previous
+ * measurement is minutes stale, and the take rightly reports a gap of however
+ * many samples happened in between. On hardware that was "wave gap (15319
+ * lost)" on the first poll of every measurement, restarting the capture and
+ * costing the window its first second. The cure is at the caller: seed
+ * last_total from the block's own total when a capture begins, rather than
+ * consuming a delta that spans the idle time.
+ */
+static void test_wave_take_delta(void)
+{
+    tb_wave_block_t blk = {0};
+    tb_wave_sample_t out[TB_PPG_RING];
+    uint32_t last = 0U, dropped = 0U;
+    uint32_t i;
+
+    for (i = 0U; i < TB_PPG_RING * 3U; ++i) {
+        tb_wave_push(&blk, 4000.0f, 3000.0f, (uint16_t)(2000U + i));
+    }
+
+    /* Stale reader: a whole idle stretch of samples counted as lost. */
+    assert(tb_wave_take(&blk, &last, out, &dropped) == TB_PPG_RING);
+    assert(dropped == (TB_PPG_RING * 3U) - TB_PPG_RING);
+
+    /* Seeded reader: exactly the ring's worth of pre-roll, no gap. This is
+     * what poll_wave_if_due() does on the first pass of a capture. */
+    last = blk.total - TB_PPG_RING;
+    assert(tb_wave_take(&blk, &last, out, &dropped) == TB_PPG_RING);
+    assert(dropped == 0U);
+    assert(out[TB_PPG_RING - 1U].ecg == (uint16_t)(2000U + TB_PPG_RING * 3U - 1U));
+
+    /* Caught up: nothing new, still no gap. */
+    assert(tb_wave_take(&blk, &last, out, &dropped) == 0U);
+    assert(dropped == 0U);
+
+    /* One more sample, one more take, oldest-first ordering holds. */
+    tb_wave_push(&blk, 4000.0f, 3000.0f, 4242U);
+    assert(tb_wave_take(&blk, &last, out, &dropped) == 1U);
+    assert(dropped == 0U);
+    assert(out[0].ecg == 4242U);
 }
 
 static void test_rssi_validity_window(void)
@@ -380,8 +457,10 @@ int main(void)
     test_decode_rejects_wrong_version();
     test_decode_validity_rules();
     test_decode_valid_mask_is_per_field();
+    test_decode_hr_provenance();
     test_decode_null_safe();
     test_rssi_is_outside_the_vitals_block();
+    test_wave_take_delta();
     test_rssi_validity_window();
     test_buttons_masked();
     test_diff_single();

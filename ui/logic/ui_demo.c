@@ -58,6 +58,10 @@ void ui_demo_vitals(uint32_t now_ms, vitals_t *out)
      * behave exactly as they do with a complete real snapshot. */
     out->valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR | UI_VITAL_BP;
     out->valid = true;
+    /* The demo patient is fully instrumented, so its HR is the one the chest
+     * leads would give -- the tile prints "EKG" rather than "jari", which is
+     * also what a filmed take should show. */
+    out->hr_from_ppg = false;
 }
 
 uint8_t ui_demo_sensor_mask(void)

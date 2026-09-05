@@ -76,6 +76,10 @@ run components/triagebox_ml/bp_pipeline_selftest.c \
 run ui/logic/ui_mock_selftest.c \
     ui/logic/ui_mock_selftest.c ui/logic/ui_mock.c ui/logic/ui_types.c
 
+# ui_mock.c is deliberately NOT linked here: ui_nav.c's only outward call is
+# ui_mock_end_session(), and the selftest stubs it as a counter so the ABORT that
+# ends a patient's session can be asserted on. The sim's own implementation has
+# nothing observable to assert against.
 run ui/logic/ui_nav_selftest.c \
     ui/logic/ui_nav_selftest.c ui/logic/ui_nav.c ui/logic/ui_session.c \
     ui/logic/ui_action.c ui/logic/ui_types.c
@@ -114,6 +118,13 @@ run components/triagebox_link/bp_capture_selftest.c \
     components/triagebox_link/bp_capture_selftest.c \
     components/triagebox_link/bp_capture.c \
     ui/logic/ui_types.c
+
+# The PCF85063A's BCD conversion, against register bytes written out by hand:
+# the RTC is the only clock this firmware has, and a BCD slip is invisible for
+# most of the year (September is 0x09 either way, October is 0x10).
+run components/triagebox_board/tb_rtc_selftest.c \
+    components/triagebox_board/tb_rtc_selftest.c \
+    components/triagebox_board/tb_rtc.c
 
 [ "$fail" -eq 0 ] && echo "all selftests OK"
 exit "$fail"

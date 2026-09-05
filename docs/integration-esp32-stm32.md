@@ -63,8 +63,8 @@ Sekarang UI dijalankan oleh mock deterministik supaya bisa di-demo tanpa STM32. 
 | `ui_mock_start_scan()` | kirim perintah START_SCAN ke STM32 |
 | `ui_mock_rfid_ready(rfid_t*)` | true **sekali** saat frame `RFID` masuk |
 | `ui_mock_start_measure()` | kirim START_MEASURE |
-| `ui_mock_measure_progress()` | 0..100 dari elapsed / 60000 ms |
-| `ui_mock_measure_done()` | true saat window 60 s habis |
+| `ui_mock_measure_progress()` | 0..100 dari elapsed / `UI_MEASURE_MS` |
+| `ui_mock_measure_done()` | true saat window pengukuran habis |
 | `ui_mock_get_vitals(vitals_t*)` | isi dari frame `VITAL` terakhir; `valid=false` bila stale |
 | `ui_mock_get_priority/confidence/reasons()` | hasil SVM, **bukan** hardcode |
 | `ui_mock_push_button(index, pressed)` | dipanggil **RX task** saat state tombol berubah |
@@ -76,7 +76,7 @@ Transport-nya sekarang **I²C, bukan RS485**: ESP32 master, STM32 slave `0x42` d
 
 Dua hal penting:
 
-- **`UI_MEASURE_MS` default 2000 ms** (untuk QA). Hardware asli 60 s → set `-DUI_MEASURE_MS=60000` di build, atau `#define` sebelum include. Sama untuk `UI_MOCK_SCAN_MS`.
+- **`UI_MEASURE_MS` default 45 s** di `ui/logic/ui_mock.h` (angkanya terukur — lihat komentar di sana), QA desktop/host override ke 2000 ms lewat `-DUI_MEASURE_MS=2000` (`sim/CMakeLists.txt`, `tools/run_selftests.sh`). Kalau diubah, `BP_MIN_SAMPLES` di `bp_capture.c` harus ikut. Sama untuk `UI_MOCK_SCAN_MS`.
 - **`ui_mock_push_button()` dipanggil dari task RX, bukan dari task LVGL.** Di `ui_mock.c` (sim) slotnya masih single-slot; di device (`tb_ui_source.c`) sudah ring buffer 8 event di dalam critical section, karena satu poll I²C bisa sah menghasilkan 4 edge sekaligus dan single-slot membuang semuanya kecuali yang terakhir — gejalanya "tombol yang kadang tidak ngapa-ngapain".
 
 ## 4. Aturan yang tidak boleh dilanggar

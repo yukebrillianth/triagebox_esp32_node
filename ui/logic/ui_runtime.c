@@ -9,6 +9,8 @@ static bool s_measure_started;
 static uint32_t s_retriage_ms = UI_RETRIAGE_DEFAULT_MS;
 static uint32_t s_retriage_due_ms;
 static bool s_degraded;
+/* When the sensor board's RFID scan was last armed -- see UI_SCAN_REARM_MS. */
+static uint32_t s_scan_armed_ms;
 
 static void pull_mock_vitals(void)
 {
@@ -64,8 +66,21 @@ static void monitor_retriage_tick(uint32_t now_ms)
     before = ui_session_get_priority();
     ui_mock_reclassify();
     after = ui_mock_get_priority();
+    /* The guard above reads the snapshot BEFORE the inference runs; a refusal
+     * can still come back from the re-score itself. esi 0 is not a verdict (see
+     * ui_types.h): keep the standing one rather than overwrite it with
+     * BLACK-for-no-data, skip the re-latch below, and stay silent. The next
+     * interval re-scores. */
+    if (ui_verdict_unscored(ui_mock_get_esi())) {
+        return;
+    }
     ui_session_set_priority(after, ui_mock_get_confidence(),
                             ui_mock_get_reasons(), ui_mock_get_esi());
+    /* Re-latch with the verdict: this classification looked at the snapshot the
+     * tick above pulled, so that snapshot is now what Result must show. Without
+     * it, a deterioration would jump to Result and display the minute-old
+     * numbers from the original measurement beside the new colour. */
+    ui_session_set_measured_vitals(ui_session_get_vitals());
 
     if (ui_priority_degraded(before, after)) {
         s_degraded = true;
@@ -100,6 +115,7 @@ void ui_runtime_init(void)
     s_measure_started = false;
     s_retriage_due_ms = 0;
     s_degraded = false;
+    s_scan_armed_ms = 0;
 }
 
 void ui_runtime_tick(uint32_t now_ms)
@@ -112,6 +128,7 @@ void ui_runtime_tick(uint32_t now_ms)
     if (current != s_prev_screen) {
         if (current == UI_SCREEN_SCANNING) {
             ui_mock_start_scan();
+            s_scan_armed_ms = now_ms;
         }
         if (current != UI_SCREEN_MENGUKUR) {
             s_measure_started = false;
@@ -131,6 +148,16 @@ void ui_runtime_tick(uint32_t now_ms)
         if (ui_mock_rfid_ready(&rfid)) {
             ui_nav_on_rfid_ready(&rfid);
             s_prev_screen = ui_nav_current(); /* BERHASIL */
+            break;
+        }
+        /* Nothing found yet: re-arm the sensor board's scan before its own window
+         * expires (UI_SCAN_REARM_MS), or an operator still hunting for the card
+         * ends up tapping it against a reader that stopped looking. AFTER the
+         * consume above, so a tag that arrived this tick is never discarded by
+         * the re-arm's own gate. */
+        if ((now_ms - s_scan_armed_ms) >= UI_SCAN_REARM_MS) {
+            ui_mock_start_scan();
+            s_scan_armed_ms = now_ms;
         }
         break;
     }
@@ -143,6 +170,31 @@ void ui_runtime_tick(uint32_t now_ms)
         pull_mock_vitals();
         if (ui_mock_measure_done()) {
             pull_mock_priority_once();
+            /*
+             * Re-pull AFTER the classification, and this line is load-bearing.
+             *
+             * pull_mock_priority_once() is what runs the inference, and the BP
+             * task only publishes its result during that call (infer_once waits
+             * for it). The pull above happened before it, so the copy sitting in
+             * the session has no BP in its valid_mask -- which is why Result
+             * showed "--/-- mmHg" while the very same measurement's log line
+             * said sbp=112 had reached the model.
+             *
+             * Pulled once here rather than every Result tick on purpose: Result
+             * must keep showing the vitals THE VERDICT WAS COMPUTED FROM. The
+             * 50 ms poll keeps moving s_vitals after the window closes, so a
+             * live Result would blank its own HR tile the moment the operator
+             * lifts their finger, and the numbers beside the colour would no
+             * longer be the numbers that produced it.
+             *
+             * The same pull also latches Result's own copy: Monitor's live
+             * refreshes keep overwriting session.vitals afterwards, so without
+             * the latch a Back from Monitor would return to a Result showing
+             * whatever the sensors last said -- blanked tiles included -- instead
+             * of the measurement that produced the colour still on screen.
+             */
+            pull_mock_vitals();
+            ui_session_set_measured_vitals(ui_session_get_vitals());
             ui_nav_on_measure_done();
             s_measure_started = false;
             s_prev_screen = ui_nav_current(); /* RESULT */

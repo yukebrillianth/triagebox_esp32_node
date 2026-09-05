@@ -178,7 +178,7 @@ lv_obj_t * test_create(void)
         lv_obj_add_style(row_3, &style_test_row, 0);
 
         lv_obj_t * lv_label_3 = lv_label_create(row_3);
-        lv_label_set_text(lv_label_3, "Poll STM32 gagal");
+        lv_label_set_text(lv_label_3, "Arus baterai");
         lv_obj_add_style(lv_label_3, &style_test_label, 0);
 
         lv_obj_t * test_polls_failed = lv_label_create(row_3);

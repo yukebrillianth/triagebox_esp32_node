@@ -27,16 +27,23 @@ typedef enum {
  */
 #define UI_SENSOR_ECG      0x01U /* AD8232 */
 #define UI_SENSOR_MAX30102 0x02U /* HR + SpO2, one sensor */
+/*
+ * The breathing microphone. A real wire bit, but NOT in UI_SENSOR_ALL yet:
+ * the STM32 sets it only under MON_RESP_MIC_FITTED, which is 0 until the mic
+ * PCB exists, so a sensor in ALL that nothing can ever report would hold the
+ * dot permanently amber for hardware the box does not have. Put it back into
+ * ALL the day the board ships.
+ */
 #define UI_SENSOR_MIC      0x04U /* breathing microphone -> respiratory rate */
 #define UI_SENSOR_RFID     0x08U /* PN532 */
 /*
  * LoRa is deliberately NOT in UI_SENSOR_ALL even though it shares the byte: it
  * has its own dot, and folding it in here would make a missing radio read as a
- * sensor fault. There is no BP bit because nothing measures pressure yet.
+ * sensor fault. There is no BP bit either: BP is measured by this board's own
+ * BP capture (bp_capture), not by the STM32 this mask reports.
  */
 #define UI_SENSOR_LORA     0x10U /* SX1278; reported by the LoRa dot, not Sensor */
-#define UI_SENSOR_ALL      (UI_SENSOR_ECG | UI_SENSOR_MAX30102 | \
-                            UI_SENSOR_MIC | UI_SENSOR_RFID)
+#define UI_SENSOR_ALL      (UI_SENSOR_ECG | UI_SENSOR_MAX30102 | UI_SENSOR_RFID)
 
 /* All sensors up = OK, none = ERROR, some = WARN. */
 ui_status_state_t ui_status_sensors(uint8_t sensor_ok_mask);
@@ -53,7 +60,8 @@ ui_status_state_t ui_status_system(uint32_t age_ms, bool never_seen);
  * arrives we know nothing, which is ERROR, not OK.
  */
 ui_status_state_t ui_status_lora(bool link_ok, bool reported);
-/* Label text next to each dot, e.g. "Sensor OK" / "Sensor 3/5" / "Sensor --". */
+/* Label text next to each dot: "Sensor OK" / "Sensor !" / "Sensor --". The
+ * label mirrors the dot's three states only; it does not count sensors. */
 void ui_status_label(char *buf, unsigned buf_sz, const char *prefix,
                      ui_status_state_t state);
 

@@ -9,7 +9,7 @@
 #include "freertos/task.h"
 #include "soc/i2c_struct.h" /* link_bus_wedged(): the register IDF never clears */
 
-#include "tb_frame.h" /* tb_frame_priority_to_wire() only -- see below */
+#include "tb_frame.h" /* the priority conversion + its "no score" byte */
 #include "tb_i2c_codec.h"
 #include "tb_ui_source.h"
 #include "bp_capture.h" /* the wave block feeds this board's BP inference */
@@ -74,7 +74,8 @@ static void link_bus_unwedge(void)
 
 static uint32_t s_polls_ok;
 static uint32_t s_polls_failed;
-static uint8_t s_btn_prev;
+static uint8_t s_btn_prev;   /* confirmed state, the diff baseline */
+static uint8_t s_btn_last;   /* last raw reading, for 2-poll confirmation */
 static bool s_btn_primed;
 static uint8_t s_seq_prev;
 static bool s_seq_seen;
@@ -83,6 +84,16 @@ static uint32_t s_seq_stalled;
 static void on_button_edge(uint8_t index, bool pressed, void *ctx)
 {
     (void)ctx;
+    /*
+     * Logged, not silent, because a phantom press is indistinguishable from a
+     * real one once it has become a screen change. On 2026-09-04 an idle box
+     * navigated to Scanning and raised the power-off dialog on its own -- both
+     * are ButtonBar actions (cell1 and cell2 on Home), reachable from this path
+     * OR from a spurious GT911 touch, and nothing in the log said which. With
+     * this line the next occurrence answers it: edges here mean the STM32's
+     * buttons byte, silence means the touch panel.
+     */
+    ESP_LOGI(TAG, "button %u %s", (unsigned)index, pressed ? "down" : "up");
     tb_ui_source_on_button(index, pressed);
 }
 
@@ -115,6 +126,27 @@ static void poll_once(void)
 
     if (err != ESP_OK) {
         ++s_polls_failed;
+        /*
+         * The button baseline dies with the link, and that is the fix for "the
+         * idle box jumped to Scanning and put up the power-off dialog by
+         * itself" (2026-09-04).
+         *
+         * Buttons are a STATE bitmask diffed against the previous poll. While
+         * the link is down no polls land, so the baseline stays whatever it was
+         * minutes ago -- and when the STM32 comes back (a reset, a reconnected
+         * jumper, the 15-20 s slave stall recovering) its first byte can differ
+         * in several bits at once. One diff then fires an edge for EVERY changed
+         * bit, in ascending index order, and on Home that walks straight through
+         * Scan (cell1) and Power (cell2): a screen change and a modal, from an
+         * untouched box.
+         *
+         * Un-priming means the first poll after any gap SEEDS instead of
+         * diffing, so the operator's own next press is the first edge. Nothing
+         * real is lost: a press held across a link outage is not an event
+         * anyone can attribute.
+         */
+        s_btn_primed = false;
+        s_btn_last = 0U;
         /* Debug, not warning: with no STM32 attached this fires 20x/second and
          * would bury every other log line. The Home status dots are the
          * user-visible signal, and `stats` has the count. */
@@ -124,6 +156,10 @@ static void poll_once(void)
 
     if (!tb_i2c_decode_vitals(raw, &v)) {
         ++s_polls_failed;
+        /* Same reason as the read failure above: a rejected block is a poll that
+         * did not happen, so the button baseline must not survive it either. */
+        s_btn_primed = false;
+        s_btn_last = 0U;
         /* Wrong protocol version: the two tb_regs.h copies have drifted. Warn
          * once per second rather than per poll -- it is a build-time mistake,
          * not a runtime condition, and it will not fix itself. */
@@ -161,17 +197,38 @@ static void poll_once(void)
     s_seq_prev = seq;
     s_seq_seen = true;
 
-    /* State -> edges. First successful poll seeds the baseline instead of
-     * emitting presses for whatever happened to be held at boot. */
+    /*
+     * State -> edges, with the state confirmed by TWO CONSECUTIVE POLLS
+     * (100 ms apart).
+     *
+     * The wire carries a state bitmask, so a single corrupted or noisy poll used
+     * to become a real button event. On 2026-09-04 an untouched box navigated to
+     * Scanning and raised the power-off dialog on its own, twice, and Home's
+     * cell1/cell2 are exactly Scan and Power -- ascending index order out of one
+     * diff. Un-priming across link gaps (above) did not stop it, so the noise is
+     * inside a run of GOOD polls: the STM32's PB12..PB15 read whatever the pins
+     * do, and this build has no physical buttons wired to them.
+     *
+     * A press a human makes lasts far longer than 100 ms, so requiring the same
+     * byte twice costs nothing real and rejects every single-poll glitch: a
+     * glitch changes s_btn_last without ever confirming, and the next honest
+     * poll changes it straight back. Seeding the baseline goes through the same
+     * two-poll rule, which is what a reconnecting STM32 needs.
+     */
     {
-        uint8_t now = tb_i2c_buttons(raw);
-        if (!s_btn_primed) {
-            s_btn_prev = now;
-            s_btn_primed = true;
-        } else {
-            s_btn_prev = tb_i2c_diff_buttons(s_btn_prev, now, on_button_edge,
-                                             NULL);
+        const uint8_t now = tb_i2c_buttons(raw);
+
+        if (now == s_btn_last) {
+            if (!s_btn_primed) {
+                s_btn_prev = now;
+                s_btn_primed = true;
+            } else if (now != s_btn_prev) {
+                /* Same new state on two consecutive polls: a real change. */
+                s_btn_prev = tb_i2c_diff_buttons(s_btn_prev, now,
+                                                 on_button_edge, NULL);
+            }
         }
+        s_btn_last = now;
     }
 
     /* RFID: the block already carries the tag, so no second transaction. */
@@ -321,6 +378,14 @@ static void poll_wave_if_due(void)
     /* One drain pass after the freeze: the last samples before measure-done
      * are still in the ring, and the accumulator deserves them. */
     const bool last_pass = !capturing && s_was_capturing;
+    /* First pass of a new capture. s_last_total is whatever the PREVIOUS
+     * measurement left, while the STM32's counter has been advancing at 100 Hz
+     * the whole time in between -- so the delta is minutes of samples and
+     * tb_wave_take() rightly calls it a gap. Seeding instead of consuming makes
+     * the first pass mean "start counting here", which is what a measurement
+     * beginning actually is; without it every measurement opened with a
+     * spurious "wave gap (15319 lost)" and a restart. */
+    const bool first_pass = capturing && !s_was_capturing;
     s_was_capturing = capturing;
 
     if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
@@ -347,6 +412,14 @@ static void poll_wave_if_due(void)
 
     tb_wave_sample_t out[TB_PPG_RING];
     uint32_t dropped = 0U;
+
+    if (first_pass) {
+        /* Keep the ring's 200 ms of pre-roll: it is the same finger a fifth of a
+         * second earlier, and the biquads want samples to settle on. */
+        s_last_total = s_wave.total - ((s_wave.total < TB_PPG_RING)
+                                       ? s_wave.total : TB_PPG_RING);
+    }
+
     const uint32_t n = tb_wave_take(&s_wave, &s_last_total, out, &dropped);
 
     if (dropped != 0U) {
@@ -494,39 +567,29 @@ esp_err_t tb_link_send_cmd(uint8_t cmd)
     return err;
 }
 
-esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
-                              const char *tag)
+/*
+ * Both halves of a result write, in the one order the STM32 accepts.
+ *
+ * Priority first, confidence second: the slave latches the pair as complete when
+ * TB_REG_CONFIDENCE is written, so this order is load-bearing. Two separate
+ * transactions rather than one 2-byte write because the slave's pointer
+ * auto-increment is exercised either way and separate writes keep the
+ * "confidence last" guarantee explicit.
+ *
+ * Takes the wire byte, not a ui_priority_t, because there are five wire values
+ * and only four colours -- see tb_link_send_unscored().
+ */
+static esp_err_t send_result_bytes(uint8_t wire_priority, uint8_t pct)
 {
-    uint8_t pct;
     esp_err_t err;
-
-    (void)tag; /* see the header: the STM32 already has the tag */
 
     if (s_dev == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (confidence < 0.0f) {
-        confidence = 0.0f;
-    } else if (confidence > 1.0f) {
-        confidence = 1.0f;
-    }
-    pct = (uint8_t)((confidence * 100.0f) + 0.5f);
-
     if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
         return ESP_ERR_TIMEOUT;
     }
-    /*
-     * Priority first, confidence second: the STM32 latches the pair as complete
-     * when TB_REG_CONFIDENCE is written, so this order is load-bearing. Two
-     * separate transactions rather than one 2-byte write because the slave's
-     * pointer auto-increment is exercised either way and separate writes keep
-     * the "confidence last" guarantee explicit.
-     *
-     * tb_frame_priority_to_wire() converts ui_priority_t order (RED, YELLOW,
-     * GREEN, BLACK) to the LoRa numeric alias (0=BLACK 1=RED 2=YELLOW
-     * 3=GREEN). Skipping it silently swaps RED and BLACK.
-     */
-    err = write_reg(TB_REG_PRIORITY, tb_frame_priority_to_wire((int)priority));
+    err = write_reg(TB_REG_PRIORITY, wire_priority);
     if (err == ESP_OK) {
         err = write_reg(TB_REG_CONFIDENCE, pct);
     }
@@ -537,6 +600,32 @@ esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
                       "triage", esp_err_to_name(err));
     }
     return err;
+}
+
+esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
+                              const char *tag)
+{
+    (void)tag; /* see the header: the STM32 already has the tag */
+
+    if (confidence < 0.0f) {
+        confidence = 0.0f;
+    } else if (confidence > 1.0f) {
+        confidence = 1.0f;
+    }
+    /*
+     * tb_frame_priority_to_wire() converts ui_priority_t order (RED, YELLOW,
+     * GREEN, BLACK) to the LoRa numeric alias (0=BLACK 1=RED 2=YELLOW
+     * 3=GREEN). Skipping it silently swaps RED and BLACK.
+     */
+    return send_result_bytes(tb_frame_priority_to_wire((int)priority),
+                             (uint8_t)((confidence * 100.0f) + 0.5f));
+}
+
+esp_err_t tb_link_send_unscored(void)
+{
+    /* Confidence 0 with it: a confidence for a verdict that does not exist
+     * describes nothing, and the station drops the pair together anyway. */
+    return send_result_bytes(TB_PRIORITY_WIRE_NONE, 0U);
 }
 
 /*
@@ -575,6 +664,82 @@ esp_err_t tb_link_send_bp(uint16_t sys, uint16_t dia)
         ESP_LOGW(TAG, "BP not delivered: %s -- the packet will omit it",
                  esp_err_to_name(err));
     }
+    return err;
+}
+
+/*
+ * The four things the operator or the model knows and the STM32 cannot measure:
+ * the typed respiratory rate, the age and sex the model scored, and the raw ESI
+ * behind the colour. Same backwards direction as TB_REG_HOST_BATTERY and the BP
+ * pair, and the same shape: one lock for the group, one write_reg() per byte.
+ *
+ * The argument order mirrors the register order (0x48..0x4B) so a swapped pair is
+ * visible in this call rather than on the dashboard.
+ *
+ * CALL IT BEFORE tb_link_send_result()/tb_link_send_unscored(). The slave latches
+ * the verdict as complete when TB_REG_CONFIDENCE is written -- see
+ * send_result_bytes() -- and the ESI is part of that verdict, so an ESI written
+ * afterwards belongs to the NEXT patient while this one has already been
+ * published under the previous value. RR/age/sex are patient facts rather than
+ * parts of the verdict and only have to precede it; sending all four in one group
+ * is the version of that rule with nothing left to remember.
+ */
+esp_err_t tb_link_send_patient(uint8_t rr_brpm, uint8_t age_years,
+                               uint8_t gender_ascii, uint8_t esi)
+{
+    esp_err_t err;
+
+    if (s_dev == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    err = write_reg(TB_REG_HOST_RR, rr_brpm);
+    if (err == ESP_OK) {
+        err = write_reg(TB_REG_HOST_AGE, age_years);
+    }
+    if (err == ESP_OK) {
+        err = write_reg(TB_REG_HOST_GENDER, gender_ascii);
+    }
+    if (err == ESP_OK) {
+        err = write_reg(TB_REG_HOST_ESI, esi);
+    }
+    bsp_i2c_unlock();
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "patient fields not delivered: %s -- the packet will omit "
+                      "rr/age/sex and the ESI behind the colour",
+                 esp_err_to_name(err));
+    }
+    return err;
+}
+
+/*
+ * The STM32's 96-bit factory UID, in its own 12-byte read outside the vitals
+ * block (see TB_REG_UID). On demand only: it is constant for the life of the
+ * chip, so there is nothing to poll and no reason to spend bus time on it.
+ *
+ * No log line here, unlike the writes above: the only caller is the `uid`
+ * console command, and an operator watching for the answer is better served by
+ * the error printed beside it than by a warning in the same stream.
+ *
+ * What the bytes MEAN is the caller's problem. An STM32 built before this block
+ * existed answers with twelve 0xFF pad bytes, which is not a UID the F411 can
+ * report -- tb_debug.c's `uid` says so rather than printing them.
+ */
+esp_err_t tb_link_read_uid(uint8_t *uid)
+{
+    esp_err_t err;
+
+    if (s_dev == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    err = read_block(TB_REG_UID, uid, TB_REG_UID_LEN);
+    bsp_i2c_unlock();
     return err;
 }
 

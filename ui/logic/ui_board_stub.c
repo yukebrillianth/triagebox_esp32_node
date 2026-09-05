@@ -35,3 +35,9 @@ bool ui_board_battery_mv(uint16_t *millivolts)
     (void)millivolts;
     return false;
 }
+
+bool ui_board_battery_ma(uint16_t *milliamps)
+{
+    (void)milliamps;
+    return false;
+}

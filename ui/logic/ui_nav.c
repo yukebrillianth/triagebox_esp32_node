@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 
+#include "ui_mock.h"
 #include "ui_session.h"
 
 static ui_screen_show_fn s_show[UI_SCREEN_COUNT];
@@ -15,6 +16,13 @@ static ui_gender_t s_pending_gender = UI_GENDER_M;
  * RED. The unanswered case is carried by ui_session_has_airway(), not by this.
  */
 static bool s_pending_airway;
+/*
+ * Normal breathing starts highlighted, for the same reason "Tidak ada" does
+ * above: it is the common answer and it costs no presses, while both abnormal
+ * bands take a deliberate move to reach. ui_session_has_rr() carries the
+ * unanswered case.
+ */
+static ui_rr_band_t s_pending_rr = UI_RR_BAND_12_20;
 
 /*
  * Where Back on the Test screen returns to. One slot, recorded when Test is
@@ -34,6 +42,7 @@ static void reset_pending_selections(void)
     s_pending_age = UI_AGE_BAND_6_17;
     s_pending_gender = UI_GENDER_M;
     s_pending_airway = false;
+    s_pending_rr = UI_RR_BAND_12_20;
 }
 
 void ui_nav_register(ui_screen_id_t id, ui_screen_show_fn show)
@@ -52,6 +61,23 @@ void ui_nav_go(ui_screen_id_t id)
     if (id == UI_SCREEN_HOME || id == UI_SCREEN_SCANNING) {
         ui_session_reset();
         reset_pending_selections();
+    }
+
+    /*
+     * Home only, not Scanning. Both end the session locally, but Scanning is a new
+     * patient arriving and START_SCAN already clears the sensor board's state -- and
+     * ui_mock_start_scan() is issued a tick LATER, from the screen-change edge in
+     * ui_runtime_tick(), so telling the board to stand down here would be a second
+     * message racing the one that starts the next scan.
+     *
+     * Home is unambiguous: it is where the operator lands when the patient leaves.
+     * It is also the ONLY exit that ends a standing verdict: from Result the nav
+     * targets are Monitor/Home/Test and from Monitor only Result/Test, so every
+     * other move from the pair either stays inside it or comes back (Test), and
+     * the action tables route nothing from them to Scanning.
+     */
+    if (id == UI_SCREEN_HOME) {
+        ui_mock_end_session();
     }
 
     if (id == UI_SCREEN_TEST && s_current != UI_SCREEN_TEST) {
@@ -108,6 +134,18 @@ bool ui_nav_pending_airway(void)
     return s_pending_airway;
 }
 
+void ui_nav_set_pending_rr(ui_rr_band_t rr)
+{
+    if (rr >= UI_RR_BAND_UNDER_12 && rr <= UI_RR_BAND_OVER_30) {
+        s_pending_rr = rr;
+    }
+}
+
+ui_rr_band_t ui_nav_pending_rr(void)
+{
+    return s_pending_rr;
+}
+
 void ui_nav_move_pending_age(int dir)
 {
     int next = (int)s_pending_age + dir;
@@ -138,6 +176,20 @@ void ui_nav_move_pending_airway(int dir)
     } else if (dir > 0) {
         s_pending_airway = true;
     }
+}
+
+/* Four rows, so it saturates at the ends rather than wrapping -- same shape as
+ * age, and holding a key cannot walk off either edge. */
+void ui_nav_move_pending_rr(int dir)
+{
+    int next = (int)s_pending_rr + dir;
+
+    if (next < (int)UI_RR_BAND_UNDER_12) {
+        next = (int)UI_RR_BAND_UNDER_12;
+    } else if (next > (int)UI_RR_BAND_OVER_30) {
+        next = (int)UI_RR_BAND_OVER_30;
+    }
+    s_pending_rr = (ui_rr_band_t)next;
 }
 
 void ui_nav_on_rfid_ready(const rfid_t *rfid)

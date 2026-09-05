@@ -10,10 +10,12 @@
 #include "tb_debug.h"
 #include "tb_link_i2c.h"
 #include "bp_capture.h"
+#include "tb_rtc.h"
 #include "ui_board.h"
 
 #include "ui.h"
 #include "ui_airway.h"
+#include "ui_rr.h"
 #include "ui_input.h"
 #include "ui_nav.h"
 #include "ui_runtime.h"
@@ -30,6 +32,7 @@ static void show_age(void)      { lv_screen_load(age); }
 static void show_gender(void)   { lv_screen_load(gender); }
 /* Built in C, not exported from the Editor -- see ui_airway.h. */
 static void show_airway(void)   { lv_screen_load(ui_airway_screen()); }
+static void show_rr(void)       { lv_screen_load(ui_rr_screen()); }
 static void show_mengukur(void) { lv_screen_load(mengukur); }
 static void show_result(void)   { lv_screen_load(result); }
 static void show_monitor(void)  { lv_screen_load(monitor); }
@@ -95,6 +98,7 @@ static void register_triage_screens(void)
     ui_nav_register(UI_SCREEN_AGE, show_age);
     ui_nav_register(UI_SCREEN_GENDER, show_gender);
     ui_nav_register(UI_SCREEN_AIRWAY, show_airway);
+    ui_nav_register(UI_SCREEN_RR, show_rr);
     ui_nav_register(UI_SCREEN_MENGUKUR, show_mengukur);
     ui_nav_register(UI_SCREEN_RESULT, show_result);
     ui_nav_register(UI_SCREEN_MONITOR, show_monitor);
@@ -145,10 +149,25 @@ static void runtime_timer_cb(lv_timer_t *timer)
 void app_main(void)
 {
     lv_display_t *disp;
+    esp_err_t err;
 
     log_boot_reason();
 
-    ESP_ERROR_CHECK(mount_assets());
+    /*
+     * Not ESP_ERROR_CHECK: with PANIC_PRINT_REBOOT and REBOOT_DELAY_SECONDS=0 an
+     * abort here reboots instantly and forever, and because ui_board_init() then
+     * never runs the TCA9554 keeps the backlight lit -- exactly the recorded
+     * "blackscreen, backlight menyala". Carrying on does not get the fonts back
+     * (they are on the partition that failed to mount), but LVGL's NULL-font
+     * assert halts the LVGL task instead of rebooting the SoC, so this log line
+     * stays on screen in the monitor and the console still answers. A reboot
+     * loop erases both.
+     */
+    err = mount_assets();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "assets not mounted (%s): fonts and images are missing -- "
+                      "reflash the storage partition", esp_err_to_name(err));
+    }
 
     ui_runtime_init();
 
@@ -160,6 +179,14 @@ void app_main(void)
     disp_cfg.lvgl_port_cfg.task_stack = 32768;
 
     disp = bsp_display_start_with_config(&disp_cfg);
+    /*
+     * Do not rely on this branch: with CONFIG_BSP_ERROR_CHECK=y the BSP calls
+     * ESP_ERROR_CHECK internally on its own init failures, so a failed
+     * bsp_display_start() aborts inside the BSP and never returns NULL. The
+     * check stays because it costs one line and CONFIG_BSP_ERROR_CHECK is a
+     * sdkconfig that can be turned off -- but it is defense-in-depth, not the
+     * primary handler.
+     */
     if (disp == NULL) {
         ESP_LOGE(TAG, "bsp_display_start failed");
         return;
@@ -173,6 +200,14 @@ void app_main(void)
     /* Needs the I2C bus the display brought up. Enables the backlight and puts
      * the buzzer in a known-quiet state before any screen appears. */
     ui_board_init();
+
+    /*
+     * Same bus, and before the first screen paints so the status bar's clock is
+     * right on its first draw. The RTC is the only clock source here -- no WiFi,
+     * no SNTP -- so if this finds nothing the bar honestly shows "--:--" until
+     * someone runs `rtc set`. It also sets TZ, which nothing else does.
+     */
+    tb_rtc_init();
 
     /*
      * The STM32 link shares that same I2C bus, so it cannot start any earlier
@@ -189,10 +224,18 @@ void app_main(void)
     }
 
     /* The BP task feeds off the poll task's wave reads; it must exist before
-     * the first measure-done (which notifies it) and is idle until then. */
-    bp_capture_init();
-
-
+     * the first measure-done (which notifies it) and is idle until then.
+     *
+     * Not fatal, but not silent either: with no BP task every measurement still
+     * burns the full BP wait in infer_once() with LVGL frozen, and the verdict
+     * comes out with an imputed pressure. That is a demo-visible stall, so it
+     * has to be in the log. */
+    err = bp_capture_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "BP task not created (%s): every measurement will still "
+                      "wait out the BP window and then impute a pressure",
+                 esp_err_to_name(err));
+    }
     asset_fs_init();
     ui_init(ASSET_LVGL_PATH);
     ui_input_keypad_init(disp);

@@ -160,6 +160,30 @@ static void test_priority_wire_mapping(void)
     assert(tb_frame_priority_from_wire(200) == UI_PRIORITY_BLACK);
 }
 
+/*
+ * The "no verdict" byte, which is how a REFUSAL reaches the station without
+ * becoming a triage. The literal is asserted rather than derived: the matching
+ * LORA_VITAL_PRIORITY_NONE lives in the station repo (different author, no
+ * shared header), so this assert is the only thing tying the two together, and a
+ * test that computed the value from the code under test would agree with a
+ * wrong one.
+ */
+static void test_unscored_sentinel(void)
+{
+    assert(TB_PRIORITY_WIRE_NONE == 0xFFU);
+
+    /* It cannot be read as a colour: every mapped value is 0..3, so no verdict
+     * can collide with the sentinel and the sentinel cannot name a verdict. */
+    for (int prio = UI_PRIORITY_RED; prio <= UI_PRIORITY_BLACK; prio++) {
+        assert(tb_frame_priority_to_wire(prio) != TB_PRIORITY_WIRE_NONE);
+    }
+
+    /* And BLACK still goes out as 0. The sentinel is an ADDITION, not a remap:
+     * the day a model actually scores a patient EXPECTANT, that verdict must
+     * still reach the station as BLACK. */
+    assert(tb_frame_priority_to_wire(UI_PRIORITY_BLACK) == 0);
+}
+
 int main(void)
 {
     test_roundtrip_vital();
@@ -170,6 +194,7 @@ int main(void)
     test_bogus_length_does_not_overflow();
     test_encode_rejects_bad_args();
     test_priority_wire_mapping();
+    test_unscored_sentinel();
     printf("tb_frame_selftest: OK\n");
     return 0;
 }

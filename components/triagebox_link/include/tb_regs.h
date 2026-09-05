@@ -120,11 +120,32 @@
 #define TB_REG_LORA_RSSI  0x30U /* i8   dBm; see tb_rssi_valid() */
 
 /*
- * The whole readable image, which is one byte longer than the vitals block.
- * The STM32's slave sizes its staging buffer from sizeof(tb_snapshot_t), so this
- * is what makes 0x30 readable at all.
+ * The STM32F411's 96-bit factory unique id, little-endian words, at UID_BASE
+ * 0x1FFF7A10. Read-only, constant for the life of the chip, and the only thing
+ * that distinguishes two boards flashed from the SAME binary.
+ *
+ * WHY IT IS ON THIS LINK AT ALL: node_id is a LoRa poll ADDRESS, so it cannot be
+ * derived from the UID -- the station polls 1..N and a UID-shaped address would
+ * never be called. The UID feeds a lookup TABLE instead (main.c), which needs the
+ * board's UID to be readable by whoever is holding it. The ESP32's `uid` console
+ * command prints these twelve bytes, so adding a new board to the table takes a
+ * serial monitor rather than a debugger and an SWD probe.
+ *
+ * OUTSIDE TB_REG_READ_END for the same reason TB_REG_LORA_RSSI is: the 50 ms
+ * vitals poll still asks for exactly 0x30 bytes, so nothing about it changes and
+ * TB_PROTO_VER does not move. An STM32 built before this block existed answers
+ * the ESP32's separate 12-byte read with its 0xFF pad, which is not a valid UID
+ * (the F411 never reports all-ones) and reads as "this slave is too old to ask".
  */
-#define TB_REG_SNAPSHOT_END (TB_REG_LORA_RSSI + 1U) /* 0x31 */
+#define TB_REG_UID      0x31U /* u8[12] STM32 96-bit UID, LE words */
+#define TB_REG_UID_LEN  12U
+
+/*
+ * The whole readable image, which now runs thirteen bytes past the vitals block.
+ * The STM32's slave sizes its staging buffer from sizeof(tb_snapshot_t), so this
+ * is what makes 0x30 and the UID above it readable at all.
+ */
+#define TB_REG_SNAPSHOT_END (TB_REG_UID + TB_REG_UID_LEN) /* 0x3D */
 
 /*
  * Two values mean "no reading", from two different places, which is why this is
@@ -378,18 +399,81 @@ static inline uint32_t tb_wave_take(const tb_wave_block_t *blk,
 /* ---- Write block (ESP32 -> STM32) --------------------------------------- */
 
 #define TB_REG_CMD          0x40U /* u8   TB_CMD_*, self-clearing once acted on */
-#define TB_REG_PRIORITY     0x41U /* u8   LoRa order: 0=BLACK 1=RED 2=YELLOW 3=GREEN */
+#define TB_REG_PRIORITY     0x41U /* u8   LoRa order: 0=BLACK 1=RED 2=YELLOW 3=GREEN, 0xFF=none */
 #define TB_REG_CONFIDENCE   0x42U /* u8   0..100 */
 #define TB_REG_HOST_BATTERY 0x43U /* u8   percent, 0xFF = ESP32 has no reading */
 #define TB_REG_HOST_BP_SYS  0x44U /* u16  mmHg, ESP32's ML prediction */
 #define TB_REG_HOST_BP_DIA  0x46U /* u16  mmHg; its LAST byte latches the pair */
-#define TB_REG_WRITE_END    0x48U
+#define TB_REG_HOST_RR      0x48U /* u8   whole breaths/min, 0 = ESP32 has none */
+#define TB_REG_HOST_AGE     0x49U /* u8   years, 0 = not asked */
+#define TB_REG_HOST_GENDER  0x4AU /* u8   'M'/'F'/'U' ASCII, 0 = not asked */
+#define TB_REG_HOST_ESI     0x4BU /* u8   1..5, 0 = the model did not score */
+#define TB_REG_WRITE_END    0x4CU
 
 /*
  * PRIORITY uses the LoRa numeric alias, NOT ui_priority_t's declaration order
  * (RED, YELLOW, GREEN, BLACK). The ESP32 must convert with
  * tb_frame_priority_to_wire() before writing here. Getting this wrong swaps
  * RED and BLACK -- the two that matter most -- so it fails silently and badly.
+ *
+ * 0xFF IS THE FIFTH VALUE AND IT IS NOT A COLOUR: "this node has no verdict for
+ * this patient" (LORA_VITAL_PRIORITY_NONE on the station side, and what
+ * mon_priority holds from boot until the ESP32 scores). The ESP32 writes it when
+ * the model refuses -- a missing vital, so tb_classify() returns BLACK with
+ * esi 0 -- because the alternative is wire 0, which the station publishes as a
+ * genuine EXPECTANT triage for a patient whose finger clip fell off. No
+ * validation is needed here: the slave copies the byte through and the station's
+ * lora_vital_priority_name() answers NULL to anything it does not recognise,
+ * whose contract is to omit the key rather than substitute a level.
+ */
+
+/*
+ * HOST_RR / HOST_AGE / HOST_GENDER / HOST_ESI: the four things the operator or
+ * the model knows and the STM32 cannot possibly measure. Backwards across this
+ * link for exactly the reason HOST_BATTERY and HOST_BP_SYS/DIA are -- the board
+ * that has the value is not the board that transmits it.
+ *
+ * RR is TYPED, not measured. The breathing microphone is not fitted
+ * (MON_RESP_MIC_FITTED 0 on the STM32, so ResolvedRespBrpm() returns a hard 0),
+ * and until it ships the respiratory rate comes from a four-band screen the
+ * operator answers. That number is already what the triage model scores against
+ * -- tb_classify() REFUSES on respiratory_rate <= 0 -- so the station publishing
+ * nothing while the verdict was computed from 16 breaths/min was the wire
+ * disagreeing with the decision it carried.
+ *
+ * DELIBERATELY NOT ECHOED INTO THE READ BLOCK, unlike HOST_BATTERY. TB_REG_RR_X10
+ * stays the microphone's field and stays 0. If the STM32 echoed a typed RR back,
+ * the ESP32's own poll would read it as a measurement, TB_FLAG_RR_VALID would
+ * light, and the screen would present an operator's estimate with the same
+ * provenance as a sensor reading. The STM32 substitutes it into the LoRa packet
+ * only; tb_ui_source.c keeps supplying the typed value locally for the model.
+ *
+ * AGE is in YEARS, not the UI's band index: it is the number the model actually
+ * scored (the band's clinical mid-point, ui_age_band_years()), so the station
+ * reports the input the verdict came from rather than a code only this UI knows.
+ * 0 means the Age screen was never answered.
+ *
+ * ESI is the model's raw 1..5, and it is the one field the colour cannot carry:
+ * tb_classify() collapses ESI 3, 4 and 5 all into GREEN, so a walking-wounded
+ * ESI 5 and a could-deteriorate ESI 3 leave this node indistinguishable. 0 means
+ * the model refused to score, which is the same condition that makes PRIORITY
+ * 0xFF -- the station will already be withholding the whole vital, so an ESI 0
+ * never reaches MQTT.
+ *
+ * WRITE ORDER IS LOAD-BEARING: ESI, then PRIORITY, then CONFIDENCE. The slave
+ * latches the verdict as complete on CONFIDENCE, so anything the verdict needs
+ * has to be sitting in its register before that byte lands. RR/AGE/GENDER are
+ * patient facts rather than parts of the verdict, so they may go at any point
+ * before it.
+ *
+ * NO TB_PROTO_VER BUMP, for the third time and the same reason: nothing in the
+ * READ block moved, and the version check only protects the read block. An
+ * STM32 built before these registers existed hits `default: break` in its write
+ * switch, keeps reporting rr 0 and no age, and the station keeps omitting those
+ * keys -- today's behaviour exactly. The two boards can be flashed in either
+ * order. The LoRa packet is a different matter: it grew three fields, so
+ * LORA_VITAL_VERSION moved and the STM32 and the STATION must be flashed
+ * together (see lora_vital.h).
  */
 
 /*
@@ -515,6 +599,16 @@ static inline int tb_bp_pair_valid(uint16_t sys, uint16_t dia)
  * not invalidate a good ECG heart rate. */
 #define TB_FLAG_HR_VALID   0x01U
 #define TB_FLAG_SPO2_VALID 0x02U
+/*
+ * A BREATHING RATE EXISTS. Until the mic ships (MON_RESP_MIC_FITTED 0), the only
+ * source is the operator's four-band answer, so the STM32 sets this bit from
+ * TB_REG_HOST_RR's "nonzero" -- the bit means "this is the RR the verdict was
+ * computed from", not "a microphone measured it". The station's JSON cannot
+ * express that distinction, and rr:16 alongside a real sensor rr would be a lie
+ * in the other direction, so the bit carries what the packet can actually
+ * promise. When the mic lands, main.c switches to MonRespBrpm() and the bit
+ * regains its original meaning with no wire change.
+ */
 #define TB_FLAG_RR_VALID   0x04U
 /*
  * BP comes from the ESP32's ML model, not from a cuff on this node: it is
@@ -616,6 +710,7 @@ typedef struct TB_PACKED {
     uint8_t  rfid_len;
     char     rfid[TB_RFID_MAX];
     int8_t   lora_rssi;
+    uint8_t  uid[TB_REG_UID_LEN]; /* see TB_REG_UID: constant, read once */
 } tb_snapshot_t;
 
 #endif /* TB_REGS_H */

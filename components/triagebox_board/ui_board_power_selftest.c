@@ -24,6 +24,8 @@ static uint8_t s_soc;          /* REG 0x4F */
 static uint8_t s_stat;         /* REG 0x11 */
 static uint8_t s_vbat_l;       /* REG 0x14 */
 static uint8_t s_vbat_h;       /* REG 0x15 */
+static uint8_t s_idis_l;       /* REG 0x19 */
+static uint8_t s_idis_h;       /* REG 0x18 */
 static int s_fail_at;          /* fail the Nth transaction (0 = never) */
 static int s_txn;
 static uint8_t s_reg[MAX_LOG];
@@ -37,6 +39,9 @@ static bool s_wrong_addr;
 static bool s_lock_ok;          /* bsp_i2c_lock() result */
 static int s_locks;             /* takes, to prove every path locks */
 static int s_unlocks;           /* gives, to prove every path unlocks */
+static bool s_expander_ok;      /* bsp_io_expander_init() finds the TCA9554 */
+static int s_exp_fail_at;       /* fail the Nth expander write (0 = never) */
+static int s_exp_txn;
 
 const char *esp_err_to_name(esp_err_t err) { (void)err; return "ESP_ERR_FAKE"; }
 void vTaskDelay(int ticks) { (void)ticks; s_waited = true; }
@@ -53,11 +58,15 @@ bool bsp_i2c_lock(uint32_t timeout_ms)
 
 void bsp_i2c_unlock(void) { s_unlocks++; }
 
-esp_io_expander_handle_t bsp_io_expander_init(void) { return NULL; }
+esp_io_expander_handle_t bsp_io_expander_init(void)
+{
+    return s_expander_ok ? (esp_io_expander_handle_t)3 : NULL;
+}
+
 esp_err_t esp_io_expander_set_dir(esp_io_expander_handle_t h, uint32_t m, int d)
-{ (void)h; (void)m; (void)d; return ESP_OK; }
+{ (void)h; (void)m; (void)d; return (++s_exp_txn == s_exp_fail_at) ? -1 : ESP_OK; }
 esp_err_t esp_io_expander_set_level(esp_io_expander_handle_t h, uint32_t m, uint8_t l)
-{ (void)h; (void)m; (void)l; return ESP_OK; }
+{ (void)h; (void)m; (void)l; return (++s_exp_txn == s_exp_fail_at) ? -1 : ESP_OK; }
 
 i2c_master_bus_handle_t bsp_i2c_get_handle(void)
 {
@@ -102,6 +111,8 @@ esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t dev, const uint8_t
     case 0x11U: *r = s_stat;   break; /* charge state   */
     case 0x14U: *r = s_vbat_l; break; /* Vbat [7:0]     */
     case 0x15U: *r = s_vbat_h; break; /* Vbat [11:8]    */
+    case 0x19U: *r = s_idis_l; break; /* Idischg [7:0]  */
+    case 0x18U: *r = s_idis_h; break; /* Idischg [11:8] + Ichg [3:0] */
     /* Anything else means new code is poking a 4 A charger's registers. */
     default: assert(0); return -1;
     }
@@ -130,6 +141,8 @@ static void reset(uint8_t gauge, int fail_at)
     s_stat = 0;
     s_vbat_l = 0;
     s_vbat_h = 0;
+    s_idis_l = 0;
+    s_idis_h = 0;
     s_fail_at = fail_at;
     s_txn = 0;
     s_writes = 0;
@@ -143,6 +156,9 @@ static void reset(uint8_t gauge, int fail_at)
     s_lock_ok = true;
     s_locks = 0;
     s_unlocks = 0;
+    s_expander_ok = true;
+    s_exp_fail_at = 0;
+    s_exp_txn = 0;
 }
 
 /*
@@ -216,9 +232,26 @@ static void test_battery(void)
     assert(ui_board_battery(&pct, &chg));
     assert(pct == 60U && !chg);
 
-    /* A bad read clamps instead of showing 127%. */
+    /*
+     * Out of range is NO reading, not a clamp. This is the assert that matters:
+     * 0xff is what a floating bus or a NAK reads back, and the old code masked
+     * bit 7 away, clamped 127 to 100 and returned success -- so a dead gauge
+     * displayed a FULL battery, and UI_BATTERY_UNKNOWN (0xff) could never reach
+     * ui_status_battery_text() at all. Lying upward about the pack is the one
+     * direction that matters on a device that has to last a shift.
+     */
     reset(0xfaU, 0);
-    s_soc = 0x7FU;
+    s_soc = 0xFFU;
+    assert(!ui_board_battery(&pct, &chg));
+    assert(pct == 60U);         /* still the previous reading, not 100 "full" */
+
+    reset(0xfaU, 0);
+    s_soc = 0x80U | 101U;       /* first value past the spec'd range */
+    assert(!ui_board_battery(&pct, &chg));
+    assert(pct == 60U);
+
+    reset(0xfaU, 0);
+    s_soc = 100U;               /* and the last one inside it still works */
     assert(ui_board_battery(&pct, &chg));
     assert(pct == 100U);
 
@@ -228,6 +261,53 @@ static void test_battery(void)
     assert(ui_board_battery(NULL, NULL));
     /* Balanced: a leaked take would wedge the bus for every other user, which is
      * the fault this lock was added to fix. */
+    assert(s_locks == 1 && s_unlocks == 1);
+}
+
+/*
+ * ui_board_init() must never abort. The three expander writes are the first I2C
+ * of boot, and with PANIC_PRINT_REBOOT + a 0 s delay an ESP_ERROR_CHECK there is
+ * an endless reboot with the backlight left lit -- which is exactly the
+ * "blackscreen, backlight menyala" report, and reachable for real because the
+ * STM32 has been measured holding SCL low after GT911 init.
+ */
+static void test_init_degrades(void)
+{
+    reset(0xfaU, 0);
+    s_bus_ok = false;
+    ui_board_init();            /* no bus: returns, takes no lock */
+    assert(s_locks == 0 && s_unlocks == 0);
+
+    reset(0xfaU, 0);
+    s_lock_ok = false;
+    ui_board_init();
+    assert(s_unlocks == 0);
+
+    reset(0xfaU, 0);
+    s_expander_ok = false;      /* TCA9554 absent */
+    ui_board_init();
+    assert(s_locks == 1 && s_unlocks == 1);
+
+    /* Each of the three writes failing in turn: logged, lock returned, and
+     * s_io cleared so backlight/buzzer become no-ops instead of half-driving an
+     * expander whose direction register never took. */
+    for (int nth = 1; nth <= 3; nth++) {
+        reset(0xfaU, 0);
+        s_exp_fail_at = nth;
+        ui_board_init();
+        assert(s_locks == 1 && s_unlocks == 1);
+
+        s_exp_txn = 0;
+        ui_board_backlight(true);
+        ui_board_buzzer(true);
+        assert(s_exp_txn == 0); /* s_io == NULL, so nothing was driven */
+        assert(s_locks == 1);   /* and no lock was taken to do nothing */
+    }
+
+    /* Happy path, last: it leaves s_io set for the rest of the process. */
+    reset(0xfaU, 0);
+    ui_board_init();
+    assert(s_exp_txn == 3);     /* set_dir, buzzer quiet, backlight on */
     assert(s_locks == 1 && s_unlocks == 1);
 }
 
@@ -268,10 +348,54 @@ static void test_battery_mv(void)
     assert(ui_board_battery_mv(NULL));
 }
 
+static void test_battery_ma(void)
+{
+    uint16_t ma = 1234U;
+
+    /* 1.00 A: Idischg raw 0x1C0 = 448 counts * 25/7 mA = 1600 mA. The HIGH nibble
+     * of 0x18 holds Idischg's [11:8]; its low nibble is what the `pmic` command
+     * decodes as Ichg's high bits and must not bleed into the discharge result. */
+    reset(0xfaU, 0);
+    s_idis_l = 0xC0U;
+    s_idis_h = 0x10U; /* [7:4] = 0x1 is Idischg [11:8]; [3:0] = 1 is Ichg's */
+    assert(ui_board_battery_ma(&ma));
+    assert(ma == 1600U);
+
+    /* A light-load spot check: 0x1E0 raw = 480 counts -> 1714 mA. */
+    reset(0xfaU, 0);
+    s_idis_l = 0xE0U;
+    s_idis_h = 0x10U;
+    assert(ui_board_battery_ma(&ma));
+    assert(ma == 1714U);
+
+    /* Zero discharge: charging. Both halves read 0, giving a true 0 mA rather
+     * than a decode error -- the caller is expected to say "charging" from the
+     * STATUS bit. */
+    reset(0xfaU, 0);
+    s_idis_l = 0U;
+    s_idis_h = 0U;
+    assert(ui_board_battery_ma(&ma));
+    assert(ma == 0U);
+
+    /* Either half unreadable: no number rather than half a number. */
+    reset(0xfaU, 1);
+    assert(!ui_board_battery_ma(&ma));
+    assert(ma == 0U); /* output untouched */
+    reset(0xfaU, 2);
+    assert(!ui_board_battery_ma(&ma));
+    assert(ma == 0U);
+
+    /* NULL is accepted, same contract as the other gauges. */
+    reset(0xfaU, 0);
+    assert(ui_board_battery_ma(NULL));
+}
+
 int main(void)
 {
     test_battery();
     test_battery_mv();
+    test_battery_ma();
+    test_init_degrades();
 
     /* Happy path: unlock 1, unlock 2, then the power-off event -- in order. */
     reset(0xfaU, 0);
@@ -344,7 +468,12 @@ int main(void)
     printf("ui_board_power_off: 0x01<-0x40, 0x01<-0x80, 0x03<-0x10 under one "
            "bus lock; every failure path leaves the rail up and the lock free\n");
     printf("ui_board_battery: 0x4F[6:0] + 0x11[4], reads only, no unlock; a busy "
-           "bus reads as no reading, never a stale one\n");
+           "bus reads as no reading, never a stale one -- and 101..127 is "
+           "refused, not clamped to 100\n");
+    printf("ui_board_init: every expander-write failure logs and degrades to "
+           "no backlight/buzzer control; no path aborts\n");
     printf("ui_board_battery_mv: ((0x15[3:0]<<8)|0x14) * 1.2mV\n");
+    printf("ui_board_battery_ma: ((0x18[7:4]<<8)|0x19) * 25/7 mA, 0 while "
+           "charging by design\n");
     return 0;
 }

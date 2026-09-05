@@ -23,34 +23,23 @@
 			text_color="#color_dark_text"
 		/>
 		<style
-			name="style_mon_hero_card"
-			width="440"
-			height="142"
-			pad_hor="16"
-			pad_ver="12"
+			name="style_mon_spo2_card"
+			width="214"
+			height="93"
+			pad_hor="10"
+			pad_ver="10"
 			bg_color="#color_vital_spo2"
 			border_color="#color_vital_spo2"
 		/>
 		<style name="style_mon_mid_card" width="214" height="93" pad_hor="10" pad_ver="10" />
 		<style name="style_mon_hr_card" bg_color="#color_vital_hr" border_color="#color_vital_hr" />
 		<style name="style_mon_rr_card" bg_color="#color_vital_rr" border_color="#color_vital_rr" />
+		<style name="style_mon_bp_card" bg_color="#color_vital_bp" border_color="#color_vital_bp" />
 		<style name="style_mon_header_label" text_color="#color_text_on_card" text_font="font_inter_semi_bold_14" />
 		<style name="style_mon_icon" image_recolor_opa="100%" width="24" height="24" />
 		<style name="style_mon_trend" image_recolor_opa="100%" width="16" height="16" />
-		<style name="style_mon_hero_value" text_color="#color_dark_text" text_font="font_inter_bold_56" />
-		<style name="style_mon_hero_unit" text_color="#color_text_on_card" text_font="font_inter_regular_24" />
 		<style name="style_mon_mid_value" text_color="#color_dark_text" text_font="font_inter_bold_36" />
 		<style name="style_mon_mid_unit" text_color="#color_text_on_card" text_font="font_inter_regular_14" />
-		<style
-			name="style_mon_spo2_track"
-			bg_color="#color_dark_panel"
-			bg_opa="100%"
-			radius="100"
-			border_width="0"
-			outline_width="0"
-			shadow_width="0"
-		/>
-		<style name="style_mon_spo2_indicator" bg_color="#color_vital_spo2" bg_opa="100%" radius="100" />
 		<style
 			name="style_footer"
 			width="100%"
@@ -104,69 +93,79 @@
 				</lv_label>
 			</row>
 
-			<lv_obj
-				name="vc_spo2"
-				flex_flow="column"
-				width="100%"
-				height="142"
-				style_margin_top="12"
-				scrollable="false"
-			>
-				<style name="style_mon_card" />
-				<style name="style_mon_hero_card" />
-				<row
-					width="404"
-					height="24"
-					gap="8"
-					pad="0"
-					vertical_align="center"
-					style_flex_main_place="space_between"
-				>
-					<row width="content" height="24" gap="8" pad="0" vertical_align="center">
-						<lv_image
-							src="icon_oxygen"
-							width="24"
-							height="24"
-							inner_align="center"
-							style_image_recolor="#color_vital_spo2"
-						>
-							<style name="style_mon_icon" />
-						</lv_image>
-						<lv_label text="SpO2">
-							<style name="style_mon_header_label" />
+			<row width="100%" height="93" gap="12" pad="0" horizontal_align="center" style_margin_top="12">
+				<lv_obj name="vc_spo2" flex_flow="column" width="214" height="93" scrollable="false">
+					<style name="style_mon_card" />
+					<style name="style_mon_spo2_card" />
+					<row
+						width="190"
+						height="24"
+						gap="8"
+						pad="0"
+						vertical_align="center"
+						style_flex_main_place="space_between"
+					>
+						<row width="content" height="24" gap="8" pad="0" vertical_align="center">
+							<lv_image
+								src="icon_oxygen"
+								width="24"
+								height="24"
+								inner_align="center"
+								style_image_recolor="#color_vital_spo2"
+							>
+								<style name="style_mon_icon" />
+							</lv_image>
+							<lv_label text="SpO2">
+								<style name="style_mon_header_label" />
+							</lv_label>
+						</row>
+					</row>
+					<row width="190" height="39" gap="5" pad="0" vertical_align="end" style_margin_top="6">
+						<lv_label name="spo2_value" text="--">
+							<style name="style_mon_mid_value" />
+						</lv_label>
+						<lv_label text="%" style_margin_bottom="4">
+							<style name="style_mon_mid_unit" />
 						</lv_label>
 					</row>
-					<!-- <lv_image
-						src="icon_update"
-						width="16"
-						height="16"
-						inner_align="center"
-						style_image_recolor="#color_vital_spo2"
+				</lv_obj>
+				<lv_obj name="vc_bp" flex_flow="column" width="214" height="93" scrollable="false">
+					<style name="style_mon_card" />
+					<style name="style_mon_mid_card" />
+					<style name="style_mon_bp_card" />
+					<row
+						width="190"
+						height="24"
+						gap="8"
+						pad="0"
+						vertical_align="center"
+						style_flex_main_place="space_between"
 					>
-						<style name="style_mon_trend" />
-					</lv_image> -->
-				</row>
-				<row width="404" height="64" gap="6" pad="0" vertical_align="end" style_margin_top="8">
-					<lv_label name="spo2_value" text="--">
-						<style name="style_mon_hero_value" />
-					</lv_label>
-					<lv_label text="%" style_margin_bottom="7">
-						<style name="style_mon_hero_unit" />
-					</lv_label>
-				</row>
-				<lv_bar
-					name="spo2_progress"
-					value="0"
-					min_value="0"
-					max_value="100"
-					width="404"
-					height="4"
-					style_margin_top="10"
-				>
-					<style name="style_mon_spo2_track" />
-					<style name="style_mon_spo2_indicator" selector="indicator" />
-				</lv_bar>
-			</lv_obj>
+						<row width="content" height="24" gap="8" pad="0" vertical_align="center">
+							<lv_image
+								src="icon_vital_bp_sm"
+								width="24"
+								height="24"
+								inner_align="center"
+								style_image_recolor="#color_vital_bp"
+							>
+								<style name="style_mon_icon" />
+							</lv_image>
+							<lv_label text="BP">
+								<style name="style_mon_header_label" />
+							</lv_label>
+						</row>
+					</row>
+					<row width="190" height="39" gap="5" pad="0" vertical_align="end" style_margin_top="6">
+						<lv_label name="bp_value" text="--">
+							<style name="style_mon_mid_value" />
+						</lv_label>
+						<lv_label text="mmHg" style_margin_bottom="4">
+							<style name="style_mon_mid_unit" />
+						</lv_label>
+					</row>
+				</lv_obj>
+			</row>
 
 			<row width="100%" height="93" gap="12" pad="0" horizontal_align="center" style_margin_top="12">
 				<lv_obj name="vc_hr" flex_flow="column" width="214" height="93" scrollable="false">
