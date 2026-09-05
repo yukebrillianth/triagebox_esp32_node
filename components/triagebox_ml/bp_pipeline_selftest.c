@@ -69,9 +69,13 @@ static void test_golden_vector(void)
      * pin does catch is a transposed FEAT_* macro, a swapped channel, or a
      * model file replaced by mistake. Re-pinning is the right response to a
      * retrain or a re-exported sample; widening to absorb a wiring bug is not.
+     *
+     * Re-pinned 2026-09-05 for PR #22's retrain (was 134.88/79.42). SBP moved
+     * 0.7 mmHg, DBP 6.4 -- the two models are separate LightGBM fits, so a
+     * retrain need not move them together.
      */
-#define PORT_SBP 134.88
-#define PORT_DBP 79.42
+#define PORT_SBP 134.15
+#define PORT_DBP 85.85
     assert(bp_predict(SAMPLE_PPG_RED, SAMPLE_PPG_IR, SAMPLE_ECG_LEAD_I,
                       SAMPLE_SIGNAL_LEN, SAMPLE_IS_MALE, &sbp, &dbp));
     printf("  golden: sbp=%.2f (port %.2f, cuff %.1f), "

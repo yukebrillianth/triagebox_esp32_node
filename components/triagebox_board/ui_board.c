@@ -72,6 +72,8 @@ static esp_io_expander_handle_t s_io;
 #define SW6106_REG_VBAT_L   0x14U /* Vbat [7:0]  */
 #define SW6106_REG_VBAT_H   0x15U /* Vbat [11:8] in [3:0]; [7:4] belong to Vout */
 #define SW6106_REG_SOC      0x4FU /* [6:0] final SoC, 1%/step */
+#define SW6106_REG_IDIS_L   0x19U /* Idischg [7:0] */
+#define SW6106_REG_IDIS_H   0x18U /* Idischg [11:8] in [7:4]; [3:0] are Ichg's */
 #define SW6106_STAT_CHARGING 0x10U /* [4] */
 #define SW6106_SOC_MASK     0x7FU
 #define SW6106_VBAT_H_MASK  0x0FU
@@ -163,9 +165,17 @@ bool ui_board_battery(uint8_t *percent, bool *charging)
     if (err != ESP_OK) {
         return false;
     }
+    /*
+     * 0x4F is spec'd 0-100, so 101-127 is a bad read and must come back as NO
+     * reading, not a clamp. The old clamp read a floating bus (0xff) as 100% with
+     * a full icon -- the one direction the gauge must never lie in -- and could
+     * never return UI_BATTERY_UNKNOWN, because the mask here throws away bit 7
+     * before the caller gets to see it.
+     */
     soc &= SW6106_SOC_MASK;
     if (soc > 100U) {
-        soc = 100U; /* 0x4F is spec'd 0-100; anything else is a bad read. */
+        ESP_LOGD(TAG, "gauge SoC 0x%02x out of range; reporting no reading", soc);
+        return false;
     }
     if (percent != NULL) {
         *percent = soc;
@@ -182,20 +192,70 @@ bool ui_board_battery_mv(uint16_t *millivolts)
     uint8_t vl = 0;
     uint8_t vh = 0;
     uint32_t raw;
+    bool ok;
 
     if (dev == NULL) {
         return false;
     }
-    if (sw6106_read(dev, SW6106_REG_VBAT_L, &vl) != ESP_OK) {
+    /*
+     * Under the lock, like every other entry point here. It was not, and that was
+     * a real hazard rather than a tidiness point: two SEPARATE addressed reads
+     * make a 12-bit number out of two registers, and the GT911 or the 20 Hz STM32
+     * poll landing between them yields a low byte from one sample and a high
+     * nibble from another -- a voltage that never existed, off by up to 300 mV
+     * across a 256-count boundary. Held across the pair, not per read.
+     */
+    if (!bsp_i2c_lock(UI_BOARD_I2C_TIMEOUT)) {
+        ESP_LOGD(TAG, "pack voltage read skipped: I2C bus busy");
         return false;
     }
-    if (sw6106_read(dev, SW6106_REG_VBAT_H, &vh) != ESP_OK) {
+    ok = (sw6106_read(dev, SW6106_REG_VBAT_L, &vl) == ESP_OK) &&
+         (sw6106_read(dev, SW6106_REG_VBAT_H, &vh) == ESP_OK);
+    bsp_i2c_unlock();
+
+    if (!ok) {
         return false;
     }
     raw = ((uint32_t)(vh & SW6106_VBAT_H_MASK) << 8) | (uint32_t)vl;
     /* * 1.2 mV -> * 12 / 10; integer math without float. */
     if (millivolts != NULL) {
         *millivolts = (uint16_t)((raw * 12U) / 10U);
+    }
+    return true;
+}
+
+bool ui_board_battery_ma(uint16_t *milliamps)
+{
+    i2c_master_dev_handle_t dev = pmic_dev();
+    uint8_t il = 0;
+    uint8_t ih = 0;
+    uint32_t raw;
+    bool ok;
+
+    if (dev == NULL) {
+        return false;
+    }
+    /* One lock across both reads, for the reason spelled out above: the two
+     * registers are halves of one 12-bit number. */
+    if (!bsp_i2c_lock(UI_BOARD_I2C_TIMEOUT)) {
+        ESP_LOGD(TAG, "discharge current read skipped: I2C bus busy");
+        return false;
+    }
+    ok = (sw6106_read(dev, SW6106_REG_IDIS_L, &il) == ESP_OK) &&
+         (sw6106_read(dev, SW6106_REG_IDIS_H, &ih) == ESP_OK);
+    bsp_i2c_unlock();
+
+    if (!ok) {
+        return false;
+    }
+    /* Idischg [11:8] live in the HIGH nibble of 0x18; the low nibble is Ichg's,
+     * which is why this shifts rather than masks. */
+    raw = ((uint32_t)(ih >> 4) << 8) | (uint32_t)il;
+    /* * 25/7 mA per LSB, in that order: 4095*25 = 102375 fits an int32 with room
+     * to spare, so this is exact to the nearest mA with no float. Same decode the
+     * `pmic` console command prints. */
+    if (milliamps != NULL) {
+        *milliamps = (uint16_t)((raw * 25U) / 7U);
     }
     return true;
 }
@@ -224,12 +284,30 @@ void ui_board_init(void)
         return;
     }
 
-    /* Only claim the two pins we drive. The rest stay input/high-Z so we cannot
-     * fight the panel reset lines or the RTC interrupt. */
-    ESP_ERROR_CHECK(esp_io_expander_set_dir(s_io, PIN_BL_EN | PIN_BEE_EN,
-                                            IO_EXPANDER_OUTPUT));
-    ESP_ERROR_CHECK(esp_io_expander_set_level(s_io, PIN_BEE_EN, !BEE_ON_LEVEL));
-    ESP_ERROR_CHECK(esp_io_expander_set_level(s_io, PIN_BL_EN, BL_ON_LEVEL));
+    /*
+     * Only claim the two pins we drive. The rest stay input/high-Z so we cannot
+     * fight the panel reset lines or the RTC interrupt.
+     *
+     * These are the first I2C writes of boot and the one place a wedged bus
+     * (the measured STM32-holds-SCL state) can still abort: on this bus three
+     * more devices answer nothing, so each write NAKs, and aborting here is a
+     * 0 s reboot loop with the backlight still lit -- the recorded "blackscreen,
+     * backlight menyala" symptom, because a panic means ui_board_init() never
+     * runs again either. So every failure logs loudly and degrades to "no
+     * backlight/buzzer control", the same shape as the error paths above, and
+     * leaves the pins where the failed write left them: a level that cannot be
+     * confirmed is not blindly re-driven.
+     */
+    if (esp_io_expander_set_dir(s_io, PIN_BL_EN | PIN_BEE_EN,
+                                IO_EXPANDER_OUTPUT) != ESP_OK ||
+        esp_io_expander_set_level(s_io, PIN_BEE_EN, !BEE_ON_LEVEL) != ESP_OK ||
+        esp_io_expander_set_level(s_io, PIN_BL_EN, BL_ON_LEVEL) != ESP_OK) {
+        ESP_LOGE(TAG, "expander setup failed: backlight/buzzer now uncontrollable "
+                      "-- was the bus wedged? (i2cstate)");
+        bsp_i2c_unlock();
+        s_io = NULL; /* match the init-failed path above for every later caller */
+        return;
+    }
     bsp_i2c_unlock();
     ESP_LOGI(TAG, "expander up: BL_EN=EXIO2 BEE_EN=EXIO6");
 }

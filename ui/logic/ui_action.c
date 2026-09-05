@@ -191,9 +191,32 @@ static void airway_action(uint8_t btn_id)
     case 2: /* Back → Gender */
         ui_nav_go(UI_SCREEN_GENDER);
         break;
-    case 3: /* Select → Mengukur; commit the airway answer */
+    case 3: /* Select → RR; commit the airway answer */
         beep();
         ui_session_set_airway(ui_nav_pending_airway());
+        ui_nav_go(UI_SCREEN_RR);
+        break;
+    default:
+        action_noop();
+        break;
+    }
+}
+
+static void rr_action(uint8_t btn_id)
+{
+    switch (btn_id) {
+    case 0: /* Up */
+        ui_nav_move_pending_rr(-1);
+        break;
+    case 1: /* Down */
+        ui_nav_move_pending_rr(1);
+        break;
+    case 2: /* Back → Airway */
+        ui_nav_go(UI_SCREEN_AIRWAY);
+        break;
+    case 3: /* Select → Mengukur; commit the counted band */
+        beep();
+        ui_session_set_rr(ui_nav_pending_rr());
         ui_nav_go(UI_SCREEN_MENGUKUR);
         break;
     default:
@@ -293,6 +316,7 @@ static const ui_screen_action_fn s_tables[UI_SCREEN_COUNT] = {
     age_action,
     gender_action,
     airway_action,
+    rr_action,
     mengukur_action,
     result_action,
     monitor_action,

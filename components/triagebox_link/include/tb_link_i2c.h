@@ -47,12 +47,49 @@ esp_err_t tb_link_send_result(ui_priority_t priority, float confidence,
                               const char *tag);
 
 /*
+ * The other thing a result can be: NO VERDICT.
+ *
+ * Writes TB_PRIORITY_WIRE_NONE (0xFF) to TB_REG_PRIORITY instead of a colour, so
+ * the station omits the priority key and withholds the whole vital rather than
+ * publishing it. Use it whenever the number on screen was not scored from this
+ * patient's vitals -- the model refusing (esi 0), or demo mode. Reporting those
+ * through tb_link_send_result() means the wire's BLACK, and BLACK is EXPECTANT.
+ *
+ * Separate from the call above rather than a flag on it because the caller's
+ * question is different: "what colour did the model say" versus "there is no
+ * verdict to send". A bool would let one be passed where the other was meant.
+ */
+esp_err_t tb_link_send_unscored(void);
+
+/*
  * Hand the BP prediction (mmHg) to the STM32 so the LoRa packet carries it.
  * DIA's final byte latches the pair, so call only with a COMPLETE result;
  * an invalid/absent BP is simply not sent, and the STM32 keeps
  * TB_FLAG_BP_VALID clear so the station omits the keys.
  */
 esp_err_t tb_link_send_bp(uint16_t sys, uint16_t dia);
+
+/*
+ * The four bytes only this board knows and the LoRa packet should carry:
+ * rr_brpm (whole breaths/min, 0 = none), age_years, gender_ascii ('M'/'F',
+ * 0 = not asked) and esi (the model's raw 1..5, 0 = it refused). Wire layout and
+ * semantics: TB_REG_HOST_RR..TB_REG_HOST_ESI in tb_regs.h.
+ *
+ * MUST land before tb_link_send_result()/tb_link_send_unscored(): the slave
+ * treats the verdict as complete once CONFIDENCE is written, and ESI belongs to
+ * that verdict.
+ */
+esp_err_t tb_link_send_patient(uint8_t rr_brpm, uint8_t age_years,
+                               uint8_t gender_ascii, uint8_t esi);
+
+/*
+ * Read the STM32F411's 96-bit factory UID into @p uid (TB_REG_UID_LEN bytes,
+ * little-endian words). For the `uid` console command: it feeds the
+ * UID->node_id table on the station, and a board must be addable to that table
+ * from a serial monitor, without a debugger. Twelve 0xFF bytes back means the
+ * slave predates the register -- the caller says so.
+ */
+esp_err_t tb_link_read_uid(uint8_t *uid);
 
 /* Diagnostics for the `stats` console command. */
 uint32_t tb_link_frames_ok(void);   /* successful snapshot polls */

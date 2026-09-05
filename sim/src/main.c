@@ -13,6 +13,7 @@
 
 #include "ui_action.h"
 #include "ui_airway.h"
+#include "ui_rr.h"
 #include "ui_input.h"
 #include "ui_mock.h"
 #include "ui_nav.h"
@@ -99,6 +100,11 @@ static void show_gender(void)
 }
 /* Built in C rather than exported from the Editor -- see ui_airway.h. That is
  * also why it has no *_gen.h include above and no generated global. */
+static void show_rr(void)
+{
+    lv_screen_load(ui_rr_screen());
+}
+
 static void show_airway(void)
 {
     LV_LOG_USER("nav → AIRWAY");
@@ -147,6 +153,7 @@ static void register_triage_screens(void)
     ui_nav_register(UI_SCREEN_AGE, show_age);
     ui_nav_register(UI_SCREEN_GENDER, show_gender);
     ui_nav_register(UI_SCREEN_AIRWAY, show_airway);
+    ui_nav_register(UI_SCREEN_RR, show_rr);
     ui_nav_register(UI_SCREEN_MENGUKUR, show_mengukur);
     ui_nav_register(UI_SCREEN_RESULT, show_result);
     ui_nav_register(UI_SCREEN_MONITOR, show_monitor);

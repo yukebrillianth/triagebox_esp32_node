@@ -135,6 +135,15 @@ void ui_mock_start_scan(void)
     memset(&s_rfid, 0, sizeof(s_rfid));
 }
 
+void ui_mock_end_session(void)
+{
+    /* Nothing to tell: the mock has no second board to inform, and the scan is
+     * re-armed by ui_mock_start_scan() rather than left half-running. Present so
+     * ui_nav.c can call it unconditionally and the host build still links. */
+    s_scan_active = false;
+    s_rfid_ready = false;
+}
+
 bool ui_mock_rfid_ready(rfid_t *out)
 {
     if (!s_rfid_ready) {
@@ -205,6 +214,10 @@ int ui_mock_get_esi(void)
      * BLACK maps to 0 because that is the "refused to score" value, not an ESI.
      * Reverses the grouping the device applies -- GREEN covers 3..5, and 3 is the
      * one worth showing since it is the borderline end of that band.
+     *
+     * So the cycle's fourth stop renders as TIDAK TERUKUR, not HITAM, and that is
+     * correct rather than broken: tb_classify() returns BLACK only from its
+     * refusal gate, so a scored HITAM is a state this box cannot reach at all.
      */
     static const int k_esi[4] = {1, 2, 3, 0};
 

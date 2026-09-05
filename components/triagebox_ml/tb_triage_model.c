@@ -38,9 +38,17 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
          * on the zeroed features, but saying so here keeps the "we never
          * measured this patient" case from depending on that.
          *
+         * BLACK here means "no score", NOT EXPECTANT: *esi is 0 (set above), and
+         * esi == 0 is the one marker both the screen and the wire read as
+         * "unscored" -- the Result banner shows the neutral TIDAK TERUKUR state
+         * with no alarm (ui_verdict_unscored in ui_types.h) and the link side
+         * holds the vital rather than publish a black verdict. Only the
+         * model-scoring-a-real-patient path below may return a BLACK that means
+         * EXPECTANT.
+         *
          * The airway answer is deliberately NOT allowed to rescue this into RED:
          * with no vitals at all the box does not know what it is looking at, and
-         * BLACK is the honest answer. An operator who has seen an obstructed
+         * a refusal is the honest answer. An operator who has seen an obstructed
          * airway does not need the screen's permission to act on it.
          */
         return UI_PRIORITY_BLACK;
@@ -76,6 +84,12 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
 
     priority = tb_classify(&in, &predicted);
 
+    /*
+     * Invariant worth knowing when reading callers: tb_classify() returns
+     * BLACK ONLY on its refusal gate, so BLACK always arrives with predicted
+     * == 0 -- never as a scored verdict. The scored mapping is RED/YELLOW/GREEN
+     * only. Callers treat BLACK-with-esi-0 as "unscored", not EXPECTANT.
+     */
     if (esi != NULL) {
         *esi = predicted;
     }

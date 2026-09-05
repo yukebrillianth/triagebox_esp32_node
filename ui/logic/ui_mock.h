@@ -15,23 +15,70 @@
  */
 
 /*
- * Measure window. 60 s is not a round number picked for feel -- respiratory rate
- * is counted from the breathing microphone, and a rate per MINUTE needs a minute
- * of audio before it means anything. Shortening this does not make the box
- * faster, it makes RR a guess extrapolated from a few breaths.
+ * Measure window. 45 s, measured rather than chosen for feel.
  *
- * This used to default to 2000 with a comment saying hardware was 60000, and
- * nothing set 60000 anywhere -- so the device ran a 2 s window. The default is
- * now the real value, and the fast one is opt-in for desktop QA:
- * sim/CMakeLists.txt and tools/run_selftests.sh both pass -DUI_MEASURE_MS=2000.
- * Keep any override <= 5000 so the host/sim UI still steps through quickly.
+ * It was 60 s, justified by respiratory rate needing a minute of breathing
+ * microphone. That microphone does not exist -- RR is typed in on its own screen
+ * (ui_rr.c) -- so the only thing the length still serves is the BP model, whose
+ * training windows are 60 s (PKM_BP deploy/extracted_features_60s.csv).
+ *
+ * What 45 s costs, measured on bp_window.csv with the real feature extractor and
+ * both shipped LightGBM models (tools/bp_window_sweep.c, prefixes of one 57.8 s
+ * capture, filters primed as the firmware now primes them):
+ *
+ *     60 s  106.6 / 70.9   (reference)
+ *     50 s  106.8 / 66.2   +0.3 / -4.6 mmHg
+ *     45 s  108.1 / 66.5   +1.5 / -4.4 mmHg
+ *     30 s  109.9 / 66.1   +3.4 / -4.7 mmHg
+ *
+ * SBP moves 1.5 mmHg and DBP 4.4, against a device that reads ~27 mmHg low
+ * versus a cuff to begin with, and against a chain where re-sampling the golden
+ * vector onto a half-millisecond-shifted grid moves SBP 14 mmHg. So the window
+ * length is not what limits this number.
+ *
+ * ONE RECORDING, ONE SUBJECT. If a paired cuff comparison ever disagrees, put
+ * this back to 60000 -- one constant; BP_MIN_SAMPLES stays 3000, it is gap
+ * tolerance rather than a window target (see bp_capture.c). Do not go below
+ * ~30 s, the BP_MIN_SAMPLES floor at the measured 98.97 Hz: below it the model
+ * can never score and the triage imputes 129.7 mmHg -- bp_capture.c's
+ * _Static_asserts fail the build first.
+ *
+ * Desktop QA overrides it further: sim/CMakeLists.txt and tools/run_selftests.sh
+ * both pass -DUI_MEASURE_MS=2000. Keep any override <= 5000 so the host/sim UI
+ * still steps through quickly.
  */
+/*
+ * The hardware window, spelled so a -D cannot displace it: the desktop builds
+ * above define UI_MEASURE_MS itself, so UI_MEASURE_MS's #ifndef default never
+ * fires there. Code that must reason about the REAL on-device window -- the
+ * floor binds in bp_capture.c -- reads this constant, not UI_MEASURE_MS.
+ */
+#define UI_MEASURE_MS_DEFAULT 45000U
 #ifndef UI_MEASURE_MS
-#define UI_MEASURE_MS 60000U
+#define UI_MEASURE_MS UI_MEASURE_MS_DEFAULT
 #endif
 
 #ifndef UI_MOCK_SCAN_MS
 #define UI_MOCK_SCAN_MS 500U
+#endif
+
+/*
+ * How often the Scanning screen re-arms the sensor board's RFID scan.
+ *
+ * The board's scan is a BOUNDED retry window, not a standing request:
+ * RFID_SCAN_WINDOW_MS in the STM32's main.c is 30 s, after which it stops
+ * polling the PN532 and says nothing about it. START_SCAN used to be sent once,
+ * on the screen-change edge, so an operator who spent more than 30 s finding the
+ * patient's card tapped it against a reader that had stopped looking -- silently,
+ * with the Scanning screen still inviting them to try. That is one of the two
+ * halves of "kadang RFID ga detect"; the other is the gate deadlock in
+ * tb_ui_source.c.
+ *
+ * 25 s keeps the windows overlapping with 5 s of margin for a poll that is late
+ * or lost, and costs one register write per 25 s.
+ */
+#ifndef UI_SCAN_REARM_MS
+#define UI_SCAN_REARM_MS 25000U
 #endif
 
 void ui_mock_init(void);
@@ -42,6 +89,21 @@ void ui_mock_tick(uint32_t now_ms);
 /* RFID: start scan → after UI_MOCK_SCAN_MS, tag "3021" is ready once. */
 void ui_mock_start_scan(void);
 bool ui_mock_rfid_ready(rfid_t *out);
+
+/*
+ * The patient has left this node: forget the tag, the score and the predicted
+ * pressure. Called from ui_nav_go() on the way to Home, which is the one place
+ * that already means "session over" (it is where ui_session_reset() runs).
+ *
+ * Not cosmetic. The sensor board keeps its triage result standing on purpose, so
+ * a reading taken between scores carries the last verdict rather than dropping to
+ * "unscored" -- and the station publishes a vital for as long as a verdict stands.
+ * Without this call it stands forever, so the node keeps reporting the patient
+ * every 15 s after they are gone, with every measurement blank because nobody is
+ * on the sensors. Those empty readings are the newest ones the dashboard has, so
+ * they bury the real measurement.
+ */
+void ui_mock_end_session(void);
 
 /* Measure: start → progress 0..100 over UI_MEASURE_MS → done. */
 void ui_mock_start_measure(void);
@@ -86,9 +148,11 @@ bool ui_mock_pop_button(btn_event_t *out);
 void ui_mock_get_link_status(link_status_t *out);
 
 /*
- * Operator confirmed power-off. On device this tells the STM32 (so it can park
- * sensors and LoRa), then cuts the rail via the SW6106 PMIC -- it does not
- * return. The sim implementation just logs.
+ * Operator confirmed power-off. On device this cuts the rail via the SW6106
+ * PMIC first, and only tells the STM32 to park sensors and LoRa if that write
+ * failed -- a box that has been told to go quiet but is still powered reports
+ * nothing while looking alive, which is worse than either outcome alone. It
+ * does not return when the rail drops. The sim implementation just logs.
  */
 void ui_mock_power_off(void);
 

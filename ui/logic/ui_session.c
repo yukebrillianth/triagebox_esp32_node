@@ -19,7 +19,20 @@ typedef struct {
      */
     bool airway_problem;
     bool has_airway;
+    /*
+     * Respiratory rate, counted by the operator on its own screen. Same
+     * two-field shape and the same reason: tb_classify() refuses to score on
+     * respiratory_rate <= 0, so "not asked" must be distinguishable from a real
+     * band rather than silently reading as one.
+     */
+    ui_rr_band_t rr;
+    bool has_rr;
     vitals_t vitals;
+    /* The snapshot behind Result's tiles -- see ui_session.h. Zeroed by
+     * ui_session_reset(), which is what makes Result read "--" for a patient
+     * with no measurement behind them rather than a stray previous copy. */
+    vitals_t measured_vitals;
+    bool has_measured_vitals;
     ui_priority_t priority;
     bool has_priority;
     float confidence;
@@ -37,6 +50,10 @@ void ui_session_reset(void)
     memset(&session, 0, sizeof(session));
     session.age = UI_AGE_BAND_6_17;
     session.gender = UI_GENDER_U;
+    /* Band 0 is "< 12", so the memset default would be a bradypnoeic patient.
+     * has_rr is what gates it, but a wrong-looking value in a debugger is worth
+     * avoiding on its own. */
+    session.rr = UI_RR_BAND_12_20;
     session.priority = UI_PRIORITY_RED;
 }
 
@@ -67,6 +84,12 @@ void ui_session_set_airway(bool problem)
     session.has_airway = true;
 }
 
+void ui_session_set_rr(ui_rr_band_t rr)
+{
+    session.rr = rr;
+    session.has_rr = true;
+}
+
 void ui_session_set_vitals(const vitals_t *vitals)
 {
     if (vitals != NULL) {
@@ -74,6 +97,24 @@ void ui_session_set_vitals(const vitals_t *vitals)
     } else {
         memset(&session.vitals, 0, sizeof(session.vitals));
     }
+}
+
+void ui_session_set_measured_vitals(const vitals_t *vitals)
+{
+    if (vitals != NULL) {
+        session.measured_vitals = *vitals;
+        session.has_measured_vitals = true;
+    }
+}
+
+const vitals_t *ui_session_get_measured_vitals(void)
+{
+    /* Falls back to the live copy until a measurement has latched one: Mengukur
+     * reaches Result through ui_nav_on_measure_done() only, so this only matters
+     * for a Result opened by the re-triage jump before any latch -- and a live
+     * snapshot is a better answer there than an all-zero struct. */
+    return session.has_measured_vitals ? &session.measured_vitals
+                                       : &session.vitals;
 }
 
 void ui_session_set_priority(ui_priority_t priority, float confidence,
@@ -133,6 +174,16 @@ ui_gender_t ui_session_get_gender(void)
 bool ui_session_has_airway(void)
 {
     return session.has_airway;
+}
+
+bool ui_session_has_rr(void)
+{
+    return session.has_rr;
+}
+
+ui_rr_band_t ui_session_get_rr(void)
+{
+    return session.rr;
 }
 
 bool ui_session_get_airway(void)
