@@ -171,6 +171,18 @@ ui_status_state_t ui_status_rssi_state(int8_t dbm);
  * A plain localtime() NULL check does NOT do this: localtime() succeeds on an
  * unset clock and this would confidently display 07:00 on 1 Jan 1970.
  */
+/*
+ * Silence longer than this means the STM32 is gone, not just idle. It must sit
+ * above the slowest expected cadence or the dot flickers WARN forever: VITAL is
+ * nominally 15 s and STATUS 30 s (AGENTS.md), so 45 s is one missed STATUS.
+ *
+ * ONE definition, here, used by both the System dot (ui_status.c) and the Sensor
+ * dot (tb_ui_source.c). They used to be two copies in different translation units
+ * with nothing to catch a drift. The backend repeats the value as
+ * LINK_STALE_SEC (docs/timing.md).
+ */
+#define LINK_STALE_MS 45000U
+
 #define UI_CLOCK_VALID_EPOCH 1735689600L /* 2025-01-01 UTC; any earlier = unset */
 void ui_status_format_clock(char *buf, unsigned buf_sz);
 

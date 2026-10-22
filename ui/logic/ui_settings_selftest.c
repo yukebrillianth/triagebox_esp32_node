@@ -74,6 +74,16 @@ int main(void)
     ui_settings_init(&k_store);
     assert(ui_settings_retriage_ms() == 0U);
 
+    /* Every non-zero choice is at least one station poll cycle, and the default
+     * is one of the choices. */
+    for (unsigned i = 0; i < UI_RETRIAGE_CHOICES; i++) {
+        assert(ui_settings_retriage_choices[i] == 0U ||
+               ui_settings_retriage_choices[i] >= UI_RETRIAGE_MIN_MS);
+    }
+    assert(UI_RETRIAGE_DEFAULT_MS >= UI_RETRIAGE_MIN_MS);
+    assert(ui_settings_set_retriage_ms(UI_RETRIAGE_DEFAULT_MS));
+    assert(ui_settings_set_retriage_ms(0U));
+
     /* Only the Menu's intervals are accepted. */
     assert(!ui_settings_set_retriage_ms(1234U));
     assert(ui_settings_retriage_ms() == 0U);

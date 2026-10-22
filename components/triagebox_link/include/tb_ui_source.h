@@ -6,7 +6,7 @@
 /*
  * Device-side implementation of ui/logic/ui_mock.h: same header, but the data
  * comes from RS485 instead of a deterministic fake, and ui_mock_get_priority()
- * runs the SVM. The choice between the two is made in CMake (main/ links this
+ * runs the LightGBM model. The choice between the two is made in CMake (main/ links this
  * file, sim/ links ui_mock.c) — no #ifdef in ui/logic/.
  *
  * These four entry points are called from the tb_link RX task; everything in
@@ -53,7 +53,7 @@ void tb_ui_source_bp_arm(void);
  * 2026-09-04 -- and that number has no physical source.
  *
  * This is the STM32's own verdict (it clears TB_FLAG_HR_FROM_PPG only when its
- * DSP got a rate out of the ECG at 497.5 Hz), which beats any amplitude
+ * DSP got a rate out of the ECG at 500 Hz), which beats any amplitude
  * heuristic on the ESP32 side: mains hum on an open lead clears a span
  * threshold easily, and it is more regular than a heart.
  */

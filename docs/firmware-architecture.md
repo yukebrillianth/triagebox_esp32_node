@@ -155,7 +155,7 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
                                  int *esi);
 ```
 
-Jendela pengukuran **60 detik**, dan itu bukan angka yang dipilih karena terasa pas: RR dihitung dari mikrofon pernapasan, dan laju per **menit** butuh satu menit audio sebelum berarti. Memperpendeknya tidak membuat alat lebih cepat, hanya membuat RR jadi tebakan yang diekstrapolasi dari beberapa napas. Sebelumnya `UI_MEASURE_MS` default 2000 dengan komentar yang menyebut hardware 60000 — dan tidak ada satu pun tempat yang men-set 60000, jadi board benar-benar menjalankan jendela 2 detik. Sekarang defaultnya nilai yang sebenarnya, dan nilai cepatnya opt-in: `sim/CMakeLists.txt` dan `tools/run_selftests.sh` sama-sama mengirim `-DUI_MEASURE_MS=2000`.
+Jendela pengukuran **45 detik** (`UI_MEASURE_MS_DEFAULT` di `ui/logic/ui_mock.h`). Angka ini dasar estimasi tekanan darah dari gelombang EKG/PPG, bukan laju napas: RR berasal dari input petugas (mikrofon belum aktif). Dokumen sebelumnya menyebut 60 detik karena RR; itu keliru. Nilai 60000 tetap jadi cadangan satu konstanta bila perbandingan manset tidak cocok; lantai di `bp_capture.c` (`BP_MIN_SAMPLES`) mencegah di bawah sekitar 30 detik. Build desktop (`sim/CMakeLists.txt`, `tools/run_selftests.sh`) memakai `-DUI_MEASURE_MS=2000` supaya cepat.
 
 Modelnya makan **satu bacaan sesaat**, bukan agregat. Ini berubah dari pipeline sebelumnya yang minta mean/min/max sepanjang window — `tb_vitals_window_t` cuma ada untuk itu dan ikut hilang bersamanya. `infer_once()` sekarang mengirim snapshot terakhir apa adanya.
 

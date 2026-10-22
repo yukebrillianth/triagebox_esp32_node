@@ -28,6 +28,12 @@ typedef struct {
     ui_rr_band_t rr;
     bool has_rr;
     vitals_t vitals;
+    /* See ui_session_bp_time(). had_bp keeps the last pair so a flickering valid
+     * bit with the same numbers does not look like a fresh measurement. */
+    time_t bp_time;
+    bool had_bp;
+    uint16_t last_bp_sys;
+    uint16_t last_bp_dia;
     /* The snapshot behind Result's tiles -- see ui_session.h. Zeroed by
      * ui_session_reset(), which is what makes Result read "--" for a patient
      * with no measurement behind them rather than a stray previous copy. */
@@ -90,9 +96,29 @@ void ui_session_set_rr(ui_rr_band_t rr)
     session.has_rr = true;
 }
 
+static time_t (*s_clock)(void);
+
+void ui_session_set_clock(time_t (*fn)(void))
+{
+    s_clock = fn;
+}
+
+time_t ui_session_bp_time(void)
+{
+    return session.bp_time;
+}
+
 void ui_session_set_vitals(const vitals_t *vitals)
 {
     if (vitals != NULL) {
+        if ((vitals->valid_mask & UI_VITAL_BP) != 0U &&
+            (!session.had_bp || vitals->bp_sys != session.last_bp_sys ||
+             vitals->bp_dia != session.last_bp_dia)) {
+            session.had_bp = true;
+            session.last_bp_sys = vitals->bp_sys;
+            session.last_bp_dia = vitals->bp_dia;
+            session.bp_time = (s_clock != NULL) ? s_clock() : time(NULL);
+        }
         session.vitals = *vitals;
     } else {
         memset(&session.vitals, 0, sizeof(session.vitals));

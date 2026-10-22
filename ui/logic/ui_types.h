@@ -43,7 +43,7 @@ typedef struct {
      * bit shows the number, a clear one keeps the authored "--". */
     uint8_t valid_mask;
     /*
-     * All-or-nothing gate for the SVM, which needs a complete feature vector
+     * All-or-nothing gate for the triage model, which needs a complete feature vector
      * and must refuse rather than score on absent inputs. NOT the same question
      * as "should this tile show a number" -- use valid_mask for display.
      */

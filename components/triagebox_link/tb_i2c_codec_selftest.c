@@ -136,7 +136,7 @@ static void test_decode_valid_mask_is_per_field(void)
     raw[TB_REG_FLAGS] = TB_FLAG_SPO2_VALID | TB_FLAG_RR_VALID; /* no ECG */
     assert(tb_i2c_decode_vitals(raw, &v));
 
-    assert(!v.valid); /* SVM still refuses: HR is a feature it needs */
+    assert(!v.valid); /* the model still refuses: HR is a feature it needs */
     assert((v.valid_mask & UI_VITAL_SPO2) != 0U);
     assert((v.valid_mask & UI_VITAL_RR) != 0U);
     assert((v.valid_mask & UI_VITAL_HR) == 0U);

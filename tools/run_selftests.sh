@@ -85,6 +85,9 @@ run ui/logic/ui_mock_selftest.c \
 # ui_mock_end_session(), and the selftest stubs it as a counter so the ABORT that
 # ends a patient's session can be asserted on. The sim's own implementation has
 # nothing observable to assert against.
+run ui/logic/ui_session_selftest.c \
+    ui/logic/ui_session_selftest.c ui/logic/ui_session.c ui/logic/ui_types.c
+
 run ui/logic/ui_nav_selftest.c \
     ui/logic/ui_nav_selftest.c ui/logic/ui_nav.c ui/logic/ui_session.c \
     ui/logic/ui_action.c ui/logic/ui_types.c
