@@ -59,7 +59,7 @@ static bool s_measure_done;
 static uint32_t s_measure_start_ms;
 static uint8_t s_measure_progress;
 static bool s_bp_remeasure; /* the open window is a Monitor BP re-measurement */
-static uint32_t s_measure_ms = UI_MEASURE_MS; /* survives ui_mock_init() */
+static const uint32_t s_measure_ms = UI_MEASURE_MS;
 
 /* Vitals jitter PRNG (xorshift32) — deterministic, no libc rand. */
 static uint32_t s_rng = 0xA5A5u;
@@ -163,15 +163,6 @@ bool ui_mock_rfid_ready(rfid_t *out)
 uint32_t ui_mock_measure_ms(void)
 {
     return s_measure_ms;
-}
-
-bool ui_mock_set_measure_ms(uint32_t ms)
-{
-    if (ms == 0U || s_measure_active) {
-        return false;
-    }
-    s_measure_ms = ms;
-    return true;
 }
 
 void ui_mock_start_measure(void)

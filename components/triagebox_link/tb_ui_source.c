@@ -138,7 +138,7 @@ static uint32_t s_now_ms;
 static bool s_measure_active;
 static bool s_measure_done;
 static uint32_t s_measure_start_ms;
-static uint32_t s_measure_ms = UI_MEASURE_MS; /* Menu choice; set before a measure starts */
+static const uint32_t s_measure_ms = UI_MEASURE_MS;
 /* Same instant as s_measure_start_ms, on a clock the LVGL task cannot stall --
  * see the timing log in infer_once(). */
 static int64_t s_measure_start_us;
@@ -614,15 +614,6 @@ void ui_mock_end_session(void)
 uint32_t ui_mock_measure_ms(void)
 {
     return s_measure_ms;
-}
-
-bool ui_mock_set_measure_ms(uint32_t ms)
-{
-    if (ms == 0U || s_measure_active) {
-        return false;
-    }
-    s_measure_ms = ms;
-    return true;
 }
 
 void ui_mock_start_measure(void)

@@ -15,7 +15,7 @@
  */
 
 /*
- * Measure window: 60 s by default, 30 s as a Menu toggle (ui_settings).
+ * Measure window: 60 s, fixed. A 30 s Menu toggle existed and was removed; the sweep below is why.
  *
  * Only the BP model needs the length: RR is typed in on its own screen (ui_rr.c),
  * so the old "RR needs a minute of microphone" reason is gone. The model was
@@ -33,7 +33,7 @@
  *     29 s  109.9 / 66.1   +3.4 / -4.7 mmHg
  *     28 s  REFUSED (too few peaks)        <- the cliff on this recording
  *
- * ONE RECORDING, ONE SUBJECT. The 30 s option works on a CLEAN capture only: one
+ * ONE RECORDING, ONE SUBJECT. A 30 s window works on a CLEAN capture only: one
  * dropped wave sample restarts the whole accumulator (tb_link_i2c.c) and the
  * floor leaves ~0.6 s of slack (bp_min_samples() in bp_capture.c), against ~30 s
  * at 60 s. On a miss the triage imputes 129.7 mmHg for the BP.
@@ -103,12 +103,8 @@ void ui_mock_end_session(void);
 /* Measure: start → progress 0..100 over ui_mock_measure_ms() → done. */
 void ui_mock_start_measure(void);
 
-/* The window the NEXT (or running) measurement uses. Starts at UI_MEASURE_MS;
- * ui_runtime_init() overwrites it with the saved Menu choice. Setting it is
- * refused (false) while a measurement is running or for 0, so the window cannot
- * move under a patient mid-recording. Implemented in ui_mock.c and tb_ui_source.c. */
+/* The measurement window: UI_MEASURE_MS (60 s on hardware). */
 uint32_t ui_mock_measure_ms(void);
-bool ui_mock_set_measure_ms(uint32_t ms);
 uint8_t ui_mock_measure_progress(void);
 bool ui_mock_measure_done(void);
 

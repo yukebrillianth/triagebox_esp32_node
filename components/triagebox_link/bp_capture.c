@@ -29,7 +29,7 @@ static const char *TAG = "bp_capture";
 
 /* The model was trained on 60 s @ 100 Hz (sample_signals.h: 6000 samples), and
  * the accumulator is sized for that. The default measure window is 60 s again
- * (ui_mock.h), ~5938 samples at the real 98.97 Hz; the Menu's 30 s option fills
+ * (ui_mock.h), ~5938 samples at the real 98.97 Hz; a 30 s window would fill
  * about half. A longer record stops appending rather than wrapping. */
 #define BP_WINDOW_SAMPLES 6000U
 
@@ -68,7 +68,7 @@ static const char *TAG = "bp_capture";
  * moves, they say whether the pair still works instead of leaving BP quietly
  * unpublishable.
  *
- * The Menu's 30 s option cannot use 3000: it expects only 2969 samples, so a
+ * A 30 s window (no longer offered) cannot use 3000: it expects only 2969 samples, so a
  * floor of 3000 would refuse EVERY 30 s measurement. bp_min_samples() scales
  * the floor with the window. The same sweep scores 2909 samples and refuses
  * 2800, so the floor for a short window is 98% of what it expects, which leaves
@@ -109,8 +109,9 @@ static const char *TAG = "bp_capture";
  * (3) The accumulator must still hold the longest window bp_capture_record()
  *     may be asked for -- `bplog 60`, the training length -- at the true
  *     98.97 Hz.
- * (4) The Menu's 30 s option must be able to publish: its floor is reachable
- *     and not below the 2900 samples the sweep scored.
+ * (4) A shorter window (the host's accelerated one) must still be able to
+ *     publish: its floor is reachable and not below the 2900 samples the 30 s
+ *     sweep scored.
  */
 _Static_assert(BP_MIN_SAMPLES < BP_SAMPLES_IN_MS(UI_MEASURE_MS_DEFAULT),
                "BP floor no longer reachable inside the hardware window");
@@ -121,7 +122,7 @@ _Static_assert(BP_WINDOW_SAMPLES >= BP_SAMPLES_IN_MS(60000U),
                "accumulator no longer holds a 60 s bplog window");
 _Static_assert(BP_MIN_SAMPLES_FOR_MS(30000U) < BP_SAMPLES_IN_MS(30000U) &&
                    BP_MIN_SAMPLES_FOR_MS(30000U) >= 2900U,
-               "30 s Menu option: floor unreachable, or below what the model scored");
+               "short-window floor unreachable, or below what the model scored");
 _Static_assert(BP_MIN_SAMPLES_FOR_MS(60000U) == BP_MIN_SAMPLES,
                "the 60 s default must keep the 3000-sample floor");
 

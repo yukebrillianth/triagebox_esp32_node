@@ -144,15 +144,6 @@ uint32_t ui_runtime_retriage_ms(void)
     return s_retriage_ms;
 }
 
-bool ui_runtime_set_measure_ms(uint32_t ms)
-{
-    if (!ui_mock_set_measure_ms(ms)) {
-        return false;
-    }
-    (void)ui_settings_set_measure_ms(ms);
-    return true;
-}
-
 bool ui_runtime_take_degraded(void)
 {
     bool req = s_degraded;
@@ -165,7 +156,6 @@ void ui_runtime_init(void)
 {
     ui_mock_init();
     s_retriage_ms = ui_settings_retriage_ms(); /* the saved choice, else the default */
-    (void)ui_mock_set_measure_ms(ui_settings_measure_ms());
     ui_nav_go(UI_SCREEN_HOME);
     s_prev_screen = ui_nav_current();
     s_measure_started = false;

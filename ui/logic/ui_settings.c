@@ -2,19 +2,14 @@
 
 #include <stddef.h>
 
-#include "ui_mock.h"    /* UI_MEASURE_MS */
 #include "ui_runtime.h" /* UI_RETRIAGE_DEFAULT_MS */
 
 #define KEY_NODE_ID "node_id"
 #define KEY_RETRIAGE "retriage"
-#define KEY_MEASURE "measure"
 
 static const ui_settings_store_t *s_store;
 static uint8_t s_node_id; /* 0 = unset */
 static uint32_t s_retriage_ms = UI_RETRIAGE_DEFAULT_MS;
-/* UI_MEASURE_MS, not _DEFAULT: the same on the device, and the host/sim's -D
- * override on the desktop, so a test that ticks UI_MEASURE_MS still finishes. */
-static uint32_t s_measure_ms = UI_MEASURE_MS;
 
 static bool node_id_valid(uint32_t id)
 {
@@ -25,18 +20,6 @@ static bool node_id_valid(uint32_t id)
  * 15 / 30 / 60 s were removed: a re-triage needs a fresh BP, and BP needs a
  * recording of 30-60 s, so a sub-minute interval cannot be honoured. */
 const uint32_t ui_settings_retriage_choices[UI_RETRIAGE_CHOICES] = {60000U, 300000U, 900000U, 0U};
-
-const uint32_t ui_settings_measure_choices[UI_MEASURE_CHOICES] = {30000U, 60000U};
-
-static bool measure_valid(uint32_t ms)
-{
-    for (unsigned i = 0; i < UI_MEASURE_CHOICES; i++) {
-        if (ui_settings_measure_choices[i] == ms) {
-            return true;
-        }
-    }
-    return false;
-}
 
 static bool retriage_valid(uint32_t ms)
 {
@@ -55,7 +38,6 @@ void ui_settings_init(const ui_settings_store_t *store)
     s_store = store;
     s_node_id = 0U;
     s_retriage_ms = UI_RETRIAGE_DEFAULT_MS;
-    s_measure_ms = UI_MEASURE_MS;
     if (store == NULL) {
         return;
     }
@@ -64,9 +46,6 @@ void ui_settings_init(const ui_settings_store_t *store)
     }
     if (store->load(KEY_RETRIAGE, &v) && retriage_valid(v)) {
         s_retriage_ms = v;
-    }
-    if (store->load(KEY_MEASURE, &v) && measure_valid(v)) {
-        s_measure_ms = v;
     }
 }
 
@@ -96,18 +75,4 @@ bool ui_settings_set_retriage_ms(uint32_t ms)
     }
     s_retriage_ms = ms;
     return (s_store == NULL) || s_store->save(KEY_RETRIAGE, ms);
-}
-
-uint32_t ui_settings_measure_ms(void)
-{
-    return s_measure_ms;
-}
-
-bool ui_settings_set_measure_ms(uint32_t ms)
-{
-    if (!measure_valid(ms)) {
-        return false;
-    }
-    s_measure_ms = ms;
-    return (s_store == NULL) || s_store->save(KEY_MEASURE, ms);
 }
