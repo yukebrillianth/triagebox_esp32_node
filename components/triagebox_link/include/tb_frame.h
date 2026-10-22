@@ -89,4 +89,24 @@ bool tb_frame_feed(tb_frame_parser_t *p, uint8_t byte, tb_frame_t *out);
 uint8_t tb_frame_priority_to_wire(int ui_priority);
 int tb_frame_priority_from_wire(uint8_t wire);
 
+/*
+ * "This node has no verdict for this patient" -- the fifth wire value, which is
+ * NOT a ui_priority_t and deliberately has no colour.
+ *
+ * 0xFF because 0 is BLACK. When the model refuses to score (a vital is missing,
+ * so tb_classify() returns BLACK with esi 0), reporting that BLACK files a
+ * patient whose finger clip fell off as EXPECTANT -- the station's
+ * lora_vital_priority_name() would happily turn wire 0 into "BLACK" and publish
+ * it as a genuine triage. On 0xFF that function returns NULL, whose contract is
+ * "omit the key, never substitute a level", so the station withholds the whole
+ * vital while node status keeps publishing: the node stays ONLINE and only the
+ * verdict it does not have stops.
+ *
+ * Byte-identical to LORA_VITAL_PRIORITY_NONE in the station repo's
+ * main/lora_vital.h, which is a different repo with a different author -- this
+ * value is the whole contract between them, so tb_frame_selftest.c pins the
+ * literal rather than deriving it.
+ */
+#define TB_PRIORITY_WIRE_NONE 0xFFU
+
 #endif /* TB_FRAME_H */

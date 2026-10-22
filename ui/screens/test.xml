@@ -134,7 +134,7 @@
 				vertical_align="center"
 			>
 				<style name="style_test_row" />
-				<lv_label text="Poll STM32 gagal">
+				<lv_label text="Arus baterai">
 					<style name="style_test_label" />
 				</lv_label>
 				<lv_label name="test_polls_failed" text="--">

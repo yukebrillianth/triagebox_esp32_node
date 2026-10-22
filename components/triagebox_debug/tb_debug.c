@@ -9,8 +9,10 @@
  */
 #include "tb_debug.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h> /* `rtc`: time()/localtime() for the system-clock line */
 
 #include "bsp/esp32_s3_touch_lcd_4.h"
 #include "driver/i2c_master.h"
@@ -23,8 +25,10 @@
 #include "freertos/task.h"
 #include "soc/i2c_struct.h" /* `i2cstate`: a hang-free register peek */
 
+#include "bp_capture.h" /* `bplog`: arm the CSV dump */
 #include "tb_i2c_codec.h"
 #include "tb_link_i2c.h"
+#include "tb_rtc.h" /* `rtc`: read/set the only clock this firmware has */
 #include "tb_triage.h"
 #include "tb_ui_source.h"
 #include "ui_demo.h"
@@ -32,6 +36,16 @@
 #include "ui_status.h"
 
 static const char *TAG = "tb_debug";
+
+/*
+ * Every inject command calls tb_ui_source_mark_frame(), which is right -- an
+ * injected frame IS a frame as far as the UI is concerned -- but it also greens
+ * the System dot for the full LINK_STALE_MS (45 s) with no STM32 on the bus. The
+ * dots are the first thing anyone reads to decide whether the link is alive, so
+ * say it out loud each time rather than leaving a demo to be misread as hardware.
+ */
+#define INJECT_NOTE \
+    "  the System dot now reads OK for 45 s; that is this command, not the STM32\n"
 
 static int cmd_rfid(int argc, char **argv)
 {
@@ -42,7 +56,7 @@ static int cmd_rfid(int argc, char **argv)
     r.present = true;
     tb_ui_source_mark_frame();
     tb_ui_source_on_rfid(&r);
-    printf("injected RFID '%s'\n", r.tag);
+    printf("injected RFID '%s'\n" INJECT_NOTE, r.tag);
     return 0;
 }
 
@@ -64,20 +78,50 @@ static int cmd_vital(int argc, char **argv)
 
     tb_ui_source_mark_frame();
     tb_ui_source_on_vital(&v);
-    printf("injected VITAL hr=%u spo2=%u rr=%u bp=%u/%u\n",
+    printf("injected VITAL hr=%u spo2=%u rr=%u bp=%u/%u\n" INJECT_NOTE,
            v.hr, v.spo2, v.rr, v.bp_sys, v.bp_dia);
     return 0;
 }
 
+/*
+ * `status` must take an explicit mask. With no argument it used to inject
+ * UI_SENSOR_ALL unconditionally -- the dot went green for good with no expiry
+ * and nothing behind it, and because the injection paths below also call
+ * mark_frame(), the System dot followed it. A demo convenience that cannot be
+ * turned off is a lie with a timer on it. `status all` is two more characters
+ * and honest; the dot then greens for exactly 45 s, which is what a demo of the
+ * staleness logic wants to show anyway.
+ */
 static int cmd_status(int argc, char **argv)
 {
-    /* No args = everything healthy, which is what a demo wants. */
-    uint8_t mask = (argc > 1) ? (uint8_t)strtoul(argv[1], NULL, 0) : UI_SENSOR_ALL;
-    int lora = (argc > 2) ? atoi(argv[2]) : 1;
+    uint8_t mask;
+    int lora = (argc > 2) ? ((strcmp(argv[2], "ok") == 0) ? 1 :
+                             (strcmp(argv[2], "down") == 0) ? 0 : atoi(argv[2])) : 1;
+
+    if (argc < 2) {
+        printf("usage: status <sensor_mask|all|none> [lora 0|1|ok|down]\n");
+        printf("  all = ECG+MAX30102+RFID+MIC (UI_SENSOR_ALL, the LoRa bit's own "
+               "dot); 'none' greens nothing\n");
+        return 1;
+    }
+    if (strcmp(argv[1], "all") == 0) {
+        mask = UI_SENSOR_ALL;
+    } else if (strcmp(argv[1], "none") == 0) {
+        mask = 0;
+    } else {
+        char *end;
+
+        long m = strtol(argv[1], &end, 0);
+        if (*argv[1] == '\0' || *end != '\0' || m < 0 || m > 0xff) {
+            printf("sensor_mask must be 'all', 'none' or 0..0xff\n");
+            return 1;
+        }
+        mask = (uint8_t)m;
+    }
 
     tb_ui_source_mark_frame();
     tb_ui_source_on_status(mask, 80, lora);
-    printf("injected STATUS sensors=0x%02x lora=%d\n", mask, lora);
+    printf("injected STATUS sensors=0x%02x lora=%d\n" INJECT_NOTE, mask, lora);
     return 0;
 }
 
@@ -104,12 +148,17 @@ static int cmd_demo(int argc, char **argv)
 
 static int cmd_btn(int argc, char **argv)
 {
-    uint8_t idx = (argc > 1) ? (uint8_t)atoi(argv[1]) : 0;
+    /* Parsed as a long and range-checked BEFORE any narrowing: (uint8_t)atoi()
+     * truncated "btn 256" to 0, so the check never fired and the console pressed
+     * Scan instead of refusing. */
+    long v = (argc > 1) ? strtol(argv[1], NULL, 0) : 0;
+    uint8_t idx;
 
-    if (idx > 3U) {
+    if (v < 0 || v > 3) {
         printf("button index must be 0..3\n");
         return 1;
     }
+    idx = (uint8_t)v;
     /* Press and release: the keypad indev needs both edges. */
     tb_ui_source_on_button(idx, true);
     vTaskDelay(pdMS_TO_TICKS(120));
@@ -146,14 +195,29 @@ static const char *i2c_known(uint8_t addr)
 static int cmd_i2c(int argc, char **argv)
 {
     i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
-    /* 50 ms: a device that clock-stretches (the STM32 will) needs more than the
-     * 10 ms every example uses, and a scan is not latency-sensitive. */
-    const int timeout_ms = (argc > 1) ? atoi(argv[1]) : 50;
+    /*
+     * 50 ms: a device that clock-stretches (the STM32 will) needs more than the
+     * 10 ms every example uses, and a scan is not latency-sensitive.
+     *
+     * Validated before it reaches i2c_master_probe(): a negative timeout arrives
+     * at the driver as portMAX_DELAY, and with the task WDT off
+     * (CONFIG_ESP_TASK_WDT_INIT=n) `i2c -1` was a permanent, silent hang of the
+     * console task on the first address that did not answer. 10 s is the upper
+     * bound because 112 addresses times any more is a sweep nobody waits out.
+     */
+    long t = (argc > 1) ? strtol(argv[1], NULL, 0) : 50;
+    const int timeout_ms = (int)t;
     /* Probe once and remember, rather than sweeping twice for the grid and the
      * list -- at 50 ms a miss, a second pass costs seconds. */
     bool present[0x78] = {false};
     int found = 0;
 
+    if (t < 1 || t > 10000) {
+        printf("timeout_ms must be 1..10000 -- a negative value reaches the "
+               "driver as 'wait forever', and with the task WDT off that is a "
+               "permanent hang, not an error\n");
+        return 1;
+    }
     if (bus == NULL) {
         printf("I2C bus not up -- bsp_i2c_init() has not run\n");
         return 1;
@@ -172,7 +236,16 @@ static int cmd_i2c(int argc, char **argv)
                 printf("   ");
                 continue;
             }
+            /* One take per address, not one per scan: the GT911 is polled on this
+             * bus by the LVGL task and the STM32 at 20 Hz, and 112 probes behind
+             * a single lock would stall both for seconds. */
+            if (!bsp_i2c_lock(100)) {
+                printf("\n  bus busy for 100 ms -- something is holding it. Try "
+                       "`i2cstate`.\n");
+                return 1;
+            }
             present[addr] = (i2c_master_probe(bus, addr, timeout_ms) == ESP_OK);
+            bsp_i2c_unlock();
             if (present[addr]) {
                 printf("%02x ", addr);
                 found++;
@@ -261,6 +334,32 @@ static int cmd_i2cstate(int argc, char **argv)
 }
 
 /*
+ * One locked register read, for the commands whose whole transaction is
+ * "write the pointer, read the bytes".
+ *
+ * Locked because this bus is shared with the GT911 the LVGL task polls, the
+ * SW6106 the status bar reads and the STM32 polled at 20 Hz -- and unlocked
+ * debug reads are not a tidiness point: `i2cdump 0x3c` is 256 transactions
+ * landing in the middle of other people's sequences.
+ *
+ * One take per transaction rather than per command, and 100 ms rather than a
+ * block: a wedged bus must make a command SAY so, not join the queue of tasks
+ * waiting on it. That is what `i2cstate` is for.
+ */
+static esp_err_t locked_reg_read(i2c_master_dev_handle_t dev, uint8_t reg,
+                                 uint8_t *buf, size_t count)
+{
+    esp_err_t err;
+
+    if (!bsp_i2c_lock(100)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    err = i2c_master_transmit_receive(dev, &reg, 1, buf, count, 100);
+    bsp_i2c_unlock();
+    return err;
+}
+
+/*
  * Read registers from one device, to identify whatever `i2c` turned up.
  *
  * Read-only on purpose: there is no `i2cwrite`. A stray write to the SW6106 at
@@ -331,6 +430,14 @@ static int cmd_i2creg(int argc, char **argv)
         printf("could not add device 0x%02x\n", (unsigned)cfg.device_address);
         return 1;
     }
+    /* Both transaction shapes behind ONE take: the pointer write and its read
+     * are a pair, and a transaction from another task in between re-points the
+     * register. Same pattern as `i2clink`. */
+    if (!bsp_i2c_lock(100)) {
+        printf("I2C bus busy (lock timeout) -- try `i2cstate`\n");
+        (void)i2c_master_bus_rm_device(dev);
+        return 1;
+    }
     if (split) {
         err = i2c_master_transmit(dev, &reg, 1, 100);
         if (err == ESP_OK) {
@@ -339,6 +446,7 @@ static int cmd_i2creg(int argc, char **argv)
     } else {
         err = i2c_master_transmit_receive(dev, &reg, 1, buf, (size_t)count, 100);
     }
+    bsp_i2c_unlock();
     if (err == ESP_OK) {
         printf("0x%02x reg 0x%02x%s:", (unsigned)cfg.device_address, reg,
                split ? " (split)" : "");
@@ -398,7 +506,13 @@ static int cmd_i2craw(int argc, char **argv)
         printf("could not add device 0x%02x\n", (unsigned)cfg.device_address);
         return 1;
     }
+    if (!bsp_i2c_lock(100)) {
+        printf("I2C bus busy (lock timeout) -- try `i2cstate`\n");
+        (void)i2c_master_bus_rm_device(dev);
+        return 1;
+    }
     err = i2c_master_receive(dev, buf, (size_t)count, 100);
+    bsp_i2c_unlock();
     if (err == ESP_OK) {
         printf("0x%02x raw:", (unsigned)cfg.device_address);
         for (int i = 0; i < count; i++) {
@@ -477,7 +591,11 @@ static int cmd_i2cdump(int argc, char **argv)
                 printf("   ");
                 continue;
             }
-            if (i2c_master_transmit_receive(dev, &reg, 1, &val, 1, 100) != ESP_OK) {
+            /* One take per register, not one per dump: 256 transactions behind a
+             * single lock would stall the LVGL touch poll and the STM32 link for
+             * the whole sweep. A held bus prints as a NAK column and the sweep
+             * carries on -- `i2cstate` is the command that explains it. */
+            if (locked_reg_read(dev, reg, &val, 1) != ESP_OK) {
                 printf("-- ");
             } else if (val == 0U) {
                 printf(".. ");
@@ -553,10 +671,17 @@ static int cmd_stats(int argc, char **argv)
     } else {
         printf("taskLVGL : not found\n");
     }
-    TaskHandle_t rx = xTaskGetHandle("tb_rx");
+    /* The link poll task: "tb_i2c" (tb_link_i2c.c), not the "tb_rx" its RS485
+     * ancestor had. Looking for the old name meant this line silently never
+     * printed -- and this is one of the two tasks whose stack has actually
+     * overflowed during bring-up, so it is the line `stats` exists for.
+     * 3072 is that file's TB_TASK_STACK, which it does not export. */
+    TaskHandle_t rx = xTaskGetHandle("tb_i2c");
     if (rx != NULL) {
-        printf("tb_rx    : %u of 4096\n",
+        printf("tb_i2c   : %u of 3072\n",
                (unsigned)(uxTaskGetStackHighWaterMark(rx) * sizeof(StackType_t)));
+    } else {
+        printf("tb_i2c   : not found (link not started?)\n");
     }
     /* Us. Printed because this is the task that ran the model above, and it is
      * the one that overflowed at the 4096 default -- see tb_debug_start(). */
@@ -739,6 +864,66 @@ static int cmd_i2clink(int argc, char **argv)
 }
 
 /*
+ * The STM32F411's 96-bit factory UID, as hex. This is the whole point of
+ * TB_REG_UID: the station maps UID -> node_id so one STM32 binary serves every
+ * board, and adding a board to that table must be possible from this serial
+ * monitor, not from a debugger on an SWD probe. Read the twelve bytes, paste
+ * them into the table.
+ *
+ * Like `i2clink` but through tb_link_read_uid(): the poll task's own device
+ * handle, under the shared bus lock, so it only works once the link is up --
+ * which is exactly when there is an STM32 to read.
+ *
+ * Twelve 0xFF is NOT a UID: the F411's UID block never reads all-ones, so that
+ * pattern is the 0xFF pad an STM32 built before the register existed answers
+ * with. Said outright rather than printed, so a stale board is not mistaken for
+ * a board whose UID was captured.
+ */
+static int cmd_uid(int argc, char **argv)
+{
+    uint8_t uid[TB_REG_UID_LEN];
+    esp_err_t err;
+    bool all_ff = true;
+
+    (void)argc;
+    (void)argv;
+
+    err = tb_link_read_uid(uid);
+    if (err == ESP_ERR_INVALID_STATE) {
+        printf("link not started -- tb_link_start() has not run\n");
+        return 1;
+    }
+    if (err == ESP_ERR_TIMEOUT) {
+        printf("I2C bus busy (lock timeout) -- try `i2cstate`\n");
+        return 1;
+    }
+    if (err != ESP_OK) {
+        printf("read failed: %s -- check the STM32 link with `i2clink`\n",
+               esp_err_to_name(err));
+        return 1;
+    }
+
+    for (int i = 0; i < (int)TB_REG_UID_LEN; i++) {
+        if (uid[i] != 0xFFU) {
+            all_ff = false;
+            break;
+        }
+    }
+    if (all_ff) {
+        printf("twelve 0xFF -- this STM32 predates TB_REG_UID; reflash it and "
+               "retry\n");
+        return 1;
+    }
+
+    printf("uid:");
+    for (int i = 0; i < (int)TB_REG_UID_LEN; i++) {
+        printf(" %02x", uid[i]);
+    }
+    printf("   (paste these into the station's UID -> node_id table)\n");
+    return 0;
+}
+
+/*
  * SW6106 power telemetry: how much current the board is actually drawing.
  *
  * The registers come from "SW6106 I2C Register List RG006_1_v1.2" §2.15-2.22,
@@ -778,30 +963,17 @@ static int cmd_i2clink(int argc, char **argv)
 
 static esp_err_t pmic_reg(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t *val)
 {
-    esp_err_t err;
-
-    /* The shared bus lock now removes the contention this used to retry around;
-     * the retry stays for the transactions it cannot help with (a NACK from the
-     * part itself). A retry is right HERE and would be wrong in
-     * ui_board_battery(): this is an idempotent debug read that the operator is
-     * waiting on, not a 10s periodic poll that can skip a turn.
-     *
-     * Per register rather than per sample, because between registers the poll
-     * task must get its turn -- ten registers behind one lock at 100 kHz would
-     * stall the STM32 link for longer than its own poll period. */
-    if (!bsp_i2c_lock(100)) {
-        return ESP_ERR_TIMEOUT;
-    }
-    err = i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
-    bsp_i2c_unlock();
+    /* One retry, which is right HERE and would be wrong in ui_board_battery():
+     * this is an idempotent debug read the operator is waiting on, not a 10 s
+     * periodic poll that can skip a turn. The lock (inside locked_reg_read) is
+     * per register rather than per sample, because between registers the STM32
+     * poll task must get its turn -- ten registers behind one take at 100 kHz
+     * would stall the link for longer than its own poll period. */
+    esp_err_t err = locked_reg_read(dev, reg, val, 1);
 
     if (err != ESP_OK) {
         vTaskDelay(pdMS_TO_TICKS(5));
-        if (!bsp_i2c_lock(100)) {
-            return ESP_ERR_TIMEOUT;
-        }
-        err = i2c_master_transmit_receive(dev, &reg, 1, val, 1, 100);
-        bsp_i2c_unlock();
+        err = locked_reg_read(dev, reg, val, 1);
     }
     return err;
 }
@@ -896,43 +1068,148 @@ static int cmd_pmic(int argc, char **argv)
     return 0;
 }
 
+/*
+ * Arm the CSV dump in bp_capture.c. It fires once, at the end of the NEXT
+ * completed measurement, after the verdict has been published -- so the
+ * sequence is: `bplog`, then run a normal measurement, then let the ~6000 lines
+ * finish printing before touching the box again.
+ *
+ * The point is the raw columns. Any candidate filter (the Butterworth cascade
+ * from the other team, or whatever the training pipeline actually used) can be
+ * re-run over them offline and the features and the SBP/DBP recomputed under
+ * each -- which is the only way to answer "does the filter explain the bias"
+ * rather than argue about topologies.
+ */
+static int cmd_bplog(int argc, char **argv)
+{
+    if (argc > 1) {
+        const long secs = strtol(argv[1], NULL, 10);
+
+        bp_capture_record((uint32_t)((secs > 0) ? secs : 0));
+        printf("recording now -- no measurement needed, no BP published.\n");
+        printf("  Attach the sensors and hold still; the CSV prints when the\n");
+        printf("  window fills (~%lds), then ~%lds of rows at 115200.\n",
+               (secs > 0) ? secs : 60L, ((secs > 0) ? secs : 60L) / 2L);
+    } else {
+        bp_capture_arm_dump();
+        printf("armed: the next completed 60 s MEASUREMENT dumps its window.\n");
+        printf("  For a bare recording with no patient: bplog <seconds>\n");
+    }
+    printf("  ~100 rows/s. Capture the serial log, then keep the CSV rows\n");
+    printf("  (log lines interleave, so anchor on column count):\n");
+    printf("    grep -E '^[0-9]+,[0-9]+,[0-9]+,-?[0-9]+,-?[0-9]' run.log > w.csv\n");
+    printf("  columns: i,raw_ir,raw_red,raw_ecg,fil_ir,fil_red,fil_ecg\n");
+    printf("  raw_ir/raw_red are MAX30102 counts, raw_ecg is the SIGNED ECG\n");
+    printf("  word, fil_* are what this firmware's biquads fed the model.\n");
+    return 0;
+}
+
+/*
+ * The clock. This is the ONLY way to set it: no WiFi, no SNTP, and the RTC's
+ * counters come up meaningless after the backup cell has been out. Until
+ * something writes them, tb_rtc_read() refuses (Seconds[7], the oscillator-stop
+ * flag) and the status bar honestly shows "--:--".
+ *
+ * `rtc read` prints three things that are easy to confuse and answer different
+ * questions: what the chip holds, what the system clock holds, and what the
+ * status bar will therefore render. A working chip with an unset system clock
+ * means tb_rtc_init() ran before the cell was fitted -- reboot, do not re-set.
+ */
+static int cmd_rtc(int argc, char **argv)
+{
+    struct tm t;
+    char buf[6];
+
+    if (argc > 1 && strcmp(argv[1], "set") == 0) {
+        struct tm set = {0};
+        int y = 0, mo = 0, d = 0, h = 0, mi = 0;
+
+        /* Date optional: at a demo nobody wants to type it, and the date only
+         * has to be past UI_CLOCK_VALID_EPOCH for the bar to start rendering.
+         * Whatever the chip already holds supplies the missing half. */
+        if (argc == 4 && sscanf(argv[2], "%d-%d-%d", &y, &mo, &d) == 3 &&
+            sscanf(argv[3], "%d:%d", &h, &mi) == 2) {
+            set.tm_year = y - 1900;
+            set.tm_mon = mo - 1;
+            set.tm_mday = d;
+        } else if (argc == 3 && sscanf(argv[2], "%d:%d", &h, &mi) == 2) {
+            if (!tb_rtc_read(&set)) {
+                printf("no date in the RTC yet -- give one: "
+                       "rtc set YYYY-MM-DD HH:MM\n");
+                return 1;
+            }
+        } else {
+            printf("usage: rtc set [YYYY-MM-DD] HH:MM   (local WIB, 24-hour)\n");
+            return 1;
+        }
+        set.tm_hour = h;
+        set.tm_min = mi;
+        set.tm_sec = 0;
+        if (!tb_rtc_write(&set)) {
+            printf("write refused or failed -- see the log line above\n");
+            return 1;
+        }
+        /* Read it back through the same path the boot uses, so a success here
+         * means the status bar really will show it. */
+        tb_rtc_init();
+        printf("written. ");
+    } else if (argc > 1 && strcmp(argv[1], "read") != 0) {
+        printf("usage: rtc read | rtc set [YYYY-MM-DD] HH:MM\n");
+        return 1;
+    }
+
+    if (tb_rtc_read(&t)) {
+        printf("chip 0x51 : %04d-%02d-%02d %02d:%02d:%02d WIB\n",
+               t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
+               t.tm_sec);
+    } else {
+        printf("chip 0x51 : no time (never set, flat backup cell, or absent --\n"
+               "            `i2c` should list 0x51; then `rtc set HH:MM`)\n");
+    }
+
+    time_t now = time(NULL);
+    struct tm *sys = localtime(&now);
+
+    if (sys != NULL) {
+        printf("system    : %04d-%02d-%02d %02d:%02d:%02d (epoch %lld)\n",
+               sys->tm_year + 1900, sys->tm_mon + 1, sys->tm_mday, sys->tm_hour,
+               sys->tm_min, sys->tm_sec, (long long)now);
+    }
+    ui_status_format_clock(buf, sizeof(buf));
+    printf("status bar: %s%s\n", buf,
+           (strcmp(buf, "--:--") == 0)
+               ? "   (system clock is before 2025, so the bar stays blank)"
+               : "");
+    return 0;
+}
+
 void tb_debug_console_start(void)
 {
     esp_console_repl_t *repl = NULL;
     esp_console_repl_config_t repl_cfg = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    /*
-     * 16384, not the default 4096. `stats` panicked on 4096 every time:
-     * Guru Meditation LoadProhibited with 0xA5A5A5A5 in the argument
-     * registers and a CORRUPTED backtrace -- 0xA5A5A5A5 being the FreeRTOS
-     * stack-fill pattern read back as data, i.e. a stack overflow rather
-     * than a wild pointer. `stats` runs the GBM triage model in the console
-     * task, and the measured high-water mark is 13,344 bytes -- so 8192
-     * would still have crashed. `stats` prints the mark so the number stays
-     * observable rather than remembered.
-     */
-    repl_cfg.task_stack_size = 16384;
     esp_console_dev_usb_serial_jtag_config_t dev_cfg =
         ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
 
     repl_cfg.prompt = "triagebox>";
     repl_cfg.max_cmdline_length = 128;
     /*
-     * The default is 4096, and `stats` panicked on it: LoadProhibited with
-     * 0xA5A5A5A5 in the argument registers and a CORRUPTED backtrace, which is
-     * FreeRTOS's stack fill pattern read back as data. Commands here run the GBM
-     * triage model in the console task, and score_lgbm_multiclass() plus the
-     * TriageInput/TriageOutput pair does not fit in 4 KB.
+     * The default is 4096, and `stats` panicked on it every time: LoadProhibited
+     * with 0xA5A5A5A5 in the argument registers and a CORRUPTED backtrace, which
+     * is FreeRTOS's stack fill pattern read back as data -- a stack overflow, not
+     * a wild pointer. Commands here run the GBM triage model in the console task,
+     * and the measured high-water mark is 13,344 bytes, so 8192 would still have
+     * crashed.
      *
-     * 16 KB rather than a measured minimum because this task only exists in debug
-     * builds, so the RAM is free anyway -- and `stats` now prints its own high
-     * water mark, so the real requirement is on screen instead of in a guess.
+     * 16 KB rather than a measured minimum because this task exists only in debug
+     * builds, so the RAM is free anyway -- and `stats` prints its own high-water
+     * mark, so the real requirement stays on screen instead of in a memory.
      */
     repl_cfg.task_stack_size = 16384;
 
     static const esp_console_cmd_t cmds[] = {
         {.command = "rfid",   .help = "Inject RFID frame [tag]",                 .func = cmd_rfid},
         {.command = "vital",  .help = "Inject VITAL [hr spo2 rr sys dia]",       .func = cmd_vital},
-        {.command = "status", .help = "Inject STATUS [sensor_mask] [lora_ok]",   .func = cmd_status},
+        {.command = "status", .help = "Inject STATUS <mask|all|none> [lora]",     .func = cmd_status},
         {.command = "btn",    .help = "Press button 0..3",                       .func = cmd_btn},
         {.command = "demo",   .help = "Demo mode for filming: demo [0|1] (toggles if omitted)", .func = cmd_demo},
         {.command = "i2c",    .help = "Scan shared I2C bus [timeout_ms]",        .func = cmd_i2c},
@@ -941,8 +1218,11 @@ void tb_debug_console_start(void)
         {.command = "i2cdump", .help = "Dump reg space: i2cdump <addr> [start] [end]", .func = cmd_i2cdump},
         {.command = "i2clink", .help = "Read + decode the STM32 snapshot at 0x42", .func = cmd_i2clink},
         {.command = "i2cstate", .help = "I2C peripheral registers (works while wedged)", .func = cmd_i2cstate},
+        {.command = "uid",    .help = "STM32 factory UID as hex (for the station's node_id table)", .func = cmd_uid},
         {.command = "pmic",   .help = "Power telemetry: pmic [samples] [period_ms]", .func = cmd_pmic},
         {.command = "stats",  .help = "CPU/heap/stack report",                   .func = cmd_stats},
+        {.command = "rtc",    .help = "Clock: rtc read | rtc set [YYYY-MM-DD] HH:MM", .func = cmd_rtc},
+        {.command = "bplog",  .help = "Arm a CSV dump of the next BP window (raw+filtered)", .func = cmd_bplog},
     };
 
     if (esp_console_new_repl_usb_serial_jtag(&dev_cfg, &repl_cfg, &repl) != ESP_OK) {

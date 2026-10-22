@@ -153,6 +153,7 @@ if(NOT UI_LIB)
     ${UI_LOGIC_DIR}/ui_status.c
     ${UI_LOGIC_DIR}/ui_mock.c
     ${UI_LOGIC_DIR}/ui_board_stub.c
+    ${UI_LOGIC_DIR}/ui_rr.c
   )
 endif()
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${UI_LOGIC_SOURCES})

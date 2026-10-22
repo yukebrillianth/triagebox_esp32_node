@@ -27,6 +27,8 @@ idf_component_register(
         esp_driver_i2c
         # bsp_i2c_get_handle(): the STM32 shares the display's I2C bus.
         esp32_s3_touch_lcd_4
+        # esp_timer_get_time(): the measure-to-verdict timing log.
+        esp_timer
         triagebox_ml
         # ui_mock_power_off() cuts the rail via ui_board_power_off().
         triagebox_board

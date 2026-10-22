@@ -132,7 +132,7 @@ Keduanya di `ui/logic/ui_bindings.c`, dan keduanya menimpa literal yang di-hardc
 
 - Persen baterai dari SW6106 lewat `ui_board_battery()` — read-only, reg `0x4F[6:0]` + `0x11[4]` untuk charging. Read gagal → `UNKNOWN` (`--%`), bukan nilai bagus terakhir: 80% yang beku sementara pack habis lebih berbahaya daripada mengaku tidak tahu.
 - Status LoRa dari bit `sensor_ok` STM32. Glyph sinyal di sebelahnya **tanpa nama** di `status_bar_gen.c`, jadi state ditunjukkan lewat **warna teks** — tidak perlu regenerate XML.
-- Jam tetap `--:--` sampai PCF85063A (`0x51`) dibaca; belum ada RTC battery, jadi jalur `settime` menyusul.
+- Jam dibaca dari PCF85063A (`0x51`) oleh `tb_rtc_init()` di `app_main`, lalu masuk ke `settimeofday()` dengan `TZ=WIB-7`. RTC adalah satu-satunya sumber jam — tidak ada WiFi/SNTP di firmware ini — jadi kalau chip tak terbaca atau flag oscillator-stop menyala (baterai backup habis, waktu belum pernah ditulis), jam sengaja dibiarkan tak valid dan status bar tetap `--:--` ketimbang mengarang waktu. Set sekali per board dari konsol: `rtc set YYYY-MM-DD HH:MM`, verifikasi `rtc read`.
 
 ### Gate RFID
 

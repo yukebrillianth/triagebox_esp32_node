@@ -14,6 +14,10 @@ typedef enum {
      * has to be updated in step, which is deliberate: a silently shifted table
      * would give one screen another screen's buttons. */
     UI_SCREEN_AIRWAY,
+    /* Fourth manual input, after Airway. Same positional-table warning as above
+     * applies -- and it applied when this was added: inserting here shifted
+     * MENGUKUR, RESULT, MONITOR and TEST by one. */
+    UI_SCREEN_RR,
     UI_SCREEN_MENGUKUR,
     UI_SCREEN_RESULT,
     UI_SCREEN_MONITOR,
@@ -45,11 +49,15 @@ ui_gender_t ui_nav_pending_gender(void);
 /* Airway is a yes/no list, so "pending" is just which row is highlighted. */
 void ui_nav_set_pending_airway(bool problem);
 bool ui_nav_pending_airway(void);
+/* RR is a four-row band list, so it clamps at both ends like age. */
+void ui_nav_set_pending_rr(ui_rr_band_t rr);
+ui_rr_band_t ui_nav_pending_rr(void);
 
 /* Move list focus by dir (-1 up, +1 down), clamped to the band/gender range. */
 void ui_nav_move_pending_age(int dir);
 void ui_nav_move_pending_gender(int dir);
 void ui_nav_move_pending_airway(int dir);
+void ui_nav_move_pending_rr(int dir);
 
 /* Non-button transitions delivered by the mock/hardware integration layer. */
 void ui_nav_on_rfid_ready(const rfid_t *rfid);

@@ -19,6 +19,12 @@ static void test_sensors(void)
 	 * the regression that once made an ECG dropout read as an RFID fault. */
 	assert(ui_status_sensors(UI_SENSOR_LORA) == UI_STATUS_ERROR);
 	assert(ui_status_sensors((uint8_t)(UI_SENSOR_ALL | UI_SENSOR_LORA)) == UI_STATUS_OK);
+	/* Same for the mic, and this one is why the dot could never be green: MIC
+	 * was in ALL while the STM32 only sets it under MON_RESP_MIC_FITTED, which
+	 * is 0 -- so a fully healthy box reported a sensor fault forever. */
+	assert((UI_SENSOR_ALL & UI_SENSOR_MIC) == 0U);
+	assert(ui_status_sensors(UI_SENSOR_MIC) == UI_STATUS_ERROR);
+	assert(ui_status_sensors((uint8_t)(UI_SENSOR_ALL | UI_SENSOR_MIC)) == UI_STATUS_OK);
 }
 
 static void test_system(void)

@@ -32,6 +32,9 @@ bool tb_i2c_decode_vitals(const uint8_t *raw, vitals_t *out)
     out->bp_sys = rd16(raw, TB_REG_BP_SYS);
     out->bp_dia = rd16(raw, TB_REG_BP_DIA);
     out->battery = raw[TB_REG_BATTERY];
+    /* Which sensor `hr` came from. Not folded into valid_mask: it says nothing
+     * about whether the number is fresh, only where it was counted. */
+    out->hr_from_ppg = ((flags & TB_FLAG_HR_FROM_PPG) != 0U);
 
     /*
      * Per-field freshness passes straight through: the wire already has one bit

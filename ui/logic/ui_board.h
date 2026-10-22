@@ -57,6 +57,27 @@ bool ui_board_battery(uint8_t *percent, bool *charging);
 bool ui_board_battery_mv(uint16_t *millivolts);
 
 /*
+ * Battery-side discharge current in milliamps, or false when the PMIC could not
+ * be read (*milliamps then untouched, same contract as above).
+ *
+ * BATTERY SIDE, not the 5 V rail: this is what the pack is delivering to
+ * everything the board powers -- ESP32, panel, backlight, STM32 and the sensors
+ * hanging off it -- so it is the number that predicts runtime from a mAh rating.
+ * It is NOT the same as Vbat * this / 5 V; the boost converter's losses are not
+ * in it.
+ *
+ * ZERO WHILE CHARGING, and that is the part to know before putting it on a
+ * screen. Ichg (0x18[3:0]/0x1A) and Idischg are mutually exclusive registers on
+ * the SW6106: with USB plugged in the pack is being charged, so the discharge
+ * counter reads 0 and the display will honestly say 0 mA. Unplug to measure
+ * draw. ui_board_battery()'s `charging` flag is how a caller can say which.
+ *
+ * Idischg = (((0x18[7:4] << 8) | 0x19) * 25 / 7) mA, from the SW6106 I2C Register
+ * List RG006_1_v1.2 -- the same decode the `pmic` console command prints.
+ */
+bool ui_board_battery_ma(uint16_t *milliamps);
+
+/*
  * Cut the board's own power via the SW6106 PMIC on the shared I2C bus.
  *
  * This is a real shutdown, not a request: on board V3.0 the battery and the
@@ -68,8 +89,11 @@ bool ui_board_battery_mv(uint16_t *millivolts);
  * no way to exercise this without actually losing the board. Persist anything
  * that must survive before calling.
  *
- * Give the STM32 its POWER_OFF frame first so it can park sensors and stop
- * transmitting; this call does not wait for it. No-op in the sim.
+ * Call this BEFORE telling the STM32 to park -- seven internal paths can return
+ * without cutting anything, and a sensor board already told to go quiet beside a
+ * box that stayed on is a node that looks alive and reports nothing. The caller
+ * (tb_ui_source.c's ui_mock_power_off) sends POWER_OFF only if this returns.
+ * No-op in the sim.
  */
 void ui_board_power_off(void);
 

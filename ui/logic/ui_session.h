@@ -17,7 +17,28 @@ void ui_session_set_gender(ui_gender_t gender);
  * ui_session_has_airway() stays false until the Airway screen is answered.
  */
 void ui_session_set_airway(bool problem);
+/*
+ * Respiratory rate as a counted band. Manual because the microphone is not on
+ * the board, and load-bearing because tb_classify() refuses to score at all on
+ * respiratory_rate <= 0 -- without this every real patient came out BLACK with
+ * esi 0. ui_session_has_rr() stays false until the RR screen is answered.
+ */
+void ui_session_set_rr(ui_rr_band_t rr);
 void ui_session_set_vitals(const vitals_t *vitals);
+/*
+ * The vitals THE VERDICT WAS COMPUTED FROM, latched once at measure-done.
+ *
+ * ui_session_set_vitals() keeps moving while the operator walks the
+ * Result/Monitor pair (Monitor is a live screen, so it must). But Result is the
+ * screen where the numbers beside the colour have to be the numbers that
+ * PRODUCED that colour: the 50 ms poll blanks a tile the moment a finger leaves
+ * the sensor, and after a Monitor visit the live copy no longer matches what the
+ * model scored. This copy is written exactly once per measurement, right after
+ * the classification pull in ui_runtime.c, and is what apply_result_vitals()
+ * reads.
+ */
+void ui_session_set_measured_vitals(const vitals_t *vitals);
+const vitals_t *ui_session_get_measured_vitals(void);
 /*
  * esi is the model's raw 1..5 output, or 0 when it refused. Passed in the SAME
  * call as the priority on purpose: they are two views of one result, and separate
@@ -38,6 +59,9 @@ ui_gender_t ui_session_get_gender(void);
 
 bool ui_session_has_airway(void);
 bool ui_session_get_airway(void);
+
+bool ui_session_has_rr(void);
+ui_rr_band_t ui_session_get_rr(void);
 
 const vitals_t *ui_session_get_vitals(void);
 

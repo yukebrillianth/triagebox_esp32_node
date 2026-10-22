@@ -16,6 +16,8 @@ idf_component_register(
         esp_driver_i2c
         # `i2c` scans the bus the BSP owns, via bsp_i2c_get_handle().
         waveshare__esp32_s3_touch_lcd_4
+        # `rtc` drives the clock driver that lives next to ui_board.c.
+        triagebox_board
         triagebox_link
         triagebox_ml
 )

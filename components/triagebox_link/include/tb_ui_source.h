@@ -42,6 +42,24 @@ bool tb_ui_source_bp_ready(void);
 void tb_ui_source_bp_arm(void);
 
 /*
+ * Did the ECG produce a heart rate at any point in the measurement window that
+ * is running (or just ended)? Armed false by bp_arm() at measure-start.
+ *
+ * The BP gate needs it. Cuff-less BP is a pulse ARRIVAL TIME measurement: the
+ * model's features are the delay from the ECG R wave to the finger pulse, so
+ * with no electrodes on the patient there is no reference instant and the
+ * "R peaks" the pipeline finds are noise in a floating AD8232 input. It still
+ * returns a number -- 113/59 on a subject wearing only the finger clip, observed
+ * 2026-09-04 -- and that number has no physical source.
+ *
+ * This is the STM32's own verdict (it clears TB_FLAG_HR_FROM_PPG only when its
+ * DSP got a rate out of the ECG at 497.5 Hz), which beats any amplitude
+ * heuristic on the ESP32 side: mains hum on an open lead clears a span
+ * threshold easily, and it is more regular than a heart.
+ */
+bool tb_ui_source_ecg_rate_seen(void);
+
+/*
  * Button events the queue had to refuse. Non-zero means the UI stopped draining
  * (LVGL task blocked) -- not that the operator pressed too fast. Surfaced by the
  * `stats` console command.

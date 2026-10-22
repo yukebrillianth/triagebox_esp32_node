@@ -8,6 +8,7 @@
 #include "../ui.h"
 #include "ui_action.h"
 #include "ui_airway.h"
+#include "ui_rr.h"
 #include "ui_board.h"
 #include "ui_demo.h"
 #include "ui_mock.h"
@@ -23,6 +24,7 @@ static const ui_screen_id_t k_screen_ids[UI_SCREEN_COUNT] = {
     UI_SCREEN_AGE,
     UI_SCREEN_GENDER,
     UI_SCREEN_AIRWAY,
+    UI_SCREEN_RR,
     UI_SCREEN_MENGUKUR,
     UI_SCREEN_RESULT,
     UI_SCREEN_MONITOR,
@@ -41,6 +43,8 @@ static lv_obj_t *screen_root(ui_screen_id_t id)
      * so ui_airway_screen() both creates and caches it. Safe to call on every
      * status-bar tick -- the second call onward just returns the cache. */
     case UI_SCREEN_AIRWAY:   return ui_airway_screen();
+    /* Built in C for the same reason Airway is. */
+    case UI_SCREEN_RR:       return ui_rr_screen();
     case UI_SCREEN_MENGUKUR: return mengukur;
     case UI_SCREEN_RESULT:   return result;
     case UI_SCREEN_MONITOR:  return monitor;
@@ -108,6 +112,15 @@ static void airway_option_cb(lv_event_t *e)
     bool problem = (bool)(uintptr_t)lv_event_get_user_data(e);
 
     ui_nav_set_pending_airway(problem);
+    ui_bindings_sync_selection();
+}
+
+/* Same rule: the tap highlights, Select commits. */
+static void rr_option_cb(lv_event_t *e)
+{
+    ui_rr_band_t band = (ui_rr_band_t)(uintptr_t)lv_event_get_user_data(e);
+
+    ui_nav_set_pending_rr(band);
     ui_bindings_sync_selection();
 }
 
@@ -269,12 +282,33 @@ static void sync_status_bar(void)
         lv_obj_set_style_text_color(obj, status_color(state), 0);
     }
 
+    /*
+     * Clock, and the demo-mode marker riding the same label.
+     *
+     * Demo mode has to be visible on EVERY screen for as long as it is on: it
+     * fabricates the vitals AND a fixed RED verdict, and tb_ui_source.c reports
+     * that verdict to the station as a real record -- so once the Menu closes,
+     * an unmarked screen is a filmed lie. The status bar is the only element all
+     * eight screens share, and the clock is the label with room to spare beside
+     * it (the bar is space-between, so this row sits at the right edge).
+     *
+     * The word AND the amber, not just the colour: a recoloured clock is not
+     * something anyone decodes as "the numbers are fake". Amber is the colour the
+     * Menu's own demo switch uses, and it is deliberately not one of the triage
+     * colours, which would read as a priority.
+     */
     obj = lv_obj_find_by_name(root, "sb_clock");
     if (obj != NULL) {
         char clock[6];
 
         ui_status_format_clock(clock, sizeof(clock));
-        lv_label_set_text(obj, clock);
+        if (ui_demo_enabled()) {
+            lv_label_set_text_fmt(obj, "DEMO %s", clock);
+            lv_obj_set_style_text_color(obj, COLOR_STATUS_WARN, 0);
+        } else {
+            lv_label_set_text(obj, clock);
+            lv_obj_set_style_text_color(obj, COLOR_DARK_TEXT, 0);
+        }
     }
 }
 
@@ -750,9 +784,16 @@ static void beep_tick(void)
     s_beep_phase = s_beep_on_ticks;
 }
 
-/* Result patterns: the operator should hear the urgency without looking up. */
-static void beep_for_priority(ui_priority_t p)
+/* Result patterns: the operator should hear the urgency without looking up.
+ *
+ * An unscored verdict is silent. The BLACK pattern below -- one long tone -- is
+ * the alarm for a patient who is beyond help, and firing it because a sensor was
+ * never plugged in is the loudest possible lie this box can tell. */
+static void beep_for_priority(ui_priority_t p, int esi)
 {
+    if (ui_verdict_unscored(esi)) {
+        return;
+    }
     switch (p) {
     case UI_PRIORITY_RED:    beep_start(3, 1); break; /* 3 short */
     case UI_PRIORITY_YELLOW: beep_start(2, 1); break;
@@ -767,9 +808,17 @@ static void beep_for_priority(ui_priority_t p)
  * The Result screen XML is authored with the RED variant hardcoded (banner
  * colour, badge icon, "MERAH - IMMEDIATE"), so without this the screen claimed
  * MERAH no matter what the SVM decided.
+ *
+ * An unscored verdict (esi 0, which arrives riding BLACK -- see
+ * ui_verdict_unscored) must not borrow any of it: it gets the muted panel grey,
+ * not BLACK's near-black, because a patient nobody measured has no verdict to
+ * colour in.
  */
-static lv_color_t priority_color(ui_priority_t p)
+static lv_color_t priority_color(ui_priority_t p, int esi)
 {
+    if (ui_verdict_unscored(esi)) {
+        return COLOR_DARK_PANEL;
+    }
     switch (p) {
     case UI_PRIORITY_RED:    return COLOR_DANGER;
     case UI_PRIORITY_YELLOW: return COLOR_PRIORITY_YELLOW;
@@ -778,8 +827,14 @@ static lv_color_t priority_color(ui_priority_t p)
     }
 }
 
-static const void *priority_icon_src(ui_priority_t p)
+static const void *priority_icon_src(ui_priority_t p, int esi)
 {
+    if (ui_verdict_unscored(esi)) {
+        /* No priority glyph exists for "no verdict", so the refresh arrow: it
+         * reads as "do this again", which is the action the screen is asking
+         * for. Nothing was measured, so nothing here is alarming. */
+        return icon_refresh;
+    }
     switch (p) {
     case UI_PRIORITY_RED:    return icon_priority_immediate;
     case UI_PRIORITY_YELLOW: return icon_priority_delayed;
@@ -788,7 +843,7 @@ static const void *priority_icon_src(ui_priority_t p)
     }
 }
 
-static void apply_priority(ui_priority_t p)
+static void apply_priority(ui_priority_t p, int esi)
 {
     lv_obj_t *banner;
     lv_obj_t *label;
@@ -799,17 +854,17 @@ static void apply_priority(ui_priority_t p)
     }
     banner = lv_obj_find_by_name(result, "result_banner");
     if (banner != NULL) {
-        lv_obj_set_style_bg_color(banner, priority_color(p), 0);
+        lv_obj_set_style_bg_color(banner, priority_color(p, esi), 0);
     }
     label = lv_obj_find_by_name(result, "priority_label");
     if (label != NULL) {
-        lv_label_set_text(label, ui_priority_display_label(p));
+        lv_label_set_text(label, ui_verdict_label(p, esi));
     }
     icon = lv_obj_find_by_name(result, "priority_icon");
     if (icon != NULL) {
-        lv_image_set_src(icon, priority_icon_src(p));
+        lv_image_set_src(icon, priority_icon_src(p, esi));
         /* The style recolours the icon to red; match the banner instead. */
-        lv_obj_set_style_image_recolor(icon, priority_color(p), 0);
+        lv_obj_set_style_image_recolor(icon, priority_color(p, esi), 0);
     }
 }
 
@@ -923,6 +978,30 @@ static void set_tile(lv_obj_t *root, const char *tile_name, const char *text)
     }
 }
 
+/*
+ * Where the HR on screen was counted: the ECG limb leads, or the finger clip on
+ * the MAX30102. The operator has to be able to tell, because the two are not the
+ * same measurement (a beat too weak to reach the finger is one the ECG still
+ * sees) and because the finger clip is the unreliable sensor on this board
+ * revision -- tb_ui_source.c holds the last ECG rate over a PPG one for exactly
+ * that reason, and this is how that decision becomes visible.
+ *
+ * In the value, not the caption, because `lbl_value` is the only label BOTH tile
+ * components name -- result_vital's caption is `lbl_caption` and vital_card's
+ * unit label is anonymous, so a caption marker would show on Result only. The
+ * widest string, "200 jari" at font_inter_bold_20, is ~82 px against the
+ * narrower tile's 88 px of usable width: it fits without wrapping.
+ */
+static void hr_text(char *buf, size_t cap, const vitals_t *v)
+{
+    if ((v->valid_mask & UI_VITAL_HR) == 0U) {
+        lv_snprintf(buf, cap, "--");
+    } else {
+        lv_snprintf(buf, cap, "%u %s", (unsigned)v->hr,
+                    v->hr_from_ppg ? "jari" : "EKG");
+    }
+}
+
 /* Fill the four vital tiles on any screen that has them. Both tile components
  * (result_vital, vital_card) name their readout label "lbl_value".
  *
@@ -949,7 +1028,7 @@ static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
         set_tile(root, "vc_spo2", "--");
     }
     if (v->valid_mask & UI_VITAL_HR) {
-        lv_snprintf(buf, sizeof(buf), "%u", (unsigned)v->hr);
+        hr_text(buf, sizeof(buf), v);
         set_tile(root, "vc_hr", buf);
     } else {
         set_tile(root, "vc_hr", "--");
@@ -1015,7 +1094,13 @@ static void set_patient_id(lv_obj_t *root, const char *prefix)
 
 static void apply_result_vitals(void)
 {
-    apply_vital_tiles(result, ui_session_get_vitals());
+    /* The measured copy, not the live one: Monitor keeps refreshing
+     * session.vitals between the verdict and every visit back to Result, so a
+     * live read would show the sensors' last word -- blanked tiles included --
+     * instead of the measurement that produced the colour still on screen.
+     * ui_session_get_measured_vitals() falls back to the live copy until a
+     * measurement has latched one. */
+    apply_vital_tiles(result, ui_session_get_measured_vitals());
     set_patient_id(result, "ID Pasien: ");
     /* Every tick, not once with the priority: the two must never disagree, and
      * this is the cheap way to guarantee it. */
@@ -1055,6 +1140,7 @@ static void apply_monitor(void)
         {"spo2_value", UI_VITAL_SPO2},
         {"hr_value",   UI_VITAL_HR},
         {"rr_value",   UI_VITAL_RR},
+        {"bp_value",   UI_VITAL_BP},
     };
 
     if (monitor == NULL || v == NULL) {
@@ -1078,6 +1164,13 @@ static void apply_monitor(void)
         }
         if ((v->valid_mask & k_fields[i].bit) == 0U) {
             lv_label_set_text(label, "--");
+            continue;
+        }
+        /* BP is the one pair, not a scalar: printed here rather than through the
+         * `value` path below so the tile reads "118/76" like Result's does. */
+        if (k_fields[i].bit == UI_VITAL_BP) {
+            lv_label_set_text_fmt(label, "%u/%u", (unsigned)v->bp_sys,
+                                  (unsigned)v->bp_dia);
             continue;
         }
         value = (k_fields[i].bit == UI_VITAL_SPO2) ? v->spo2
@@ -1172,8 +1265,31 @@ static void apply_test(void)
 
     lv_snprintf(buf, sizeof(buf), "%u", (unsigned)s.polls_ok);
     test_set("test_polls_ok", buf);
-    lv_snprintf(buf, sizeof(buf), "%u", (unsigned)s.polls_failed);
-    test_set("test_polls_failed", buf);
+    /*
+     * Draw in mA, in the row the failed-poll counter used to hold. The failure
+     * count is still on screen -- `stats` prints it and the LINK dot below says
+     * whether the link is up at all -- while current draw is the number nobody
+     * could get at, and the one that decides whether the pack lasts a shift.
+     *
+     * Reads 0 mA on USB power, which is correct rather than broken: Ichg and
+     * Idischg are exclusive registers on the SW6106, so a charging pack has no
+     * discharge current to report. The suffix says so, because a bare "0 mA" on
+     * a diagnostics screen reads as a dead sensor.
+     */
+    {
+        uint16_t ma;
+        bool chg_now = false;
+        uint8_t ignored_pct;
+
+        if (!ui_board_battery_ma(&ma)) {
+            lv_snprintf(buf, sizeof(buf), "-- mA");
+        } else if (ui_board_battery(&ignored_pct, &chg_now) && chg_now) {
+            lv_snprintf(buf, sizeof(buf), "%u mA (mengisi)", (unsigned)ma);
+        } else {
+            lv_snprintf(buf, sizeof(buf), "%u mA", (unsigned)ma);
+        }
+        test_set("test_polls_failed", buf);
+    }
 
     alive = link_is_alive(&s);
     test_set("test_alive", alive ? "LINK AKTIF" : "LINK MATI");
@@ -1230,7 +1346,10 @@ static void blink_tick(void)
     static uint8_t s_phase;
     bool want_blink;
 
-    if (ui_nav_current() != UI_SCREEN_RESULT || !ui_session_has_priority()) {
+    /* An unscored verdict leaves with the same early-out as no verdict at all:
+     * esi 0 has no alarm to sync a flash with, and must never blink. */
+    if (ui_nav_current() != UI_SCREEN_RESULT || !ui_session_has_priority() ||
+        ui_verdict_unscored(ui_session_get_esi())) {
         s_degraded_alert = false;
         if (s_dim) {
             s_dim = false;
@@ -1295,9 +1414,17 @@ static void idle_tick(void)
     idle = lv_display_get_inactive_time(disp) > IDLE_BLANK_MS;
 
     /* Never blank mid-measurement or while monitoring: the operator is reading
-     * the screen precisely when they are not touching it. */
+     * the screen precisely when they are not touching it.
+     *
+     * Suppressing the verdict is not enough on its own -- the inactivity clock
+     * keeps running underneath, so a full measurement ends with UI_MEASURE_MS
+     * already on it and the Result screen blanks the moment it appears, which
+     * reads as "the device switched off when the measurement finished".
+     * Resetting the clock here (only while suppressed, so normal blanking is
+     * untouched) gives the screen after it a full IDLE_BLANK_MS of its own. */
     if (idle && (ui_nav_current() == UI_SCREEN_MENGUKUR ||
                  ui_nav_current() == UI_SCREEN_MONITOR)) {
+        lv_display_trigger_activity(disp);
         idle = false;
     }
 
@@ -1337,8 +1464,9 @@ static void result_beep_tick(void)
     }
     if (!s_announced) {
         s_announced = true;
-        apply_priority(ui_session_get_priority());
-        beep_for_priority(ui_session_get_priority());
+        apply_priority(ui_session_get_priority(), ui_session_get_esi());
+        /* Unscored verdicts are silent here -- see beep_for_priority. */
+        beep_for_priority(ui_session_get_priority(), ui_session_get_esi());
     }
 }
 
@@ -1511,6 +1639,16 @@ void ui_bindings_sync_selection(void)
         set_focus(airway, "opt_airway_no",  !problem);
         set_focus(airway, "opt_airway_yes",  problem);
     }
+
+    {
+        lv_obj_t *rr = ui_rr_screen();
+        ui_rr_band_t b = ui_nav_pending_rr();
+
+        set_focus(rr, "opt_rr_under_12", b == UI_RR_BAND_UNDER_12);
+        set_focus(rr, "opt_rr_12_20",    b == UI_RR_BAND_12_20);
+        set_focus(rr, "opt_rr_21_30",    b == UI_RR_BAND_21_30);
+        set_focus(rr, "opt_rr_over_30",  b == UI_RR_BAND_OVER_30);
+    }
 }
 
 void ui_bindings_init(void)
@@ -1534,6 +1672,19 @@ void ui_bindings_init(void)
 
         bind_option(airway, "opt_airway_no",  airway_option_cb, (uintptr_t)0);
         bind_option(airway, "opt_airway_yes", airway_option_cb, (uintptr_t)1);
+    }
+
+    {
+        lv_obj_t *rr = ui_rr_screen();
+
+        bind_option(rr, "opt_rr_under_12", rr_option_cb,
+                    (uintptr_t)UI_RR_BAND_UNDER_12);
+        bind_option(rr, "opt_rr_12_20", rr_option_cb,
+                    (uintptr_t)UI_RR_BAND_12_20);
+        bind_option(rr, "opt_rr_21_30", rr_option_cb,
+                    (uintptr_t)UI_RR_BAND_21_30);
+        bind_option(rr, "opt_rr_over_30", rr_option_cb,
+                    (uintptr_t)UI_RR_BAND_OVER_30);
     }
 
     ui_bindings_sync_selection();

@@ -3,9 +3,11 @@
 idf_component_register(
     SRCS
         "ui_board.c"
+        "tb_rtc.c"
     INCLUDE_DIRS
         # ui_board.h is the contract; it lives with the other logic headers.
         "../../ui/logic"
+        "."  # tb_rtc.h: app_main sets the clock at boot, tb_debug has `rtc`
     REQUIRES
         waveshare__esp32_s3_touch_lcd_4
         espressif__esp_io_expander

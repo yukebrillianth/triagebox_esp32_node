@@ -36,3 +36,8 @@ ui/preview-bin/
 
 # clangd local flag tweaks (per-machine, not firmware config)
 .clangd
+
+# BP analysis artifacts: a dumped window + its plots are a session, not source.
+# tools/bp_window_sweep.c + tools/bp_capture_csv.py regenerate them from `bplog`.
+bp_window.csv
+bp_filters_*.png

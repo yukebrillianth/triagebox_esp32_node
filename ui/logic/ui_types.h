@@ -11,7 +11,9 @@
  * field because the vitals come from different sensors on different cadences:
  * with the ECG unplugged, HR is absent while SpO2 and RR are perfectly good,
  * and blanking all four would hide three working sensors behind one missing
- * cable. BP has no source at all yet, so its bit is always clear.
+ * cable. BP is the exception: it is measured by this board's own BP capture
+ * (bp_capture), not reported by the STM32, so its bit is set only for a window
+ * the BP task actually published.
  */
 #define UI_VITAL_HR   0x01U
 #define UI_VITAL_SPO2 0x02U
@@ -25,6 +27,18 @@ typedef struct {
     uint16_t bp_sys;
     uint16_t bp_dia;
     uint8_t battery;
+    /*
+     * The rate in `hr` was counted at the FINGER (MAX30102 pulse rate), not at
+     * the chest (ECG). The STM32 picks one source per poll and reports which one
+     * won; PR <= HR always, because a beat too weak to open the aortic valve is
+     * a depolarisation the ECG still sees.
+     *
+     * Provenance, not freshness -- meaningless unless UI_VITAL_HR is set, and
+     * deliberately not a valid_mask bit. tb_ui_source.c is the one consumer: it
+     * holds the last ECG rate rather than let a PPG one through while the finger
+     * clip on this board revision is unreliable.
+     */
+    bool hr_from_ppg;
     /* Per-field freshness, UI_VITAL_*. Drives what the screens render: a set
      * bit shows the number, a clear one keeps the authored "--". */
     uint8_t valid_mask;
@@ -95,6 +109,30 @@ typedef enum {
 const char *ui_priority_display_label(ui_priority_t value);
 
 /*
+ * "The model refused to score this patient", which is carried by the ESI and
+ * nothing else.
+ *
+ * The marker is the ESI, not a fifth ui_priority_t: the enum is the wire order,
+ * it indexes designated-initialiser tables, and every switch on it would have to
+ * be revisited. tb_classify() answers BLACK with *predicted_esi = 0 when a
+ * feature is missing, so on this box BLACK-with-esi-0 is "nobody measured this
+ * patient" -- NOT the EXPECTANT of a patient the model looked at and gave up on.
+ * Reported as its own neutral state instead, because those two must never look
+ * alike on a triage screen: one is a body bag, the other is "measure again".
+ */
+bool ui_verdict_unscored(int esi);
+
+/*
+ * The banner text for a verdict: the colour's label, or the honest neutral one
+ * when the model refused.
+ *
+ * Here rather than in ui_bindings.c so the "a refusal must not read as
+ * EXPECTANT" rule is host-testable -- ui_bindings.c needs LVGL and never
+ * compiles on the host.
+ */
+const char *ui_verdict_label(ui_priority_t priority, int esi);
+
+/*
  * Did the patient get worse? True when `to` is more severe than `from`.
  *
  * A separate function and not `to < from`, because ui_priority_t's numbering is
@@ -113,6 +151,37 @@ typedef enum {
     UI_AGE_BAND_46_60,
     UI_AGE_BAND_OVER_60
 } ui_age_band_t;
+
+/*
+ * Respiratory-rate band, entered by the operator counting breaths.
+ *
+ * A band and not a number because it is a manual count under field conditions:
+ * an operator watching a chest for fifteen seconds knows "about twenty", not
+ * "seventeen", and four rows are three button presses at worst. ui_rr_band_value()
+ * maps each to the breaths/min the model is fed.
+ *
+ * This exists because nothing on the box measures respiration yet -- the
+ * microphone needs a PCB that does not exist -- while tb_classify() refuses to
+ * score at all on respiratory_rate <= 0, so every real patient came out BLACK
+ * with esi 0. Delete this screen the day the mic ships, not before.
+ */
+typedef enum {
+    UI_RR_BAND_UNDER_12,
+    UI_RR_BAND_12_20,
+    UI_RR_BAND_21_30,
+    UI_RR_BAND_OVER_30
+} ui_rr_band_t;
+
+/*
+ * Breaths per minute for a band -- the value that reaches
+ * TriageInput.respiratory_rate.
+ *
+ * Each is the clinical midpoint of its band rather than an edge, so a band never
+ * scores as the band next door. UI_RR_BAND_12_20 -> 16 sits essentially on the
+ * training-set mean (18.14, SD 3.73 -- triage_pipeline.c's own normalisation),
+ * which is what makes "normal breathing" the neutral answer it should be.
+ */
+uint16_t ui_rr_band_value(ui_rr_band_t band);
 
 typedef enum {
     UI_GENDER_M = 'M',

@@ -8,17 +8,24 @@
  *
  * WHAT IS FAKE: the four vital readings, the per-sensor health mask, and the
  * triage result. WHAT STAYS REAL: the RFID tag, the buttons, the battery, the
- * link to the STM32, and the RESULT frame sent back to it -- so the station and
- * the dashboard see the demo patient exactly as they would see a real one.
+ * link to the STM32, and the RESULT frame sent back to it -- the station and the
+ * dashboard see the demo patient, with the confidence byte marking the verdict
+ * as reported rather than measured (see VISIBLE ON PURPOSE below).
  *
  * SAFETY: off at every boot, on purpose -- there is no NVS write here. Someone
  * who forgets to switch it off after filming gets a normal device on the next
  * power cycle, instead of a box that calls every patient RED. That is also why
- * this is not persisted "for convenience": the convenience is the hazard.
+ * this is not persisted "for convenience": the convenience is the hazard. The
+ * same argument, one scope smaller, ends the mode with the session:
+ * ui_mock_end_session() clears it, so a take cannot leak into a real patient
+ * without someone re-arming the switch.
  *
- * Deliberately NOT shown as an on-screen badge, because the point is footage
- * that looks like the real thing. The trade is the boot reset above, plus a
- * warning in the log on every inference.
+ * VISIBLE ON PURPOSE. The status bar shows a permanent amber DEMO marker while
+ * this is on, and the RESULT this board reports carries confidence 0.00 rather
+ * than the 0.93 on screen -- the vitals and the colour are the act, but nothing
+ * that reaches the station should be mistakable for a measurement. (It used to
+ * hide entirely, "footage that looks like the real thing"; a triage box that
+ * can quietly call every patient RED is not a thing to have no tell for.)
  *
  * The flag lives here rather than in ui_mock.h because that header has two
  * implementations and this needs exactly one. In the simulator the mock feed is
