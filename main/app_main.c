@@ -9,6 +9,7 @@
 #include "asset_fs.h"
 #include "tb_debug.h"
 #include "tb_link_i2c.h"
+#include "tb_settings.h"
 #include "bp_capture.h"
 #include "tb_rtc.h"
 #include "ui_board.h"
@@ -167,6 +168,13 @@ void app_main(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "assets not mounted (%s): fonts and images are missing -- "
                       "reflash the storage partition", esp_err_to_name(err));
+    }
+
+    /* Before the UI, so the Menu and the Monitor timer start from the saved
+     * node id / interval. Not fatal: on failure they run from RAM defaults. */
+    err = tb_settings_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "settings not persistent this boot (%s)", esp_err_to_name(err));
     }
 
     ui_runtime_init();

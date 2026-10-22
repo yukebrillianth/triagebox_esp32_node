@@ -3,6 +3,7 @@
 #include "ui_mock.h"
 #include "ui_nav.h"
 #include "ui_session.h"
+#include "ui_settings.h"
 
 static ui_screen_id_t s_prev_screen;
 static bool s_measure_started;
@@ -92,6 +93,9 @@ static void monitor_retriage_tick(uint32_t now_ms)
 void ui_runtime_set_retriage_ms(uint32_t ms)
 {
     s_retriage_ms = ms;
+    /* Persisted when it is one of the Menu's values; anything else (a test
+     * driving it with an odd number) still takes effect for this run. */
+    (void)ui_settings_set_retriage_ms(ms);
 }
 
 uint32_t ui_runtime_retriage_ms(void)
@@ -110,6 +114,7 @@ bool ui_runtime_take_degraded(void)
 void ui_runtime_init(void)
 {
     ui_mock_init();
+    s_retriage_ms = ui_settings_retriage_ms(); /* the saved choice, else the default */
     ui_nav_go(UI_SCREEN_HOME);
     s_prev_screen = ui_nav_current();
     s_measure_started = false;

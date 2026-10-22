@@ -91,7 +91,13 @@ run ui/logic/ui_nav_selftest.c \
 
 run ui/logic/ui_runtime_selftest.c \
     ui/logic/ui_runtime_selftest.c ui/logic/ui_runtime.c ui/logic/ui_mock.c \
+    ui/logic/ui_settings.c \
     ui/logic/ui_nav.c ui/logic/ui_session.c ui/logic/ui_action.c ui/logic/ui_types.c
+
+# Persisted settings: range checks, the store round trip, and that a corrupt or
+# failing store cannot put the node on a bad address.
+run ui/logic/ui_settings_selftest.c \
+    ui/logic/ui_settings_selftest.c ui/logic/ui_settings.c
 
 run ui/logic/ui_status_selftest.c \
     ui/logic/ui_status_selftest.c ui/logic/ui_status.c

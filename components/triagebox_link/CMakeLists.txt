@@ -15,6 +15,7 @@ idf_component_register(
         "tb_frame.c"
         "tb_i2c_codec.c"
         "tb_link_i2c.c"
+        "tb_settings_nvs.c"
         "tb_ui_source.c"
         "bp_capture.c"
     INCLUDE_DIRS
@@ -29,6 +30,8 @@ idf_component_register(
         esp32_s3_touch_lcd_4
         # esp_timer_get_time(): the measure-to-verdict timing log.
         esp_timer
+        # tb_settings_nvs.c: the node id and re-triage interval survive a reboot.
+        nvs_flash
         triagebox_ml
         # ui_mock_power_off() cuts the rail via ui_board_power_off().
         triagebox_board

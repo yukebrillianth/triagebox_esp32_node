@@ -415,9 +415,30 @@ void ui_mock_init(void)
     s_esi = 0;
 }
 
+/*
+ * An ABORT that did not get through is retried, not abandoned.
+ *
+ * It is the only thing that clears the STM32's standing verdict, and without it a
+ * patient who has left keeps being reported every 15 s (see ui_mock_end_session).
+ * One failed I2C transaction on a bus shared with the touch controller is not
+ * rare enough to leave to chance. Retried at most twice a second, and CANCELLED
+ * by START_SCAN: the next patient's scan clears the same state on the STM32, and
+ * an ABORT landing after it would wipe the new patient's identity.
+ */
+static volatile bool s_abort_pending;
+static uint32_t s_abort_retry_ms;
+#define TB_ABORT_RETRY_MS 500U
+
 void ui_mock_tick(uint32_t now_ms)
 {
     s_now_ms = now_ms;
+
+    if (s_abort_pending && (now_ms - s_abort_retry_ms) >= TB_ABORT_RETRY_MS) {
+        s_abort_retry_ms = now_ms;
+        if (tb_link_send_cmd(TB_CMD_ABORT) == ESP_OK) {
+            s_abort_pending = false;
+        }
+    }
 
     if (s_measure_active && !s_measure_done) {
         if ((now_ms - s_measure_start_ms) >= UI_MEASURE_MS) {
@@ -461,6 +482,7 @@ void ui_mock_start_scan(void)
     s_rfid_gate_ms = s_now_ms;
     portEXIT_CRITICAL(&s_mux);
 
+    s_abort_pending = false; /* see s_abort_pending: START_SCAN supersedes it */
     if (tb_link_send_cmd(TB_CMD_START_SCAN) != ESP_OK) {
         ESP_LOGW(TAG, "START_SCAN not sent");
     }
@@ -565,7 +587,9 @@ void ui_mock_end_session(void)
          * one. Nothing weaker would do -- the send fails on a dead link too, and
          * a dead link is exactly when a standing verdict cannot be cleared.
          */
-        ESP_LOGW(TAG, "ABORT not sent -- STM32 may keep reporting this patient");
+        ESP_LOGW(TAG, "ABORT not sent -- will retry, STM32 may keep reporting this patient");
+        s_abort_pending = true;
+        s_abort_retry_ms = s_now_ms;
     }
 }
 

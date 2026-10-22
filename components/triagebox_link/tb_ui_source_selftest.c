@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "fakes.h"
+#include "tb_regs.h" /* TB_CMD_ABORT */
 #include "tb_triage.h"
 #include "tb_ui_source.h"
 #include "ui_demo.h"
@@ -26,7 +27,18 @@ void vTaskDelay(int ticks) { (void)ticks; }
 void ui_board_power_off(void) {}
 uint32_t tb_link_frames_ok(void) { return 0; }
 uint32_t tb_link_crc_errors(void) { return 0; }
-esp_err_t tb_link_send_cmd(uint8_t cmd) { (void)cmd; return ESP_OK; }
+static bool s_send_fail;
+static int s_abort_sent;
+esp_err_t tb_link_send_cmd(uint8_t cmd)
+{
+    if (s_send_fail) {
+        return (esp_err_t)-1;
+    }
+    if (cmd == TB_CMD_ABORT) {
+        s_abort_sent++;
+    }
+    return ESP_OK;
+}
 esp_err_t tb_link_send_bp(uint16_t sys, uint16_t dia)
 {
     (void)sys; (void)dia;
@@ -662,6 +674,40 @@ static void test_verdict_uses_the_scanned_tag(void)
  * window still sitting in its accumulator and republishes that pressure for the
  * patient who just left.
  */
+/* A lost ABORT is retried until it lands, and a new scan cancels the retry. */
+static void test_abort_is_retried(void)
+{
+    ui_mock_init();
+    push_tag("AABBCCDD");
+    s_abort_sent = 0;
+
+    s_send_fail = true;
+    ui_mock_end_session();
+    ui_mock_tick(10000U);
+    ui_mock_tick(10600U); /* still failing: nothing delivered, still pending */
+    assert(s_abort_sent == 0);
+
+    s_send_fail = false;
+    ui_mock_tick(10700U); /* inside the 500 ms spacing: not yet */
+    assert(s_abort_sent == 0);
+    ui_mock_tick(11200U);
+    assert(s_abort_sent == 1);
+    ui_mock_tick(12000U); /* delivered once, then quiet */
+    assert(s_abort_sent == 1);
+
+    /* The next patient's START_SCAN supersedes a retry still pending: an ABORT
+     * after it would wipe the new patient's identity on the STM32. */
+    push_tag("AABBCCDD");
+    s_send_fail = true;
+    ui_mock_end_session();
+    s_send_fail = false;
+    ui_mock_start_scan();
+    s_abort_sent = 0;
+    ui_mock_tick(20000U);
+    ui_mock_tick(21000U);
+    assert(s_abort_sent == 0);
+}
+
 static void test_abort_closes_the_capture(void)
 {
     ui_mock_init();
@@ -742,6 +788,7 @@ int main(void)
     test_patient_fields_reach_the_wire();
     test_verdict_uses_the_scanned_tag();
     test_abort_closes_the_capture();
+    test_abort_is_retried();
     test_sensor_mask_goes_stale();
 
     ui_mock_init();

@@ -408,7 +408,8 @@ static inline uint32_t tb_wave_take(const tb_wave_block_t *blk,
 #define TB_REG_HOST_AGE     0x49U /* u8   years, 0 = not asked */
 #define TB_REG_HOST_GENDER  0x4AU /* u8   'M'/'F'/'U' ASCII, 0 = not asked */
 #define TB_REG_HOST_ESI     0x4BU /* u8   1..5, 0 = the model did not score */
-#define TB_REG_WRITE_END    0x4CU
+#define TB_REG_HOST_NODE_ID 0x4CU /* u8   LoRa poll address 1..20 from the node Menu, 0 = none */
+#define TB_REG_WRITE_END    0x4DU
 
 /*
  * PRIORITY uses the LoRa numeric alias, NOT ui_priority_t's declaration order

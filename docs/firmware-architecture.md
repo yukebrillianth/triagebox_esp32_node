@@ -146,7 +146,7 @@ Bunyi buzzer sekali saat scan sukses di-arm oleh layar **SCANNING**, bukan oleh 
 
 ## Model triase
 
-`components/triagebox_ml/` — GBM (LightGBM, di-emit sebagai C) dengan **6 fitur**: `age, sex, systolic_bp, heart_rate, respiratory_rate, spo2`. Output mentahnya **ESI 1..5** plus vektor probabilitas 5 kelas.
+`components/triagebox_ml/` — GBM (LightGBM, di-emit sebagai C) dengan **6 fitur**: `age, sex, systolic_bp, heart_rate, respiratory_rate, spo2`. Output mentahnya **ESI 1..4** plus vektor probabilitas 4 kelas. Modelnya dilatih tanpa baris ESI 5 (dibuang dari data, bukan digabung ke ESI 4); ESI 3 dan 4 sama-sama HIJAU.
 
 ```c
 /* tb_triage.h -- satu-satunya pintu masuk dari UI */
@@ -405,3 +405,9 @@ Kalau STM32 menjawab tapi `seq` tidak berubah, link mencetak `seq frozen` — it
 Semua perintah I²C **read-only** — tidak ada `i2cwrite`. Alamat `0x3c` adalah charger 4 A dengan LiPo menempel; write yang salah bisa mengubah tegangan cut-off atau mematikan power path. Satu-satunya write ke PMIC ada di `ui_board_power_off()`, urutannya dari datasheet dan dipatok selftest.
 
 Catatan pemakaian: pointer register **tidak auto-increment** di TCA9554 maupun SW6106 — `count > 1` membaca register yang sama berulang, jadi baca satu-satu. Byte `ff` setelah byte pertama biasanya bus floating, bukan data.
+
+## Pengaturan tersimpan
+
+`ui/logic/ui_settings.c` menyimpan dua nilai yang harus selamat dari reboot: **ID node** (alamat poll LoRa, 1..20, 0 = belum diatur) dan **interval re-triase** (Mati/15/30/60 detik). Di perangkat penyimpanannya NVS (`components/triagebox_link/tb_settings_nvs.c`, dipanggil dari `app_main` sebelum `ui_runtime_init`); di sim dan tes host penyimpanannya RAM. Nilai yang rusak atau di luar rentang jatuh ke default, bukan ke alamat sembarang.
+
+ID node diatur dari **Menu → ID Node** (tombol - / +). `tb_link_i2c.c` mengirimnya ke STM32 lewat `TB_REG_HOST_NODE_ID` (0x4C) tiap 2 detik, jadi STM32 yang reset kembali ke alamatnya sendiri. Di STM32 nilai itu menang atas tabel UID dan `-DNODE_ID`; nilai di luar 1..20 diabaikan. Alat yang belum punya ID tidak menjawab poll (sengaja: lebih mudah didiagnosis daripada dua alat yang sama-sama jadi node 1). Sistem tidak bisa mendeteksi dua alat dengan ID sama.
