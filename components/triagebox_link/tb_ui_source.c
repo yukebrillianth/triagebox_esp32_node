@@ -14,6 +14,7 @@
 #include "tb_triage.h"
 #include "ui_demo.h"
 #include "ui_session.h"
+#include "ui_status.h" /* LINK_STALE_MS */
 #include "tb_ui_source.h"
 #include "ui_board.h"
 #include "ui_mock.h"
@@ -644,7 +645,7 @@ void ui_mock_get_vitals(vitals_t *out)
     portENTER_CRITICAL(&s_mux);
     *out = s_vitals;
     /* No snapshot has arrived yet, so nothing is measured -- clear both the
-     * display mask and the SVM gate rather than trusting a zeroed struct. */
+     * display mask and the model gate rather than trusting a zeroed struct. */
     if (!s_have_vitals) {
         out->valid_mask = 0U;
         out->valid = false;
@@ -705,8 +706,8 @@ static void infer_once(void)
     }
 
     /*
-     * The last snapshot, not an aggregate over the window. The model takes seven
-     * instantaneous scalars -- what a triage nurse would have written down once --
+     * The last snapshot, not an aggregate over the window. The model takes six
+     * instantaneous scalars (plus the airway flag) -- what a triage nurse would have written down once --
      * so there is nothing for a mean or a min to fill.
      */
     ui_mock_get_vitals(&v);
@@ -905,14 +906,15 @@ int ui_mock_get_esi(void)
 
 const char *ui_mock_get_reasons(void)
 {
-    /* An SVM has no rule path to quote, and no separate threshold table was
-     * added, so the backend gets the empty list it defaults to. */
+    /* A gradient-boosted model has no rule path to quote, and no separate
+     * threshold table was added, so the backend gets the empty list it defaults
+     * to. The dashboard no longer shows this field. */
     return "";
 }
 
 void ui_mock_cycle_priority(void)
 {
-    /* QA-only shortcut in the mock; on hardware the SVM decides. */
+    /* QA-only shortcut in the mock; on hardware the LightGBM model decides. */
 }
 
 void ui_mock_reclassify(void)
@@ -951,17 +953,9 @@ bool ui_mock_pop_button(btn_event_t *out)
 }
 
 /*
- * The Sensor dot ages with the link, on the same rule as the System dot's
- * LINK_STALE_MS in ui_status.c: 45 s is one missed STATUS at the 15/30 s wire
- * cadences, so past it the STM32 is gone rather than idle.
- *
- * A second definition and not a shared one because ui_status.h exports the
- * decision (ui_status_system) and not the constant, and this file must not
- * include ui_status.h -- the desktop sim links that module without this one. The
- * two are in different translation units, so nothing catches a drift: move both
- * or neither.
+ * The Sensor dot ages with the link on the same rule as the System dot:
+ * LINK_STALE_MS (ui_status.h), one missed STATUS at the 15/30 s wire cadences.
  */
-#define LINK_STALE_MS 45000U
 
 void ui_mock_get_link_status(link_status_t *out)
 {

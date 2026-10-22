@@ -530,7 +530,7 @@ esp_err_t tb_link_start(void)
          * The default is 2000 us, and on this SoC that is 2000 us of XTAL at
          * 40 MHz rounded up to the next power of two -- 3.28 ms, measured from
          * the register the driver writes. The STM32 stretches SCL from its I2C2
-         * ISR, which sits at the same NVIC preempt priority as its 497.5 Hz ADC
+         * ISR, which sits at the same NVIC preempt priority as its 500 Hz ADC
          * ISR, its DMA and its EXTI, so it cannot preempt any of them; a stretch
          * of several ms is normal there and not a fault. Exceeding this budget is
          * what logs "I2C hardware timeout detected", and each expiry costs an FSM

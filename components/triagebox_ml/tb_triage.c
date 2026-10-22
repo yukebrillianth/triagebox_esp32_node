@@ -5,7 +5,17 @@
  * define non-static functions in headers, so they can only be included by one
  * translation unit (tb_triage_model.c). Keeping the band conversions out of that
  * unit is what lets tb_triage_selftest.c run them on the host without dragging
- * in the 72k-line model.
+ * in the 32k-line model.
+ */
+
+/*
+ * Age: the operator answers a BAND, the model wants years, so each band is sent as
+ * its midpoint -- 6-17 -> 12, 18-45 -> 31 (31.5 rounded down), 46-60 -> 53, 60+ ->
+ * 70 (no upper edge to halve; 70 is a round figure inside the over-60 range).
+ * These are not measured ages. The wire and the backend carry them as a plain
+ * number of years, so anything that DISPLAYS a node-supplied age must show the
+ * band, not 12/31/53/70 as if they were precise: the dashboard maps them back.
+ * An age typed in at the dashboard is a real number and is shown as one.
  */
 
 float tb_triage_age_years(ui_age_band_t band)

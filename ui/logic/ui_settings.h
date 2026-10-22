@@ -20,6 +20,14 @@
  * put the node on address 255 or switch re-triage off.
  */
 
+/*
+ * The shortest re-triage interval the Menu may offer. It equals the station's
+ * poll cycle (LORA_POLL_PERIOD_MS = 15 s in the station repo): a re-triage
+ * faster than the station polls produces verdicts the dashboard never sees.
+ * ui_settings_selftest asserts every non-zero choice is >= this.
+ */
+#define UI_RETRIAGE_MIN_MS 15000U
+
 /* Highest poll address the station will ever call (LORA_POLL_NODE_MAX there). */
 #define UI_NODE_ID_MAX 20U
 
@@ -40,6 +48,11 @@ uint8_t ui_settings_node_id(void);
  * applied but could not be saved -- the caller should say so, because it will be
  * gone after a reboot. */
 bool ui_settings_set_node_id(uint8_t id);
+
+/* The values the Menu cycles through, "off" (0) last so one press from the
+ * default never lands on no monitoring. Shared with ui_bindings.c. */
+#define UI_RETRIAGE_CHOICES 4U
+extern const uint32_t ui_settings_retriage_choices[UI_RETRIAGE_CHOICES];
 
 /* One of 0 (off), 15000, 30000, 60000. Same false-return rule as the node id. */
 uint32_t ui_settings_retriage_ms(void);

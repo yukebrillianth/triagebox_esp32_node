@@ -90,13 +90,6 @@ void ui_status_format_clock(char *buf, unsigned buf_sz)
 	ui_status_format_clock_at(buf, buf_sz, time(NULL));
 }
 
-/*
- * Silence longer than this means the STM32 is gone, not just idle. It must sit
- * above the slowest expected cadence or the dot flickers WARN forever: VITAL is
- * nominally 15 s and STATUS 30 s (AGENTS.md), so 45 s is one missed STATUS.
- */
-#define LINK_STALE_MS 45000U
-
 ui_status_state_t ui_status_sensors(uint8_t sensor_ok_mask)
 {
 	uint8_t known = (uint8_t)(sensor_ok_mask & UI_SENSOR_ALL);

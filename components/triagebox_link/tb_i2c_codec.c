@@ -50,7 +50,7 @@ bool tb_i2c_decode_vitals(const uint8_t *raw, vitals_t *out)
          ((flags & TB_FLAG_BP_VALID) ? UI_VITAL_BP : 0U));
 
     /*
-     * `valid` is the SVM gate, not a display flag. HR AND SpO2 both good, since
+     * `valid` is the model gate, not a display flag. HR AND SpO2 both good, since
      * those are the two the model weighs most; RR alone is not a measurement.
      *
      * BP is deliberately NOT required: nothing measures pressure yet, so

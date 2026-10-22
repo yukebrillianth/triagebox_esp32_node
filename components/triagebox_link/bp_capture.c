@@ -169,7 +169,7 @@ static float s_state_red[2], s_state_ir[2], s_state_ecg[2];
  * would shift every one of them. Remove the DC, keep the pulse.
  *
  * ECG: bandpass 5-15 Hz, Q 0.866, for R-peak TIMING only. The STM32's own DSP
- * runs the same band at 497.5 Hz for its bpm work; this is the same passband
+ * runs the same band at 500 Hz for its bpm work; this is the same passband
  * at the wire's 100 Hz so the peak timing agrees.
  */
 const float bp_coeff_hp05[5] = {0.978027f, -1.956055f, 0.978027f,
@@ -543,7 +543,7 @@ static void bp_task(void *arg)
              * The triage's 129.7 mmHg imputation is the honest answer instead.
              *
              * The STM32's own flag is the test, not an ESP32-side amplitude
-             * heuristic: it clears TB_FLAG_HR_FROM_PPG only when its 497.5 Hz DSP
+             * heuristic: it clears TB_FLAG_HR_FROM_PPG only when its 500 Hz DSP
              * actually got a rate out of the ECG, which noise does not survive.
              */
             const bool ecg_present = tb_ui_source_ecg_rate_seen();

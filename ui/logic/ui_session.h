@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "ui_types.h"
 
@@ -25,6 +26,17 @@ void ui_session_set_airway(bool problem);
  */
 void ui_session_set_rr(ui_rr_band_t rr);
 void ui_session_set_vitals(const vitals_t *vitals);
+/*
+ * When the blood pressure on screen last CHANGED, as epoch seconds; 0 until a
+ * pressure has been seen. BP is estimated once from the measure window and then
+ * latched, unlike HR / SpO2 which move every second, so the screen has to say how
+ * old it is -- a 40-minute-old 118/76 next to a live heart rate reads as current.
+ * Keyed on the value changing, not on the valid bit flickering. Cleared by
+ * ui_session_reset(). Callers format it with ui_status_format_clock_at().
+ */
+time_t ui_session_bp_time(void);
+/* Test hook: replace time(NULL). NULL restores it. */
+void ui_session_set_clock(time_t (*fn)(void));
 /*
  * The vitals THE VERDICT WAS COMPUTED FROM, latched once at measure-done.
  *

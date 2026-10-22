@@ -551,7 +551,7 @@ static void menu_demo_cb(lv_event_t *e)
  * "Mati" is last on purpose: cycling forward from the default never lands on
  * "no monitoring" by one press too many.
  */
-static const uint32_t k_retriage_ms[] = {15000U, 30000U, 60000U, 0U};
+#define k_retriage_ms ui_settings_retriage_choices
 
 static const char *retriage_text(uint32_t ms)
 {
@@ -879,7 +879,7 @@ static void beep_for_priority(ui_priority_t p, int esi)
 /*
  * The Result screen XML is authored with the RED variant hardcoded (banner
  * colour, badge icon, "MERAH - IMMEDIATE"), so without this the screen claimed
- * MERAH no matter what the SVM decided.
+ * MERAH no matter what the model decided.
  *
  * An unscored verdict (esi 0, which arrives riding BLACK -- see
  * ui_verdict_unscored) must not borrow any of it: it gets the muted panel grey,
@@ -1032,6 +1032,29 @@ static void apply_esi(int esi)
  * nothing showed real readings until these ran. Set one `lbl_value` inside a
  * named result_vital tile.
  */
+/*
+ * "TD diukur 12:04", beside the pressure. BP is latched from the one measure
+ * window, so unlike the live HR / SpO2 tiles it ages; the label says when it was
+ * taken. Fills a label NAMED "bp_time" if the screen has one and does nothing
+ * otherwise -- the label is authored in the LVGL Pro screens (monitor.xml,
+ * result.xml), not created here, so this is inert until it is added there.
+ */
+static void apply_bp_time(lv_obj_t *root, const vitals_t *v)
+{
+    lv_obj_t *label = (root != NULL) ? lv_obj_find_by_name(root, "bp_time") : NULL;
+    char t[8];
+
+    if (label == NULL) {
+        return;
+    }
+    if ((v->valid_mask & UI_VITAL_BP) == 0U || ui_session_bp_time() == 0) {
+        lv_label_set_text(label, "");
+        return;
+    }
+    ui_status_format_clock_at(t, sizeof(t), ui_session_bp_time());
+    lv_label_set_text_fmt(label, "TD diukur %s", t);
+}
+
 static void set_tile(lv_obj_t *root, const char *tile_name, const char *text)
 {
     lv_obj_t *tile;
@@ -1118,6 +1141,7 @@ static void apply_vital_tiles(lv_obj_t *root, const vitals_t *v)
     } else {
         set_tile(root, "vc_bp", "--");
     }
+    apply_bp_time(root, v);
 }
 
 /*

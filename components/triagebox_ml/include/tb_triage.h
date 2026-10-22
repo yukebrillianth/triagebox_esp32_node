@@ -22,7 +22,8 @@
  *   2. ui_age_band_t / ui_gender_t -> the model's float age and sex. The UI only
  *      ever collects a band, so a single number has to be chosen for it.
  *
- * The model takes an INSTANTANEOUS reading -- seven scalars, no window
+ * The model takes an INSTANTANEOUS reading -- six scalars (age, sex,
+ * systolic BP, HR, RR, SpO2) plus the operator's airway flag, no window
  * aggregates. That is a change from the previous pipeline, which wanted
  * mean/min/max over the measure window; tb_vitals_window_t existed only for
  * that and is gone with it.

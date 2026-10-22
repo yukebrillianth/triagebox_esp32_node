@@ -16,9 +16,17 @@ static bool node_id_valid(uint32_t id)
     return (id >= 1U) && (id <= UI_NODE_ID_MAX);
 }
 
+/* The Menu's choices; ui_bindings.c cycles through the same four values. */
+const uint32_t ui_settings_retriage_choices[UI_RETRIAGE_CHOICES] = {15000U, 30000U, 60000U, 0U};
+
 static bool retriage_valid(uint32_t ms)
 {
-    return (ms == 0U) || (ms == 15000U) || (ms == 30000U) || (ms == 60000U);
+    for (unsigned i = 0; i < UI_RETRIAGE_CHOICES; i++) {
+        if (ui_settings_retriage_choices[i] == ms) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void ui_settings_init(const ui_settings_store_t *store)

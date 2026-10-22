@@ -26,7 +26,7 @@ handoff/triagebox-ui/
 | Milik | Isi |
 | --- | --- |
 | **UI (paket ini)** | 8 layar, ButtonBar, status bar, state machine flow triage |
-| **ESP32 dev** | UART/RS485 RX dari STM32, inference SVM |
+| **ESP32 dev** | UART/RS485 RX dari STM32, inferensi LightGBM |
 | **STM32 dev** | sensor (MAX30102 / AD8232 / MPX5010DP / RFID), 4 tombol fisik, kirim frame |
 
 UI **tidak** punya driver sensor dan **tidak** baca GPIO tombol. Semua data masuk lewat satu seam: `ui_mock.h` (§3).
@@ -50,7 +50,7 @@ typedef enum { UI_AGE_BAND_6_17, UI_AGE_BAND_18_45, UI_AGE_BAND_46_60, UI_AGE_BA
 typedef enum { UI_GENDER_M='M', UI_GENDER_F='F', UI_GENDER_U='U' } ui_gender_t;
 ```
 
-`priority` / `confidence` / `reasons` **milik ESP32** (hasil SVM di ESP32). STM32 tidak pernah mengirimnya.
+`priority` / `confidence` / `reasons` **milik ESP32** (hasil model LightGBM di ESP32). STM32 tidak pernah mengirimnya.
 
 ## 3. Titik integrasi: ganti `ui_mock.c`
 
@@ -66,7 +66,7 @@ Sekarang UI dijalankan oleh mock deterministik supaya bisa di-demo tanpa STM32. 
 | `ui_mock_measure_progress()` | 0..100 dari elapsed / `UI_MEASURE_MS` |
 | `ui_mock_measure_done()` | true saat window pengukuran habis |
 | `ui_mock_get_vitals(vitals_t*)` | isi dari frame `VITAL` terakhir; `valid=false` bila stale |
-| `ui_mock_get_priority/confidence/reasons()` | hasil SVM, **bukan** hardcode |
+| `ui_mock_get_priority/confidence/reasons()` | hasil model, **bukan** hardcode |
 | `ui_mock_push_button(index, pressed)` | dipanggil **RX task** saat state tombol berubah |
 | `ui_mock_pop_button(btn_event_t*)` | dipanggil LVGL keypad indev — jangan dipanggil dari tempat lain |
 | `ui_mock_get_link_status(link_status_t*)` | `sensor_mask` + `lora_ok` + umur snapshot terakhir |

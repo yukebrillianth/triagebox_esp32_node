@@ -248,7 +248,7 @@ static vitals_t measured(void)
     v.hr = 80;
     v.spo2 = 98;
     v.rr = 16;
-    v.valid = true; /* the SVM gate: a complete snapshot arrived */
+    v.valid = true; /* the model gate: a complete snapshot arrived */
     v.valid_mask = UI_VITAL_HR | UI_VITAL_SPO2 | UI_VITAL_RR; /* no BP source */
     return v;
 }

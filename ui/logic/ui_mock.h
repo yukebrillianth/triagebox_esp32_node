@@ -6,7 +6,7 @@
 /*
  * This header has TWO implementations, chosen in CMake — not by #ifdef:
  *   sim/    -> ui/logic/ui_mock.c                      (deterministic fake)
- *   main/   -> components/triagebox_link/tb_ui_source.c (RS485 + SVM)
+ *   main/   -> components/triagebox_link/tb_ui_source.c (I2C link + LightGBM)
  * Anything added here must be implemented in both.
  *
  * ponytail: the name says "mock" but it is really the data-feed seam; renaming
@@ -136,7 +136,7 @@ void ui_mock_cycle_priority(void);
  * In the sim: no-op (ui_mock_get_priority() already returns the current cycle
  * colour, and ui_runtime_debug_cycle_priority() advances it).
  * On hardware (tb_ui_source.c): clears the "inference done" latch and runs the
- * SVM against the latest vitals, then transmits the new verdict to the STM32.
+ * model against the latest vitals, then transmits the new verdict to the STM32.
  */
 void ui_mock_reclassify(void);
 
