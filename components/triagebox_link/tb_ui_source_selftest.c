@@ -426,6 +426,72 @@ static void test_ecg_gate_is_per_window(void)
 }
 
 /*
+ * Item 17: a Monitor re-triage re-measures BP in the background. The standing BP
+ * must survive a failed re-measurement (the verdict is then kept, not re-scored on
+ * an old or imputed pressure), a valid one must replace it, and a measurement that
+ * never answers must give up instead of waiting forever.
+ */
+static void test_bp_remeasure(void)
+{
+    vitals_t v;
+    const uint32_t win = ui_mock_measure_ms();
+
+    ui_mock_init();
+    ui_demo_set(false);
+    tb_ui_source_bp_arm();
+    tb_ui_source_on_bp(true, 118U, 76U);
+    push_hr(80U, false);
+    ui_mock_tick(1000U);
+
+    /* Refused while a measurement is running, accepted otherwise. */
+    ui_mock_start_measure();
+    assert(!ui_mock_start_bp_remeasure());
+    ui_mock_end_session();
+    ui_mock_init();
+    tb_ui_source_bp_arm();
+    tb_ui_source_on_bp(true, 118U, 76U);
+    push_hr(80U, false);
+
+    ui_mock_tick(1000U);
+    assert(ui_mock_start_bp_remeasure());
+    assert(!ui_mock_start_bp_remeasure());
+    assert(ui_mock_bp_remeasure_state() == UI_BP_REMEASURE_PENDING);
+    ui_mock_get_vitals(&v);
+    assert((v.valid_mask & UI_VITAL_BP) && v.bp_sys == 118U); /* not blanked */
+
+    /* Failed: the BP task answered "no BP". Standing pressure stays. */
+    ui_mock_tick(1000U + win + 1U);
+    tb_ui_source_on_bp(false, 0U, 0U);
+    assert(ui_mock_bp_remeasure_state() == UI_BP_REMEASURE_FAILED);
+    ui_mock_get_vitals(&v);
+    assert((v.valid_mask & UI_VITAL_BP) && v.bp_sys == 118U && v.bp_dia == 76U);
+
+    /* Valid: replaces it. */
+    ui_mock_tick(200000U);
+    assert(ui_mock_start_bp_remeasure());
+    ui_mock_tick(200000U + win + 1U);
+    tb_ui_source_on_bp(true, 131U, 84U);
+    assert(ui_mock_bp_remeasure_state() == UI_BP_REMEASURE_OK);
+    ui_mock_get_vitals(&v);
+    assert(v.bp_sys == 131U && v.bp_dia == 84U);
+
+    /* Never answers: PENDING until the settle limit, then FAILED. */
+    ui_mock_tick(400000U);
+    assert(ui_mock_start_bp_remeasure());
+    ui_mock_tick(400000U + win + 1000U);
+    assert(ui_mock_bp_remeasure_state() == UI_BP_REMEASURE_PENDING);
+    ui_mock_tick(400000U + win + 6000U);
+    assert(ui_mock_bp_remeasure_state() == UI_BP_REMEASURE_FAILED);
+
+    /* A fresh patient measurement fails honestly: arm clears the exemption. */
+    tb_ui_source_bp_arm();
+    tb_ui_source_on_bp(false, 0U, 0U);
+    ui_mock_get_vitals(&v);
+    assert(!(v.valid_mask & UI_VITAL_BP));
+    printf("bp_remeasure OK\n");
+}
+
+/*
  * The gate's deadline, which is the fix for "kadang RFID ga detect".
  *
  * The gate opens on an rfid_len == 0 snapshot, and the STM32 publishes one only
@@ -783,6 +849,7 @@ int main(void)
     test_demo_mode();
     test_hr_prefers_ecg();
     test_ecg_gate_is_per_window();
+    test_bp_remeasure();
     test_gate_deadline();
     test_refusal_is_not_published_as_black();
     test_patient_fields_reach_the_wire();

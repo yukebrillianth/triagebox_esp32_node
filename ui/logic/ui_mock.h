@@ -112,6 +112,27 @@ bool ui_mock_set_measure_ms(uint32_t ms);
 uint8_t ui_mock_measure_progress(void);
 bool ui_mock_measure_done(void);
 
+/*
+ * Blood pressure re-measured for a Monitor re-triage (item 17).
+ *
+ * BP is cuff-less and needs a full ui_mock_measure_ms() window of waveform, so a
+ * re-triage that wants a current BP has to record one. start opens that window in
+ * the background -- no screen change, the sensors are already on the patient --
+ * and refuses (false) while another measurement runs. The standing BP stays on
+ * screen and in the session until the new one settles. state is PENDING until the
+ * window has closed and the BP task answered (bounded: a hung inference becomes
+ * FAILED), then OK or FAILED. FAILED means no new BP -- too few samples, no ECG,
+ * a refused fit -- and the caller must keep the standing verdict: re-scoring
+ * would feed the model the old BP as if it were current, or impute 129.7.
+ */
+typedef enum {
+    UI_BP_REMEASURE_PENDING,
+    UI_BP_REMEASURE_OK,
+    UI_BP_REMEASURE_FAILED,
+} ui_bp_remeasure_t;
+bool ui_mock_start_bp_remeasure(void);
+ui_bp_remeasure_t ui_mock_bp_remeasure_state(void);
+
 void ui_mock_get_vitals(vitals_t *out);
 
 /* Hardcoded QA priority — NOT computed from vitals. */

@@ -148,9 +148,19 @@ static void test_monitor_retriage(void)
     expect(UI_SCREEN_MONITOR);
     assert(!ui_runtime_take_degraded());
 
-    /* Past the interval, with a worse colour on offer: jump + flag. The session
-     * entered Monitor as GREEN; the mock now classifies YELLOW. */
+    /* Past the interval: the BP window opens first and NOTHING is re-scored while
+     * it runs, even with a worse colour on offer (item 17). */
     ui_runtime_tick(20000);
+    expect(UI_SCREEN_MONITOR);
+    assert(!ui_mock_start_bp_remeasure());      /* the window is open */
+    assert(ui_session_get_priority() == UI_PRIORITY_GREEN);
+    ui_runtime_tick(20000 + 1000);              /* window is 2000 ms on the host */
+    expect(UI_SCREEN_MONITOR);
+    assert(ui_session_get_priority() == UI_PRIORITY_GREEN);
+
+    /* Window closed, BP settled: now it re-scores. The session entered Monitor as
+     * GREEN; the mock now classifies YELLOW -> jump + flag. */
+    ui_runtime_tick(20000 + 2000 + 1);
     expect(UI_SCREEN_RESULT);
     assert(ui_session_get_priority() == UI_PRIORITY_YELLOW);
     assert(ui_runtime_take_degraded());
@@ -162,6 +172,7 @@ static void test_monitor_retriage(void)
     expect(UI_SCREEN_MONITOR);
     ui_mock_cycle_priority();       /* would be RED next */
     ui_runtime_tick(60000);
+    ui_runtime_tick(70000);
     expect(UI_SCREEN_MONITOR);
     assert(!ui_runtime_take_degraded());
 

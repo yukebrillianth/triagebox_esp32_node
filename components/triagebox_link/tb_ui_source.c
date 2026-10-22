@@ -45,6 +45,15 @@ static bool s_bp_valid;
 static uint16_t s_bp_sys;
 static uint16_t s_bp_dia;
 static bool s_bp_seen;
+/*
+ * A Monitor re-triage is re-measuring BP (ui_mock_start_bp_remeasure). While set,
+ * a FAILED result must not clear the standing BP: the old pressure is still the
+ * newest real one and the caller keeps the standing verdict instead of re-scoring.
+ * Cleared by tb_ui_source_bp_arm() (a fresh patient measurement fails honestly)
+ * and by ui_mock_bp_remeasure_state() once the answer is read.
+ */
+static bool s_bp_remeasure;
+static bool s_bp_remeasure_failed;
 
 /* Caller holds s_mux. */
 static void bp_apply_overlay_locked(void)
@@ -238,16 +247,20 @@ void tb_ui_source_on_bp(bool valid, uint16_t sys, uint16_t dia)
     }
 
     portENTER_CRITICAL(&s_mux);
-    s_bp_valid = valid;
-    s_bp_sys = sys;
-    s_bp_dia = dia;
-    s_bp_seen = true; /* settled, whatever the verdict: infer_once() unblocks */
-    /* Publish into the current snapshot too: between the BP task's publish
-     * and the next 50 ms poll, Result would otherwise keep showing the tile
-     * as "--" for up to one poll. apply_vital_tiles reads the snapshot. */
-    if (s_have_vitals) {
-        bp_apply_overlay_locked();
+    if (s_bp_remeasure && !valid) {
+        s_bp_remeasure_failed = true; /* keep the standing BP, see s_bp_remeasure */
+    } else {
+        s_bp_valid = valid;
+        s_bp_sys = sys;
+        s_bp_dia = dia;
+        /* Publish into the current snapshot too: between the BP task's publish
+         * and the next 50 ms poll, Result would otherwise keep showing the tile
+         * as "--" for up to one poll. apply_vital_tiles reads the snapshot. */
+        if (s_have_vitals) {
+            bp_apply_overlay_locked();
+        }
     }
+    s_bp_seen = true; /* settled, whatever the verdict: infer_once() unblocks */
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -266,6 +279,7 @@ void tb_ui_source_bp_arm(void)
     s_bp_valid = false;
     s_bp_sys = 0U;
     s_bp_dia = 0U;
+    s_bp_remeasure = false;
     s_ecg_rate_in_window = false;
     portEXIT_CRITICAL(&s_mux);
 }
@@ -401,6 +415,8 @@ void ui_mock_init(void)
     s_bp_sys = 0U;
     s_bp_dia = 0U;
     s_bp_seen = false;
+    s_bp_remeasure = false;
+    s_bp_remeasure_failed = false;
     s_hr_ecg = 0U;
     s_hr_ecg_ms = 0U;
     s_hr_ecg_seen = false;
@@ -650,6 +666,56 @@ uint8_t ui_mock_measure_progress(void)
 bool ui_mock_measure_done(void)
 {
     return s_measure_done;
+}
+
+bool ui_mock_start_bp_remeasure(void)
+{
+    if (s_measure_active) {
+        return false;
+    }
+    s_measure_active = true;
+    s_measure_done = false;
+    s_measure_start_ms = s_now_ms;
+
+    /* NOT tb_ui_source_bp_arm(): that blanks the overlay, and the standing BP has
+     * to stay on screen until a new one replaces it. The STM32 ignores
+     * START_MEASURE and streams the waveform unconditionally, so opening the
+     * capture is all there is to do. */
+    portENTER_CRITICAL(&s_mux);
+    s_bp_seen = false;
+    s_bp_remeasure = true;
+    s_bp_remeasure_failed = false;
+    s_ecg_rate_in_window = false;
+    portEXIT_CRITICAL(&s_mux);
+    bp_capture_start();
+    return true;
+}
+
+/* How long after the window closes the BP task may take before the re-measure
+ * counts as failed -- the same 2 s infer_once() allows, with margin because here
+ * nothing else is waiting on it. */
+#define BP_REMEASURE_SETTLE_MS 5000U
+
+ui_bp_remeasure_t ui_mock_bp_remeasure_state(void)
+{
+    ui_bp_remeasure_t state;
+
+    if (!s_bp_remeasure || !s_measure_done) {
+        return UI_BP_REMEASURE_PENDING;
+    }
+    portENTER_CRITICAL(&s_mux);
+    if (s_bp_seen) {
+        state = s_bp_remeasure_failed ? UI_BP_REMEASURE_FAILED : UI_BP_REMEASURE_OK;
+    } else if ((s_now_ms - (s_measure_start_ms + s_measure_ms)) >= BP_REMEASURE_SETTLE_MS) {
+        state = UI_BP_REMEASURE_FAILED;
+    } else {
+        state = UI_BP_REMEASURE_PENDING;
+    }
+    if (state != UI_BP_REMEASURE_PENDING) {
+        s_bp_remeasure = false;
+    }
+    portEXIT_CRITICAL(&s_mux);
+    return state;
 }
 
 void ui_mock_get_vitals(vitals_t *out)
