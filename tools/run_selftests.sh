@@ -51,7 +51,7 @@ run components/triagebox_link/tb_i2c_codec_selftest.c \
     ui/logic/ui_types.c
 
 # tb_triage.c plus the ML side's ESI->colour mapping AND the adapter that builds
-# TriageInput. triage_pipeline.c is NOT linked -- the 72k-line GBM. The selftest
+# TriageInput. triage_pipeline.c is NOT linked here -- the GBM. The selftest
 # supplies its own predict_triage(), which captures the input the adapter built
 # (the BP imputation) and scripts the ESI the mapping is checked against.
 # tb_triage_model.c is the one unit allowed to include tb_classify.h, so the
@@ -61,6 +61,11 @@ run components/triagebox_ml/tb_triage_selftest.c \
     components/triagebox_ml/tb_triage.c \
     components/triagebox_ml/tb_triage_model.c \
     ui/logic/ui_types.c
+
+# The real triage model against the Python LightGBM it was generated from.
+run components/triagebox_ml/triage_pipeline_selftest.c \
+    components/triagebox_ml/triage_pipeline_selftest.c \
+    components/triagebox_ml/triage_pipeline.c
 
 # BP pipeline golden vector: the real feature extraction plus both LightGBM
 # models, scored against subject 001's labelled 148/90. ~37k-line model files,

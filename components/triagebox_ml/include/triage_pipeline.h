@@ -16,8 +16,8 @@ typedef struct {
 } TriageInput;
 
 typedef struct {
-    float probs[5];         
-    int predicted_esi;      
+    float probs[4];         // ESI 1..4; this model has no ESI 5 class
+    int predicted_esi;      // 1..4
 } TriageOutput;
 
 TriageOutput predict_triage(const TriageInput* input);

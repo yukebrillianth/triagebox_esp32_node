@@ -13,7 +13,7 @@
  * to get silently wrong, and so nothing in ui/logic/ has to know that ESI or
  * TriageInput exist:
  *
- *   1. ESI (1..5, clinical severity, 1 = worst) -> ui_priority_t (START colour).
+ *   1. ESI (1..4, clinical severity, 1 = worst) -> ui_priority_t (START colour).
  *      Different scales, different directions, and ui_priority_t's numeric order
  *      (RED=0, YELLOW=1, GREEN=2, BLACK=3) is NOT severity order, so a cast
  *      silently maps the most critical patient to the least urgent colour. The
@@ -43,7 +43,7 @@
  *                    no sensor on this box can see an obstructed airway.
  * @param confidence  may be NULL; else the winning class probability, 0..1 --
  *                    the range the backend expects.
- * @param esi         may be NULL; else the raw ESI 1..5, or 0 when it refused.
+ * @param esi         may be NULL; else the raw ESI 1..4, or 0 when it refused.
  *                    Exposed because it is the model's actual output and three
  *                    colours cannot be un-collapsed back into it: ESI 3, 4 and 5
  *                    are all GREEN, so a log line carrying only the colour

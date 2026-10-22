@@ -47,7 +47,7 @@ TriageOutput predict_triage(const TriageInput *in)
     ++s_predict_calls;
     memset(&out, 0, sizeof(out));
     out.predicted_esi = s_next_esi;
-    if ((s_next_esi >= 1) && (s_next_esi <= 5)) {
+    if ((s_next_esi >= 1) && (s_next_esi <= 4)) {
         /* A probability the confidence path can be checked against: distinct per
          * class, so an off-by-one in probs[esi - 1] shows up as a wrong number
          * rather than a plausible one. */
@@ -84,10 +84,11 @@ static void test_esi_mapping(void)
     int esi = -1;
 
     /*
-     * Indonesian START uses three colours, so the five ESI classes collapse:
-     *   ESI 1       -> RED     (resuscitation)
-     *   ESI 2       -> YELLOW  (emergent)
-     *   ESI 3, 4, 5 -> GREEN   (urgent / less urgent / non-urgent)
+     * Indonesian START uses three colours, so the four ESI classes collapse:
+     *   ESI 1    -> RED     (resuscitation)
+     *   ESI 2    -> YELLOW  (emergent)
+     *   ESI 3, 4 -> GREEN   (urgent / less urgent)
+     * The model has no ESI 5 class (it is dropped from training, not merged).
      * This is the ML side's grouping, not this file's -- it is asserted here so
      * that changing it is a deliberate act with a failing test, not a silent
      * edit inside a header.
@@ -104,17 +105,14 @@ static void test_esi_mapping(void)
     s_next_esi = 4;
     assert(tb_classify(&in, &esi) == UI_PRIORITY_GREEN);
     assert(esi == 4);
-    s_next_esi = 5;
-    assert(tb_classify(&in, &esi) == UI_PRIORITY_GREEN);
-    assert(esi == 5);
 
     /* The critical direction as a property: a lower ESI is never a less urgent
      * colour than a higher one. ui_priority_t happens to be in severity order
      * for the three used here (RED=0 < YELLOW=1 < GREEN=2), which is what makes
      * the comparison meaningful -- BLACK=3 is not on this scale and is tested
      * separately below. */
-    for (int a = 1; a <= 5; a++) {
-        for (int b = a + 1; b <= 5; b++) {
+    for (int a = 1; a <= 4; a++) {
+        for (int b = a + 1; b <= 4; b++) {
             ui_priority_t pa;
             ui_priority_t pb;
 
@@ -179,16 +177,16 @@ static void test_airway_problem_forces_red(void)
 
     /* The one override: an airway problem is RED whatever the model said. Note
      * the ESI still reports the model's own answer, which is the point of
-     * exposing both -- RED with esi=5 is the operator's override, RED with esi=1
+     * exposing both -- RED with esi=4 is the operator's override, RED with esi=1
      * is the model, and the log has to be able to tell them apart. */
     in.airway_problem = 1;
-    s_next_esi = 5;
+    s_next_esi = 4;
     assert(tb_classify(&in, &esi) == UI_PRIORITY_RED);
-    assert(esi == 5);
+    assert(esi == 4);
 
     /* Every ESI, since the override has to win over all of them and not just
      * over the GREEN band. */
-    for (int e = 1; e <= 5; e++) {
+    for (int e = 1; e <= 4; e++) {
         s_next_esi = e;
         assert(tb_classify(&in, NULL) == UI_PRIORITY_RED);
     }
