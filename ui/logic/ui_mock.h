@@ -15,45 +15,40 @@
  */
 
 /*
- * Measure window. 45 s, measured rather than chosen for feel.
+ * Measure window: 60 s by default, 30 s as a Menu toggle (ui_settings).
  *
- * It was 60 s, justified by respiratory rate needing a minute of breathing
- * microphone. That microphone does not exist -- RR is typed in on its own screen
- * (ui_rr.c) -- so the only thing the length still serves is the BP model, whose
- * training windows are 60 s (PKM_BP deploy/extracted_features_60s.csv).
+ * Only the BP model needs the length: RR is typed in on its own screen (ui_rr.c),
+ * so the old "RR needs a minute of microphone" reason is gone. The model was
+ * trained on 60 s windows (PKM_BP deploy/extracted_features_60s.csv) and the
+ * team's result is best there, so 60 s is the default again; it was 45 s between
+ * 2026-09 and 2026-10-23.
  *
- * What 45 s costs, measured on bp_window.csv with the real feature extractor and
+ * Shorter windows, measured on bp_window.csv with the real feature extractor and
  * both shipped LightGBM models (tools/bp_window_sweep.c, prefixes of one 57.8 s
- * capture, filters primed as the firmware now primes them):
+ * capture, raw columns re-filtered with the primed biquads the firmware uses):
  *
  *     60 s  106.6 / 70.9   (reference)
- *     50 s  106.8 / 66.2   +0.3 / -4.6 mmHg
  *     45 s  108.1 / 66.5   +1.5 / -4.4 mmHg
  *     30 s  109.9 / 66.1   +3.4 / -4.7 mmHg
+ *     29 s  109.9 / 66.1   +3.4 / -4.7 mmHg
+ *     28 s  REFUSED (too few peaks)        <- the cliff on this recording
  *
- * SBP moves 1.5 mmHg and DBP 4.4, against a device that reads ~27 mmHg low
- * versus a cuff to begin with, and against a chain where re-sampling the golden
- * vector onto a half-millisecond-shifted grid moves SBP 14 mmHg. So the window
- * length is not what limits this number.
+ * ONE RECORDING, ONE SUBJECT. The 30 s option works on a CLEAN capture only: one
+ * dropped wave sample restarts the whole accumulator (tb_link_i2c.c) and the
+ * floor leaves ~0.6 s of slack (bp_min_samples() in bp_capture.c), against ~30 s
+ * at 60 s. On a miss the triage imputes 129.7 mmHg for the BP.
  *
- * ONE RECORDING, ONE SUBJECT. If a paired cuff comparison ever disagrees, put
- * this back to 60000 -- one constant; BP_MIN_SAMPLES stays 3000, it is gap
- * tolerance rather than a window target (see bp_capture.c). Do not go below
- * ~30 s, the BP_MIN_SAMPLES floor at the measured 98.97 Hz: below it the model
- * can never score and the triage imputes 129.7 mmHg -- bp_capture.c's
- * _Static_asserts fail the build first.
- *
- * Desktop QA overrides it further: sim/CMakeLists.txt and tools/run_selftests.sh
- * both pass -DUI_MEASURE_MS=2000. Keep any override <= 5000 so the host/sim UI
- * still steps through quickly.
+ * Desktop QA overrides the default further: sim/CMakeLists.txt and
+ * tools/run_selftests.sh both pass -DUI_MEASURE_MS=2000. Keep any override
+ * <= 5000 so the host/sim UI still steps through quickly.
  */
 /*
- * The hardware window, spelled so a -D cannot displace it: the desktop builds
+ * The hardware default, spelled so a -D cannot displace it: the desktop builds
  * above define UI_MEASURE_MS itself, so UI_MEASURE_MS's #ifndef default never
  * fires there. Code that must reason about the REAL on-device window -- the
  * floor binds in bp_capture.c -- reads this constant, not UI_MEASURE_MS.
  */
-#define UI_MEASURE_MS_DEFAULT 45000U
+#define UI_MEASURE_MS_DEFAULT 60000U
 #ifndef UI_MEASURE_MS
 #define UI_MEASURE_MS UI_MEASURE_MS_DEFAULT
 #endif
@@ -105,8 +100,15 @@ bool ui_mock_rfid_ready(rfid_t *out);
  */
 void ui_mock_end_session(void);
 
-/* Measure: start → progress 0..100 over UI_MEASURE_MS → done. */
+/* Measure: start → progress 0..100 over ui_mock_measure_ms() → done. */
 void ui_mock_start_measure(void);
+
+/* The window the NEXT (or running) measurement uses. Starts at UI_MEASURE_MS;
+ * ui_runtime_init() overwrites it with the saved Menu choice. Setting it is
+ * refused (false) while a measurement is running or for 0, so the window cannot
+ * move under a patient mid-recording. Implemented in ui_mock.c and tb_ui_source.c. */
+uint32_t ui_mock_measure_ms(void);
+bool ui_mock_set_measure_ms(uint32_t ms);
 uint8_t ui_mock_measure_progress(void);
 bool ui_mock_measure_done(void);
 

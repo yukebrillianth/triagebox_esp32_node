@@ -1,15 +1,17 @@
 /*
  * How much does the BP prediction move when the window is shortened?
  *
- * Not a unit test -- a one-off measurement for the "can the measurement be made
- * faster" question. UI_MEASURE_MS is 60 s and BP_MIN_SAMPLES is 4800, so the
- * window COULD close at 48 s; whether that is honest depends on how much the
- * model's answer depends on window length, and that is measurable rather than
- * arguable.
+ * Not a unit test -- a one-off measurement for the "how short may the window
+ * be" question: the Menu offers 30 s or 60 s, and the publish floor
+ * (bp_min_samples() in bp_capture.c) must sit where the model still answers.
+ * That is measurable rather than arguable.
  *
- * Input is bp_window.csv from `bplog` (tools/bp_capture_csv.py): its fil_ir /
- * fil_red / fil_ecg columns are exactly what the device fed bp_predict(), so
- * prefixes of them are exactly what a shorter UI_MEASURE_MS would have fed it.
+ * Input is bp_window.csv from `bplog` (tools/bp_capture_csv.py). Its raw_*
+ * columns are re-filtered here exactly as bp_capture.c does today (biquads
+ * primed on the first sample), NOT read from fil_*: recordings made before the
+ * priming fix carry the 6 s start-up transient in fil_*, and every prefix of
+ * those is refused. Prefixes of the re-filtered signal are what a shorter
+ * measure window feeds bp_predict().
  *
  * Build (from the repo root):
  *   cc -std=c99 -O1 -I components/triagebox_ml/include \
@@ -25,6 +27,25 @@
 #include "bp_pipeline.h"
 
 #define MAX_N 6000
+
+/* Same coefficients as bp_capture.c (CMSIS order b0 b1 b2 -a1 -a2). */
+static const float k_hp05[5] = {0.978027f, -1.956055f, 0.978027f, 1.955572f, -0.956537f};
+static const float k_ecg_bp[5] = {0.230114f, 0.0f, -0.230114f, 1.317384f, -0.539771f};
+
+static void prime(float x0, const float c[5], float st[2])
+{
+    const float y0 = x0 * (c[0] + c[1] + c[2]) / (1.0f - c[3] - c[4]);
+    st[1] = c[2] * x0 + c[4] * y0;
+    st[0] = y0 - c[0] * x0;
+}
+
+static float biquad(float x, const float c[5], float st[2])
+{
+    const float y = c[0] * x + st[0];
+    st[0] = c[1] * x + c[3] * y + st[1];
+    st[1] = c[2] * x + c[4] * y;
+    return y;
+}
 
 static double g_ir[MAX_N], g_red[MAX_N], g_ecg[MAX_N];
 
@@ -59,19 +80,32 @@ int main(int argc, char **argv)
                    &fir, &fred, &fecg) != 7) {
             continue;
         }
-        g_ir[n] = fir;
-        g_red[n] = fred;
-        g_ecg[n] = fecg;
+        (void) fir; (void) fred; (void) fecg;
+        g_ir[n] = (double) rir;
+        g_red[n] = (double) rred;
+        g_ecg[n] = (double) recg;
         ++n;
     }
     fclose(f);
     printf("%s: %zu samples (%.1f s at %.0f Hz), is_male=%d\n\n", path, n,
            (double) n / BP_SAMPLING_RATE_HZ, BP_SAMPLING_RATE_HZ, is_male);
 
+    {
+        float s_ir[2], s_red[2], s_ecg[2];
+        prime((float) g_ir[0], k_hp05, s_ir);
+        prime((float) g_red[0], k_hp05, s_red);
+        prime((float) g_ecg[0], k_ecg_bp, s_ecg);
+        for (size_t i = 0; i < n; ++i) {
+            g_ir[i] = biquad((float) g_ir[i], k_hp05, s_ir);
+            g_red[i] = biquad((float) g_red[i], k_hp05, s_red);
+            g_ecg[i] = biquad((float) g_ecg[i], k_ecg_bp, s_ecg);
+        }
+    }
+
     /* Prefixes, because that is what a shorter measure window produces: the
      * same first samples, stopped earlier. Sub-windows from the middle would
      * answer a different question (how stationary the signal is). */
-    static const double k_secs[] = {60.0, 55.0, 50.0, 48.0, 45.0, 40.0, 30.0};
+    static const double k_secs[] = {60.0, 45.0, 30.0, 29.69, 29.0, 28.0, 27.0, 26.0, 25.0};
     double base_sbp = 0.0, base_dbp = 0.0;
     int have_base = 0;
 

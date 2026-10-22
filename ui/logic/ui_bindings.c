@@ -539,13 +539,13 @@ static void menu_demo_cb(lv_event_t *e)
 }
 
 /*
- * Re-triage interval: 15 s / 30 s / 60 s / Mati, cycled by one button rather than
+ * Re-triage interval: 1 / 5 / 15 min / Mati, cycled by one button rather than
  * offered as four radio rows.
  *
  * A cycling button because the value is ordinal and short: four rows would be
  * two thirds of the card for a setting whose whole state fits in the button's own
  * label, and a dropdown on a resistive-feeling 480x480 panel is worse than a
- * button for a gloved finger. The cost is that reaching 60 from 15 takes three
+ * button for a gloved finger. The cost is that reaching 15 min from 1 min takes two
  * presses, which for a setting changed once per deployment is not a cost.
  *
  * "Mati" is last on purpose: cycling forward from the default never lands on
@@ -556,11 +556,48 @@ static void menu_demo_cb(lv_event_t *e)
 static const char *retriage_text(uint32_t ms)
 {
     switch (ms) {
-    case 15000U: return "15 detik";
-    case 30000U: return "30 detik";
-    case 60000U: return "60 detik";
-    default:     return "Mati";
+    case 60000U:  return "1 menit";
+    case 300000U: return "5 menit";
+    case 900000U: return "15 menit";
+    default:      return "Mati";
     }
+}
+
+/*
+ * First-measurement duration: the same cycling-button idiom as the interval. Two
+ * values, so one press flips it. Refused while a measurement is running (the
+ * window must not move under a patient), in which case the label stays put.
+ */
+static const char *measure_text(uint32_t ms)
+{
+    return (ms == 30000U) ? "30 detik" : "60 detik";
+}
+
+static const char *measure_sub(uint32_t ms)
+{
+    return (ms == 30000U) ? "Cepat; sinyal putus = tanpa TD"
+                          : "Tekanan darah paling stabil";
+}
+
+static void menu_measure_cb(lv_event_t *e)
+{
+    lv_obj_t *label = lv_obj_get_child(lv_event_get_target(e), 0);
+    const uint32_t now = ui_mock_measure_ms();
+    unsigned i;
+
+    for (i = 0; i < UI_MEASURE_CHOICES; i++) {
+        if (ui_settings_measure_choices[i] == now) {
+            break;
+        }
+    }
+    i = (i + 1U) % UI_MEASURE_CHOICES;
+    if (!ui_runtime_set_measure_ms(ui_settings_measure_choices[i])) {
+        return;
+    }
+    if (label != NULL) {
+        lv_label_set_text(label, measure_text(ui_settings_measure_choices[i]));
+    }
+    menu_set_sub("menu_measure_sub", measure_sub(ui_settings_measure_choices[i]));
 }
 
 static void menu_retriage_cb(lv_event_t *e)
@@ -799,6 +836,10 @@ static void poll_menu_request(void)
                     ? "Ulangi klasifikasi saat monitoring"
                     : "Tidak ada klasifikasi ulang",
                     retriage_text(ui_runtime_retriage_ms()), menu_retriage_cb);
+
+    menu_button_row(card, "menu_measure_sub", "Durasi Pengukuran",
+                    measure_sub(ui_mock_measure_ms()),
+                    measure_text(ui_mock_measure_ms()), menu_measure_cb);
 
     menu_node_row(card);
 

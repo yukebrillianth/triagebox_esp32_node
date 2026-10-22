@@ -15,7 +15,7 @@ case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) : "${SAN=}" ;;
 *)                        : "${SAN=-fsanitize=address,undefined}" ;;
 esac
-# UI_MEASURE_MS: the hardware default is 60 s (RR needs a minute of microphone),
+# UI_MEASURE_MS: the hardware default is 60 s (the BP model wants a minute of signal),
 # which would make the runtime selftest wait a simulated minute for no benefit.
 # 2 s here matches what sim/CMakeLists.txt passes, and the two timing tests state
 # the number they assume.
