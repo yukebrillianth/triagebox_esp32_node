@@ -14,6 +14,7 @@
 #include "ui_mock.h"
 #include "ui_nav.h"
 #include "ui_runtime.h"
+#include "ui_settings.h"
 #include "ui_session.h"
 #include "ui_status.h"
 
@@ -587,6 +588,75 @@ static void menu_retriage_cb(lv_event_t *e)
                  : "Tidak ada klasifikasi ulang");
 }
 
+/*
+ * This node's LoRa poll address, 1..UI_NODE_ID_MAX, as a - / + stepper.
+ *
+ * A stepper rather than a keypad or a long cycling button: the range is 20, a
+ * keypad is a whole extra screen for a setting touched once per board, and
+ * cycling 20 values with one button is 19 presses to go backwards. It wraps at
+ * both ends, so either direction reaches any value in at most 10 presses.
+ *
+ * Takes effect live (the link pushes it to the STM32 within 2 s) and is saved.
+ * Two boards on one address garble each other's replies and neither can say so,
+ * which is why the sublabel says it must differ per unit -- nothing here can
+ * check it. Unset shows "--" and the board stays silent on the radio.
+ */
+static void menu_node_cb(lv_event_t *e)
+{
+    const intptr_t dir = (intptr_t)lv_event_get_user_data(e);
+    const unsigned id = ui_settings_node_id();
+    const unsigned next = (dir > 0) ? ((id % UI_NODE_ID_MAX) + 1U)
+                                    : ((id <= 1U) ? UI_NODE_ID_MAX : (id - 1U));
+    char buf[8];
+    bool saved = ui_settings_set_node_id((uint8_t)next);
+
+    lv_snprintf(buf, sizeof(buf), "%u", next);
+    menu_set_sub("menu_node_val", buf);
+    menu_set_sub("menu_node_sub", saved ? "Harus beda di tiap alat"
+                                        : "Gagal disimpan, hilang saat mati");
+}
+
+static void menu_node_row(lv_obj_t *card)
+{
+    const unsigned id = ui_settings_node_id();
+    lv_obj_t *row = menu_row_begin(card, "menu_node_sub", "ID Node",
+                                   id != 0U ? "Harus beda di tiap alat"
+                                            : "Belum diatur, alat tidak menjawab");
+    lv_obj_t *box = lv_obj_create(row);
+    lv_obj_t *btn;
+    lv_obj_t *label;
+    char buf[8];
+
+    lv_obj_remove_style_all(box);
+    lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(box, SPACE_SM, 0);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+    btn = dialog_button(box, "-", false, menu_node_cb, (void *)(intptr_t)-1);
+    lv_obj_set_size(btn, 44, 40);
+
+    label = lv_label_create(box);
+    lv_obj_set_name(label, "menu_node_val");
+    if (id != 0U) {
+        lv_snprintf(buf, sizeof(buf), "%u", id);
+    } else {
+        lv_snprintf(buf, sizeof(buf), "--");
+    }
+    lv_label_set_text(label, buf);
+    lv_obj_set_style_min_width(label, 32, 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(label, COLOR_DARK_TEXT, 0);
+    if (font_inter_semi_bold_16 != NULL) {
+        lv_obj_set_style_text_font(label, font_inter_semi_bold_16, 0);
+    }
+
+    btn = dialog_button(box, "+", false, menu_node_cb, (void *)(intptr_t)1);
+    lv_obj_set_size(btn, 44, 40);
+}
+
 static void menu_test_cb(lv_event_t *e)
 {
     (void)e;
@@ -729,6 +799,8 @@ static void poll_menu_request(void)
                     ? "Ulangi klasifikasi saat monitoring"
                     : "Tidak ada klasifikasi ulang",
                     retriage_text(ui_runtime_retriage_ms()), menu_retriage_cb);
+
+    menu_node_row(card);
 
     menu_button_row(card, "menu_test_sub", "Uji Jangkauan",
                     "RSSI, tegangan & link STM32",

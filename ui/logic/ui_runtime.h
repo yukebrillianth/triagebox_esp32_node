@@ -23,10 +23,9 @@ void ui_runtime_tick(uint32_t now_ms);
 void ui_runtime_debug_cycle_priority(void);
 
 /*
- * Monitor re-triage period in ms, 0 = off. Set from the Menu; a plain static, so
- * it goes back to UI_RETRIAGE_DEFAULT_MS on every boot -- there is no settings
- * store in this tree (see ui_demo.h for the same trade, made for the same
- * reason), and the default is the safe end of the choice anyway.
+ * Monitor re-triage period in ms, 0 = off. Set from the Menu and persisted by
+ * ui_settings (NVS on the device); UI_RETRIAGE_DEFAULT_MS is what a board with
+ * nothing saved starts from.
  */
 #define UI_RETRIAGE_DEFAULT_MS 30000U
 

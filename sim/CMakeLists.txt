@@ -139,6 +139,7 @@ endif()
 set(UI_LOGIC_DIR "${UI_DIR}/logic")
 set(UI_LOGIC_SOURCES
   ${UI_LOGIC_DIR}/ui_runtime.c
+  ${UI_LOGIC_DIR}/ui_settings.c
   ${UI_LOGIC_DIR}/ui_input.c
 )
 # ui_types/session/nav/action/status/mock live in ui/user_config.cmake so the

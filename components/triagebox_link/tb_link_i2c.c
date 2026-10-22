@@ -14,6 +14,7 @@
 #include "tb_ui_source.h"
 #include "bp_capture.h" /* the wave block feeds this board's BP inference */
 #include "ui_board.h" /* ui_board_battery(): the gauge lives on our side */
+#include "ui_settings.h" /* the node id the operator chose in the Menu */
 
 static const char *TAG = "tb_link_i2c";
 
@@ -306,6 +307,36 @@ static void push_battery_if_due(void)
 }
 
 /*
+ * The LoRa poll address from the Menu, pushed to the STM32 that has to answer on
+ * it. Repeated, not sent once on change: the STM32 keeps it in RAM only, so a
+ * board that reset (brown-out, flash) would otherwise come back with no address
+ * and go silent until somebody reopened the Menu. 2s is a handful of bytes on a
+ * bus that already carries a 20 Hz poll, and a changed value reaches the radio
+ * well inside one 15 s station cycle.
+ *
+ * Nothing is sent while no id is set (0): an unset board stays silent on the
+ * radio by design, and writing 0 would only be ignored on the other end.
+ */
+#define TB_NODE_ID_EVERY (2000U / TB_POLL_MS)
+
+static void push_node_id_if_due(void)
+{
+    static uint32_t s_ticks;
+    uint8_t id = ui_settings_node_id();
+
+    if ((s_ticks++ % TB_NODE_ID_EVERY) != 0U || id == 0U) {
+        return;
+    }
+    if (!bsp_i2c_lock(TB_I2C_TIMEOUT)) {
+        return;
+    }
+    if (write_reg(TB_REG_HOST_NODE_ID, id) != ESP_OK) {
+        ESP_LOGD(TAG, "node id %u not delivered", (unsigned)id);
+    }
+    bsp_i2c_unlock();
+}
+
+/*
  * Downlink RSSI, read separately from the vitals block. See TB_REG_LORA_RSSI for
  * why it sits at 0x30 rather than inside the block: the 50 ms poll stays exactly
  * 0x30 bytes, so an STM32 built before this register existed keeps answering it
@@ -457,6 +488,7 @@ static void poll_task(void *arg)
         poll_rssi_if_due();
         poll_wave_if_due();
         push_battery_if_due();
+        push_node_id_if_due();
         vTaskDelay(pdMS_TO_TICKS(TB_POLL_MS));
     }
 }
