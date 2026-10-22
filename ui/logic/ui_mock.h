@@ -118,10 +118,10 @@ float ui_mock_get_confidence(void);
 const char *ui_mock_get_reasons(void);
 
 /*
- * Raw ESI 1..5 behind the colour, or 0 when the model refused to score.
+ * Raw ESI 1..4 behind the colour, or 0 when the model refused to score.
  *
- * Separate from the priority because the colour cannot be un-collapsed: ESI 3, 4
- * and 5 are all GREEN under the three-colour START grouping, so the colour alone
+ * Separate from the priority because the colour cannot be un-collapsed: ESI 3 and
+ * 4 are both GREEN under the three-colour START grouping, so the colour alone
  * cannot tell a walking-wounded patient from a borderline one. Shown on Result
  * under the patient ID, and logged.
  */

@@ -12,7 +12,7 @@
  * anywhere else.
  *
  * This is the ESI -> START colour mapping and it belongs to the ML side. Grouped
- * to the three colours Indonesian START uses, so ESI 3, 4 and 5 collapse into
+ * to the three colours Indonesian START uses, so ESI 3 and 4 collapse into
  * GREEN together -- which is why tb_triage_classify() also reports the raw ESI.
  * Pinned by tb_triage_selftest.c against a stubbed predict_triage(), so the
  * mapping is checked without linking the 72k-line model.

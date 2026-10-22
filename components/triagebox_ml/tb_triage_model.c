@@ -95,11 +95,11 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
     }
     if (confidence != NULL) {
         /*
-         * The winning class probability. predicted_esi is 1..5 and probs[] is
-         * 0..4, so the -1 is load-bearing: without it a confident ESI 5 reads as
-         * the probability of ESI 4 having been chosen, which is usually near
+         * The winning class probability. predicted_esi is 1..4 and probs[] is
+         * 0..3, so the -1 is load-bearing: without it a confident ESI 4 reads as
+         * the probability of ESI 3 having been chosen, which is usually near
          * zero. Bounds-checked because a refusal returns 0 and an out-of-range
-         * ESI would index off the end of a 5-element array.
+         * ESI would index off the end of a 4-element array.
          *
          * ponytail: this runs the model a SECOND time, because tb_classify()
          * returns a colour and an ESI but not the probability vector it already
@@ -108,7 +108,7 @@ ui_priority_t tb_triage_classify(const vitals_t *v, ui_age_band_t age,
          * 60 s window, not per frame. Fix when it matters: give tb_classify() a
          * TriageOutput out-param and read probs from that.
          */
-        if ((predicted >= 1) && (predicted <= 5)) {
+        if ((predicted >= 1) && (predicted <= 4)) {
             TriageOutput out = predict_triage(&in);
 
             *confidence = out.probs[predicted - 1];
