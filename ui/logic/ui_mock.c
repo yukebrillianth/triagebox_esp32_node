@@ -58,6 +58,7 @@ static bool s_measure_active;
 static bool s_measure_done;
 static uint32_t s_measure_start_ms;
 static uint8_t s_measure_progress;
+static uint32_t s_measure_ms = UI_MEASURE_MS; /* survives ui_mock_init() */
 
 /* Vitals jitter PRNG (xorshift32) — deterministic, no libc rand. */
 static uint32_t s_rng = 0xA5A5u;
@@ -117,12 +118,12 @@ void ui_mock_tick(uint32_t now_ms)
 
     if (s_measure_active && !s_measure_done) {
         uint32_t elapsed = now_ms - s_measure_start_ms;
-        if (elapsed >= UI_MEASURE_MS) {
+        if (elapsed >= s_measure_ms) {
             s_measure_progress = 100;
             s_measure_done = true;
             s_measure_active = false;
         } else {
-            s_measure_progress = (uint8_t)((elapsed * 100U) / UI_MEASURE_MS);
+            s_measure_progress = (uint8_t)((elapsed * 100U) / s_measure_ms);
         }
     }
 }
@@ -154,6 +155,20 @@ bool ui_mock_rfid_ready(rfid_t *out)
     }
     /* One-shot: consume ready flag so caller sees it once. */
     s_rfid_ready = false;
+    return true;
+}
+
+uint32_t ui_mock_measure_ms(void)
+{
+    return s_measure_ms;
+}
+
+bool ui_mock_set_measure_ms(uint32_t ms)
+{
+    if (ms == 0U || s_measure_active) {
+        return false;
+    }
+    s_measure_ms = ms;
     return true;
 }
 

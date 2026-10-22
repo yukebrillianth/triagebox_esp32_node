@@ -76,7 +76,7 @@ Transport-nya sekarang **I²C, bukan RS485**: ESP32 master, STM32 slave `0x42` d
 
 Dua hal penting:
 
-- **`UI_MEASURE_MS` default 45 s** di `ui/logic/ui_mock.h` (angkanya terukur — lihat komentar di sana), QA desktop/host override ke 2000 ms lewat `-DUI_MEASURE_MS=2000` (`sim/CMakeLists.txt`, `tools/run_selftests.sh`). Kalau diubah, `BP_MIN_SAMPLES` di `bp_capture.c` harus ikut. Sama untuk `UI_MOCK_SCAN_MS`.
+- **`UI_MEASURE_MS_DEFAULT` 60 s** di `ui/logic/ui_mock.h`, dapat diganti 30 s dari Menu (disimpan NVS); angkanya terukur — lihat komentar di sana. QA desktop/host override ke 2000 ms lewat `-DUI_MEASURE_MS=2000` (`sim/CMakeLists.txt`, `tools/run_selftests.sh`). Kalau diubah, `BP_MIN_SAMPLES`/`BP_MIN_SAMPLES_FOR_MS` di `bp_capture.c` harus ikut; `_Static_assert` di sana memeriksanya. Sama untuk `UI_MOCK_SCAN_MS`.
 - **`ui_mock_push_button()` dipanggil dari task RX, bukan dari task LVGL.** Di `ui_mock.c` (sim) slotnya masih single-slot; di device (`tb_ui_source.c`) sudah ring buffer 8 event di dalam critical section, karena satu poll I²C bisa sah menghasilkan 4 edge sekaligus dan single-slot membuang semuanya kecuali yang terakhir — gejalanya "tombol yang kadang tidak ngapa-ngapain".
 
 ## 4. Aturan yang tidak boleh dilanggar

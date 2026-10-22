@@ -28,10 +28,9 @@
 static const char *TAG = "bp_capture";
 
 /* The model was trained on 60 s @ 100 Hz (sample_signals.h: 6000 samples), and
- * the accumulator is still sized for that so `bplog 60` can record a full
- * minute. UI_MEASURE_MS is 45 s now (see ui_mock.h for the measurement behind
- * that), so a measurement fills ~4453 of these; a longer one stops appending
- * rather than wrapping. */
+ * the accumulator is sized for that. The default measure window is 60 s again
+ * (ui_mock.h), ~5938 samples at the real 98.97 Hz; the Menu's 30 s option fills
+ * about half. A longer record stops appending rather than wrapping. */
 #define BP_WINDOW_SAMPLES 6000U
 
 /*
@@ -61,13 +60,20 @@ static const char *TAG = "bp_capture";
  *
  * 3000 = 30 s: one dropped wave sample restarts the ENTIRE accumulator
  * (tb_link_i2c.c), so this floor is really the gap tolerance the capture
- * survives, and 4000 left only ~4.6 s of it against the 45 s window's expected
- * ~4453 (98.97 Hz); 3000 restores ~14.7 s. Refusing any earlier is still
- * honest: on the one recording swept (tools/bp_window_sweep.c), 30 s reads
- * +3.4/-4.7 mmHg against the 60 s reference, and the triage's 129.7 mmHg
- * imputation covers the patient past that. The _Static_asserts below bind it
- * to the window -- if either constant moves, they say whether the pair still
- * works instead of leaving BP quietly unpublishable.
+ * survives: ~29.7 s against the 60 s window's expected ~5938 samples (98.97 Hz).
+ * Refusing any earlier is still honest: on the one recording swept
+ * (tools/bp_window_sweep.c), 30 s reads +3.4/-4.7 mmHg against the 60 s
+ * reference, and the triage's 129.7 mmHg imputation covers the patient past
+ * that. The _Static_asserts below bind it to the window -- if either constant
+ * moves, they say whether the pair still works instead of leaving BP quietly
+ * unpublishable.
+ *
+ * The Menu's 30 s option cannot use 3000: it expects only 2969 samples, so a
+ * floor of 3000 would refuse EVERY 30 s measurement. bp_min_samples() scales
+ * the floor with the window. The same sweep scores 2909 samples and refuses
+ * 2800, so the floor for a short window is 98% of what it expects, which leaves
+ * ~0.6 s of slack: a clean capture publishes a BP, any wave gap during it does
+ * not. shortcut: one recording, one subject; revisit with a second capture.
  */
 #define BP_MIN_SAMPLES 3000U
 
@@ -78,6 +84,14 @@ static const char *TAG = "bp_capture";
 /* Expected samples in a window of `ms` milliseconds, at the real rate.
  * Integer so it can be evaluated in the _Static_asserts below. */
 #define BP_SAMPLES_IN_MS(ms) ((uint32_t)(ms) * BP_FS_HZ100 / 100000U)
+
+/* The floor for a window of `ms`: BP_MIN_SAMPLES, or 98% of the window when the
+ * window is too short to reach it. Macro, not a function, so the asserts below
+ * and the host selftest evaluate the very same expression. */
+#define BP_MIN_SAMPLES_FOR_MS(ms)                                            \
+    (BP_SAMPLES_IN_MS(ms) * 98U / 100U < BP_MIN_SAMPLES                       \
+         ? BP_SAMPLES_IN_MS(ms) * 98U / 100U                                  \
+         : BP_MIN_SAMPLES)
 
 /*
  * The window/floor invariants, checked for real at compile time. They bind to
@@ -95,6 +109,8 @@ static const char *TAG = "bp_capture";
  * (3) The accumulator must still hold the longest window bp_capture_record()
  *     may be asked for -- `bplog 60`, the training length -- at the true
  *     98.97 Hz.
+ * (4) The Menu's 30 s option must be able to publish: its floor is reachable
+ *     and not below the 2900 samples the sweep scored.
  */
 _Static_assert(BP_MIN_SAMPLES < BP_SAMPLES_IN_MS(UI_MEASURE_MS_DEFAULT),
                "BP floor no longer reachable inside the hardware window");
@@ -103,6 +119,11 @@ _Static_assert(BP_SAMPLES_IN_MS(UI_MEASURE_MS_DEFAULT) - BP_MIN_SAMPLES >=
                "gap tolerance under 10 s: one dropped sample can starve BP");
 _Static_assert(BP_WINDOW_SAMPLES >= BP_SAMPLES_IN_MS(60000U),
                "accumulator no longer holds a 60 s bplog window");
+_Static_assert(BP_MIN_SAMPLES_FOR_MS(30000U) < BP_SAMPLES_IN_MS(30000U) &&
+                   BP_MIN_SAMPLES_FOR_MS(30000U) >= 2900U,
+               "30 s Menu option: floor unreachable, or below what the model scored");
+_Static_assert(BP_MIN_SAMPLES_FOR_MS(60000U) == BP_MIN_SAMPLES,
+               "the 60 s default must keep the 3000-sample floor");
 
 /* 3 channels x 6000 x 2 B = 36 KB of internal BSS. PSRAM is not used here on
  * purpose: the push site is the poll task at 20 Hz writing three stores, and
@@ -409,8 +430,14 @@ void bp_capture_start(void)
     memset(s_state_ecg, 0, sizeof(s_state_ecg));
 }
 
+/* The floor for the measurement that just closed: set on the LVGL task in
+ * bp_capture_measure_done(), read by the BP task, so a Menu change after the
+ * window cannot move it. */
+static volatile uint32_t s_min_samples = BP_MIN_SAMPLES;
+
 void bp_capture_measure_done(void)
 {
+    s_min_samples = BP_MIN_SAMPLES_FOR_MS(ui_mock_measure_ms());
     s_capturing = false;
     if (s_task != NULL) {
         xTaskNotifyGive(s_task);
@@ -437,9 +464,9 @@ static void bp_task(void *arg)
         /* Too short to score: the measure was aborted, or a wave gap restarted
          * the capture near the end. The triage model's imputation covers the
          * patient; publishing nothing is honest. */
-        if (!record_only && n < BP_MIN_SAMPLES) {
+        if (!record_only && n < s_min_samples) {
             ESP_LOGW(TAG, "capture short: %u of %u -- BP not computed",
-                     (unsigned) n, (unsigned) BP_MIN_SAMPLES);
+                     (unsigned) n, (unsigned) s_min_samples);
             tb_ui_source_on_bp(false, 0U, 0U);
             continue;
         }
@@ -637,9 +664,10 @@ esp_err_t bp_capture_init(void)
         return ESP_ERR_NO_MEM;
     }
     /* The measure window is what a patient waits through, so log that rather
-     * than the accumulator's capacity -- they differ now (45 s vs 60 s). */
+     * than the accumulator's capacity. */
     ESP_LOGI(TAG, "BP capture up: %ums window, >=%u samples to score, "
                   "task ready",
-             (unsigned) UI_MEASURE_MS, (unsigned) BP_MIN_SAMPLES);
+             (unsigned) ui_mock_measure_ms(),
+             (unsigned) BP_MIN_SAMPLES_FOR_MS(ui_mock_measure_ms()));
     return ESP_OK;
 }

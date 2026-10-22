@@ -129,6 +129,7 @@ static uint32_t s_now_ms;
 static bool s_measure_active;
 static bool s_measure_done;
 static uint32_t s_measure_start_ms;
+static uint32_t s_measure_ms = UI_MEASURE_MS; /* Menu choice; set before a measure starts */
 /* Same instant as s_measure_start_ms, on a clock the LVGL task cannot stall --
  * see the timing log in infer_once(). */
 static int64_t s_measure_start_us;
@@ -442,7 +443,7 @@ void ui_mock_tick(uint32_t now_ms)
     }
 
     if (s_measure_active && !s_measure_done) {
-        if ((now_ms - s_measure_start_ms) >= UI_MEASURE_MS) {
+        if ((now_ms - s_measure_start_ms) >= s_measure_ms) {
             s_measure_done = true;
             s_measure_active = false;
             /* Freeze the waveform and wake the BP task. Same task as this
@@ -594,6 +595,20 @@ void ui_mock_end_session(void)
     }
 }
 
+uint32_t ui_mock_measure_ms(void)
+{
+    return s_measure_ms;
+}
+
+bool ui_mock_set_measure_ms(uint32_t ms)
+{
+    if (ms == 0U || s_measure_active) {
+        return false;
+    }
+    s_measure_ms = ms;
+    return true;
+}
+
 void ui_mock_start_measure(void)
 {
     s_measure_active = true;
@@ -626,10 +641,10 @@ uint8_t ui_mock_measure_progress(void)
         return 0;
     }
     elapsed = s_now_ms - s_measure_start_ms;
-    if (elapsed >= UI_MEASURE_MS) {
+    if (elapsed >= s_measure_ms) {
         return 100;
     }
-    return (uint8_t)((elapsed * 100U) / UI_MEASURE_MS);
+    return (uint8_t)((elapsed * 100U) / s_measure_ms);
 }
 
 bool ui_mock_measure_done(void)
@@ -756,7 +771,7 @@ static void infer_once(void)
      * freezes would report the post-window cost as 0 ms, every time.
      *
      * `post-window` is the only part a code change can move: the BP bounded wait,
-     * the model run and the STM32 write, after the fixed UI_MEASURE_MS the
+     * the model run and the STM32 write, after the chosen measure window the
      * operator waits through.
      */
     {
@@ -770,8 +785,8 @@ static void infer_once(void)
             s_timing_logged = true;
             ESP_LOGI(TAG, "timing: verdict %d ms after START_MEASURE "
                           "(window %d, model+BP %d)",
-                     (int)total_ms, (int)UI_MEASURE_MS,
-                     (int)(total_ms - (int32_t)UI_MEASURE_MS));
+                     (int)total_ms, (int)s_measure_ms,
+                     (int)(total_ms - (int32_t)s_measure_ms));
         }
     }
 

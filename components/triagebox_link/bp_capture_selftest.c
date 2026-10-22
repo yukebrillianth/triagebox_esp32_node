@@ -66,6 +66,12 @@ bool bp_predict(const double *red, const double *ir, const double *ecg,
     return true;
 }
 
+/* bp_capture_measure_done() reads the window to pick its floor. */
+uint32_t ui_mock_measure_ms(void)
+{
+    return UI_MEASURE_MS_DEFAULT;
+}
+
 void ui_mock_get_vitals(vitals_t *out)
 {
     if (out != NULL) {
