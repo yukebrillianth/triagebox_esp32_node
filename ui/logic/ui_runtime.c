@@ -10,6 +10,8 @@ static bool s_measure_started;
 static uint32_t s_retriage_ms = UI_RETRIAGE_DEFAULT_MS;
 static uint32_t s_retriage_due_ms;
 static bool s_degraded;
+/* A BP re-measurement for the next re-triage is running (see the block below). */
+static bool s_remeasuring;
 /* When the sensor board's RFID scan was last armed -- see UI_SCAN_REARM_MS. */
 static uint32_t s_scan_armed_ms;
 
@@ -43,24 +45,35 @@ static void pull_mock_priority_once(void)
  * so Result must show it, but nothing about a patient getting better needs to
  * grab an operator mid-triage of someone else.
  *
+ * Each re-triage MEASURES BLOOD PRESSURE AGAIN before it scores. BP is cuff-less
+ * and needs a full ui_mock_measure_ms() window (60 s by default), so the tick
+ * works in two steps: when the interval is due it opens that window in the
+ * background (the sensors are already on the patient; Monitor stays up and the
+ * standing BP stays on screen), and when the new BP has settled it re-scores. If
+ * the re-measurement fails (finger moved, no ECG) the standing verdict is kept
+ * and the next interval tries again -- scoring on the old BP, or on the model's
+ * imputed one, would pass a stale or invented pressure off as a fresh reading.
+ * The interval runs start to start, so "1 menit" with a 60 s window records
+ * back to back.
+ *
  * Guarded on the snapshot being complete: tb_triage_classify() answers BLACK with
  * confidence 0 when it refuses to score, so re-triaging through a sensor dropout
  * would ring the deterioration alarm for a fallen-off finger clip. HITAM has to
  * mean the model looked at a patient, not that it declined to.
  */
-static void monitor_retriage_tick(uint32_t now_ms)
+/* Something measurable and a first verdict to compare against. */
+static bool retriage_possible(void)
+{
+    return ui_session_has_priority() && ui_session_get_vitals()->valid;
+}
+
+static void retriage_score(void)
 {
     ui_priority_t before;
     ui_priority_t after;
 
-    if (s_retriage_ms == 0U || (now_ms - s_retriage_due_ms) < s_retriage_ms) {
-        return;
-    }
-    s_retriage_due_ms = now_ms;
-
-    /* No first verdict to compare against, or nothing measurable to compare it
-     * with: leave both alone rather than inventing a transition. */
-    if (!ui_session_has_priority() || !ui_session_get_vitals()->valid) {
+    /* The guard is re-checked: a finger clip can fall off during the BP window. */
+    if (!retriage_possible()) {
         return;
     }
 
@@ -90,6 +103,34 @@ static void monitor_retriage_tick(uint32_t now_ms)
     }
 }
 
+static void monitor_retriage_tick(uint32_t now_ms)
+{
+    if (s_remeasuring) {
+        const ui_bp_remeasure_t bp = ui_mock_bp_remeasure_state();
+
+        if (bp == UI_BP_REMEASURE_PENDING) {
+            return;
+        }
+        s_remeasuring = false;
+        if (bp == UI_BP_REMEASURE_OK) {
+            retriage_score();
+        }
+        return;
+    }
+
+    if (s_retriage_ms == 0U || (now_ms - s_retriage_due_ms) < s_retriage_ms) {
+        return;
+    }
+    s_retriage_due_ms = now_ms;
+
+    /* Nothing measurable to compare with: leave the verdict alone rather than
+     * record a window that cannot produce a BP. */
+    if (!retriage_possible()) {
+        return;
+    }
+    s_remeasuring = ui_mock_start_bp_remeasure();
+}
+
 void ui_runtime_set_retriage_ms(uint32_t ms)
 {
     s_retriage_ms = ms;
@@ -101,15 +142,6 @@ void ui_runtime_set_retriage_ms(uint32_t ms)
 uint32_t ui_runtime_retriage_ms(void)
 {
     return s_retriage_ms;
-}
-
-bool ui_runtime_set_measure_ms(uint32_t ms)
-{
-    if (!ui_mock_set_measure_ms(ms)) {
-        return false;
-    }
-    (void)ui_settings_set_measure_ms(ms);
-    return true;
 }
 
 bool ui_runtime_take_degraded(void)
@@ -124,12 +156,12 @@ void ui_runtime_init(void)
 {
     ui_mock_init();
     s_retriage_ms = ui_settings_retriage_ms(); /* the saved choice, else the default */
-    (void)ui_mock_set_measure_ms(ui_settings_measure_ms());
     ui_nav_go(UI_SCREEN_HOME);
     s_prev_screen = ui_nav_current();
     s_measure_started = false;
     s_retriage_due_ms = 0;
     s_degraded = false;
+    s_remeasuring = false;
     s_scan_armed_ms = 0;
 }
 
@@ -153,6 +185,7 @@ void ui_runtime_tick(uint32_t now_ms)
              * the first tick -- entering happened because a measurement just ended,
              * so re-scoring 50 ms later would be scoring the same breaths twice. */
             s_retriage_due_ms = now_ms;
+            s_remeasuring = false; /* a window left running in the background is ignored */
         }
         s_prev_screen = current;
     }

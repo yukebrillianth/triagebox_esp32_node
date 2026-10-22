@@ -32,11 +32,6 @@ void ui_runtime_debug_cycle_priority(void);
 void ui_runtime_set_retriage_ms(uint32_t ms);
 uint32_t ui_runtime_retriage_ms(void);
 
-/* First-measurement duration (30 s or 60 s), Menu-set and persisted like the
- * re-triage interval. False when @p ms is not a Menu value or a measurement is
- * running (the window must not move under a patient mid-recording). */
-bool ui_runtime_set_measure_ms(uint32_t ms);
-
 /*
  * True once when the last re-triage came out MORE severe than the priority the
  * session was carrying. ui_bindings consumes it to sound the alarm pattern and

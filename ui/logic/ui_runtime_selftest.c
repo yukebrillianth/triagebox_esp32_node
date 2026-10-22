@@ -8,7 +8,6 @@
 #include "ui_mock.h"
 #include "ui_nav.h"
 #include "ui_session.h"
-#include "ui_settings.h"
 
 static const char *const screen_names[UI_SCREEN_COUNT] = {
     "HOME", "SCANNING", "BERHASIL", "AGE",
@@ -93,36 +92,6 @@ static void test_verdict_helpers(void)
  * Result and raises the degraded flag; an equal one is silent. Driven through the
  * mock's priority cycle, which is what a desktop can steer.
  */
-/* The first-measurement duration: Menu values only, and never while a
- * measurement is running. Restores the RAM settings so later tests keep the
- * host's accelerated window. */
-static void test_measure_setting(void)
-{
-    ui_settings_init(NULL);
-    ui_runtime_init();
-    assert(ui_mock_measure_ms() == UI_MEASURE_MS);
-    assert(ui_runtime_set_measure_ms(30000U));
-    assert(ui_mock_measure_ms() == 30000U);
-    assert(ui_settings_measure_ms() == 30000U);
-    assert(!ui_runtime_set_measure_ms(0U));
-
-    /* init re-reads the saved choice, as a reboot does. */
-    ui_runtime_init();
-    assert(ui_mock_measure_ms() == 30000U);
-
-    ui_mock_start_measure();
-    assert(!ui_runtime_set_measure_ms(60000U));
-    assert(ui_mock_measure_ms() == 30000U);
-    ui_mock_tick(30000U + 1U);
-    assert(ui_mock_measure_done());
-    assert(ui_runtime_set_measure_ms(60000U));
-
-    ui_settings_init(NULL);
-    ui_runtime_init();
-    assert(ui_mock_measure_ms() == UI_MEASURE_MS);
-    printf("measure_setting OK\n");
-}
-
 static void test_monitor_retriage(void)
 {
     /* Walk a fresh patient to Monitor. */
@@ -148,9 +117,19 @@ static void test_monitor_retriage(void)
     expect(UI_SCREEN_MONITOR);
     assert(!ui_runtime_take_degraded());
 
-    /* Past the interval, with a worse colour on offer: jump + flag. The session
-     * entered Monitor as GREEN; the mock now classifies YELLOW. */
+    /* Past the interval: the BP window opens first and NOTHING is re-scored while
+     * it runs, even with a worse colour on offer (item 17). */
     ui_runtime_tick(20000);
+    expect(UI_SCREEN_MONITOR);
+    assert(!ui_mock_start_bp_remeasure());      /* the window is open */
+    assert(ui_session_get_priority() == UI_PRIORITY_GREEN);
+    ui_runtime_tick(20000 + 1000);              /* window is 2000 ms on the host */
+    expect(UI_SCREEN_MONITOR);
+    assert(ui_session_get_priority() == UI_PRIORITY_GREEN);
+
+    /* Window closed, BP settled: now it re-scores. The session entered Monitor as
+     * GREEN; the mock now classifies YELLOW -> jump + flag. */
+    ui_runtime_tick(20000 + 2000 + 1);
     expect(UI_SCREEN_RESULT);
     assert(ui_session_get_priority() == UI_PRIORITY_YELLOW);
     assert(ui_runtime_take_degraded());
@@ -162,6 +141,7 @@ static void test_monitor_retriage(void)
     expect(UI_SCREEN_MONITOR);
     ui_mock_cycle_priority();       /* would be RED next */
     ui_runtime_tick(60000);
+    ui_runtime_tick(70000);
     expect(UI_SCREEN_MONITOR);
     assert(!ui_runtime_take_degraded());
 
@@ -304,7 +284,6 @@ int main(void)
     test_severity_order();
     test_rr_band_values();
     test_verdict_helpers();
-    test_measure_setting();
     test_monitor_retriage();
 
     printf("ALL_PASS measure_ms=%u\n", (unsigned)UI_MEASURE_MS);

@@ -58,7 +58,8 @@ static bool s_measure_active;
 static bool s_measure_done;
 static uint32_t s_measure_start_ms;
 static uint8_t s_measure_progress;
-static uint32_t s_measure_ms = UI_MEASURE_MS; /* survives ui_mock_init() */
+static bool s_bp_remeasure; /* the open window is a Monitor BP re-measurement */
+static const uint32_t s_measure_ms = UI_MEASURE_MS;
 
 /* Vitals jitter PRNG (xorshift32) — deterministic, no libc rand. */
 static uint32_t s_rng = 0xA5A5u;
@@ -96,6 +97,7 @@ void ui_mock_init(void)
     s_measure_done = false;
     s_measure_start_ms = 0;
     s_measure_progress = 0;
+    s_bp_remeasure = false;
     s_rng = 0xA5A5u;
     s_btn_pending = false;
     memset(&s_btn, 0, sizeof(s_btn));
@@ -163,21 +165,13 @@ uint32_t ui_mock_measure_ms(void)
     return s_measure_ms;
 }
 
-bool ui_mock_set_measure_ms(uint32_t ms)
-{
-    if (ms == 0U || s_measure_active) {
-        return false;
-    }
-    s_measure_ms = ms;
-    return true;
-}
-
 void ui_mock_start_measure(void)
 {
     s_measure_active = true;
     s_measure_done = false;
     s_measure_start_ms = s_now_ms;
     s_measure_progress = 0;
+    s_bp_remeasure = false;
 }
 
 uint8_t ui_mock_measure_progress(void)
@@ -188,6 +182,25 @@ uint8_t ui_mock_measure_progress(void)
 bool ui_mock_measure_done(void)
 {
     return s_measure_done;
+}
+
+bool ui_mock_start_bp_remeasure(void)
+{
+    if (s_measure_active) {
+        return false;
+    }
+    ui_mock_start_measure();
+    s_bp_remeasure = true;
+    return true;
+}
+
+ui_bp_remeasure_t ui_mock_bp_remeasure_state(void)
+{
+    if (!s_bp_remeasure || !s_measure_done) {
+        return UI_BP_REMEASURE_PENDING;
+    }
+    s_bp_remeasure = false;
+    return UI_BP_REMEASURE_OK; /* the sim's BP is a constant, so it always "works" */
 }
 
 void ui_mock_get_vitals(vitals_t *out)

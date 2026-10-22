@@ -62,13 +62,4 @@ extern const uint32_t ui_settings_retriage_choices[UI_RETRIAGE_CHOICES];
 uint32_t ui_settings_retriage_ms(void);
 bool ui_settings_set_retriage_ms(uint32_t ms);
 
-/* How long the first measurement records ECG/PPG for the blood pressure: a toggle,
- * not a free range. Shared with ui_bindings.c. */
-#define UI_MEASURE_CHOICES 2U
-extern const uint32_t ui_settings_measure_choices[UI_MEASURE_CHOICES];
-
-/* One of 30000, 60000 (the hardware default UI_MEASURE_MS_DEFAULT). Same rules. */
-uint32_t ui_settings_measure_ms(void);
-bool ui_settings_set_measure_ms(uint32_t ms);
-
 #endif /* UI_LOGIC_UI_SETTINGS_H */

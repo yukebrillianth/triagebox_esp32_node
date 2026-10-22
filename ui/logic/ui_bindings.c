@@ -563,43 +563,6 @@ static const char *retriage_text(uint32_t ms)
     }
 }
 
-/*
- * First-measurement duration: the same cycling-button idiom as the interval. Two
- * values, so one press flips it. Refused while a measurement is running (the
- * window must not move under a patient), in which case the label stays put.
- */
-static const char *measure_text(uint32_t ms)
-{
-    return (ms == 30000U) ? "30 detik" : "60 detik";
-}
-
-static const char *measure_sub(uint32_t ms)
-{
-    return (ms == 30000U) ? "Cepat; sinyal putus = tanpa TD"
-                          : "Tekanan darah paling stabil";
-}
-
-static void menu_measure_cb(lv_event_t *e)
-{
-    lv_obj_t *label = lv_obj_get_child(lv_event_get_target(e), 0);
-    const uint32_t now = ui_mock_measure_ms();
-    unsigned i;
-
-    for (i = 0; i < UI_MEASURE_CHOICES; i++) {
-        if (ui_settings_measure_choices[i] == now) {
-            break;
-        }
-    }
-    i = (i + 1U) % UI_MEASURE_CHOICES;
-    if (!ui_runtime_set_measure_ms(ui_settings_measure_choices[i])) {
-        return;
-    }
-    if (label != NULL) {
-        lv_label_set_text(label, measure_text(ui_settings_measure_choices[i]));
-    }
-    menu_set_sub("menu_measure_sub", measure_sub(ui_settings_measure_choices[i]));
-}
-
 static void menu_retriage_cb(lv_event_t *e)
 {
     lv_obj_t *label = lv_obj_get_child(lv_event_get_target(e), 0);
@@ -836,10 +799,6 @@ static void poll_menu_request(void)
                     ? "Ulangi klasifikasi saat monitoring"
                     : "Tidak ada klasifikasi ulang",
                     retriage_text(ui_runtime_retriage_ms()), menu_retriage_cb);
-
-    menu_button_row(card, "menu_measure_sub", "Durasi Pengukuran",
-                    measure_sub(ui_mock_measure_ms()),
-                    measure_text(ui_mock_measure_ms()), menu_measure_cb);
 
     menu_node_row(card);
 
